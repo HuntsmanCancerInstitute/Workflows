@@ -1,0 +1,286 @@
+#Define the resources from the config file
+
+## Base name to prepend on all files
+name = config["name"]
+
+## Gzipped Fastq files
+fastqReadOne = config["fR"]
+fastqReadTwo = config["sR"]
+
+## For messaging
+email = config["email"]
+
+## Bed files
+regionsForQC = "/uufs/chpc.utah.edu/common/home/u0028003/Lu/DelkerBisSeq/Bed/bsasRegionsMergedB38.bed"
+regionsForAnalysis = "/uufs/chpc.utah.edu/common/home/u0028003/Lu/DelkerBisSeq/Bed/bsasRegionsPad150bpMergedHg38.bed"
+
+## Params
+allThreads = int(config["threads"])
+halfThreads = int(round(allThreads/2,0))
+allMemory = config["memory"]
+
+## Apps
+novoalign = "/uufs/chpc.utah.edu/common/home/u0028003/BioApps/Novo/3.04.04/novoalign"
+useq= "/uufs/chpc.utah.edu/common/home/u0028003/BioApps/USeq/Apps"
+picard= "/uufs/chpc.utah.edu/common/home/u0028003/BioApps/Picard/2.1.1/picard.jar"
+r= "/uufs/chpc.utah.edu/common/home/u0028003/BioApps/R/R-3.2.0/bin/R"
+ucsc= "/uufs/chpc.utah.edu/common/home/u0028003/BioApps/UCSC/08-Mar-2016/"
+
+## Languages
+java7= "/uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.7.0-openjdk.x86_64/bin/java"
+java8= "/uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java"
+
+## References
+novoindex= "/uufs/chpc.utah.edu/common/home/u0028003/HCIGenomes/H_sapiens/B38/AlignerIndexes/Novo/Bisulfite/b38GatkBundlePlusPhiXLambdaAdapter.bisulfite.novo"
+fasta= "/uufs/chpc.utah.edu/common/home/u0028003/HCIGenomes/H_sapiens/B38/Fastas"
+
+## File resources to check before launching
+requiredFiles = [fastqReadOne, fastqReadTwo, novoalign, novoindex, useq, picard, java7, java8, r, ucsc, regionsForQC, regionsForAnalysis]
+
+
+
+############# Messaging ##############
+
+onerror:
+    shell( "dir=`pwd`; mail -s \"Failed: {name} ($dir)\" {email} < {log}; sleep 4s")
+onsuccess:
+    shell( "dir=`pwd`; mail -s \"Complete: {name} ($dir)\" {email} < {log}; sleep 4s")
+
+
+
+############# Rules ##############
+
+# Rule requesting final output thus triggering whole analysis
+rule FinalCleanup:
+    input:
+        name+ "_OrganizeFiles.complete"
+    output:
+        name+ "_COMPLETE"
+    shell:
+        "rm -f *sam.gz *.complete &&"
+        "touch {output} && "
+        "echo [`date`] rule FinalCleanup: COMPLETE "
+
+
+############# Fastq and resource check ##############
+
+# Uses ls to check if all the required resources are present 
+rule CheckResources:
+    output:
+        name+ "_CheckResources.complete"
+    log:
+        name+ "_CheckResources.log"
+    shell:
+        "ls {requiredFiles} &> {log} && touch {output} && "
+        "echo [`date`] rule CheckResources: COMPLETE "
+
+# Uses gunzip -t to check the integrity of the xxx.gz files in the working directory
+rule CheckGzipFiles:
+    output:
+        name+ "_CheckGzipFiles.complete"
+    log:
+        name+ "_CheckGzipFiles.log"
+    shell:
+        "gunzip -tv *.gz &> {log} && touch {output} && "
+        "echo [`date`] rule CheckGzipFiles: COMPLETE " 
+
+
+############# Alignment ###############
+
+# Align paired amplicon data with novoalign in bisulfite mode -b 4
+rule Novoalign:
+    input:
+        name+ "_CheckResources.complete",
+    output:
+        name + ".sam.gz"
+    log:
+        name + "_Novoalign.log"
+    threads:
+        allThreads
+    params:
+        "-F ILM1.8 --alt -o SAM -r Random -t 240 -h 120 -b 4 -u 12 -a AGATCGGAAGAGCGGTTCAGCAGGAATGCCGAGA AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGTA"
+    shell:
+        "{novoalign} {params} -d {novoindex} -f {fastqReadOne} {fastqReadTwo} 2> {log} | gzip > {output} && "
+        "echo [`date`] rule Novoalign: COMPLETE "
+
+# Sort by coordinate
+rule SortSam:
+    input:
+        name + ".sam.gz"
+    output:
+        bam = name+ ".bam",
+        bai = name+ ".bai"
+    threads:
+        allThreads
+    log:
+        name+ "_SortSam.log"
+    shell:
+        "{java8} -Xmx{allMemory} -jar {picard} SortSam TMP_DIR=. VERBOSITY=ERROR "
+        "VALIDATION_STRINGENCY=SILENT MAX_RECORDS_IN_RAM=5000000 CREATE_INDEX=true "
+        "SORT_ORDER=coordinate INPUT={input} OUTPUT={output.bam} &> {log} && "
+        "echo [`date`] rule SortSam: COMPLETE "
+
+
+
+############# QC ############
+
+# Generate read coverage QC metrics and bed pass fail files with Sam2USeq
+rule Sam2USeq:
+    input:
+        name+ ".bam"
+    output:
+        cs = name+ "_perRegionCoverageStats.txt.gz",
+        json = name+ "_sam2USeq.json.gz"
+    params:
+        "-m 13 -v hg38 -x 5000 -r -c 30"
+    threads:
+        halfThreads    
+    log:
+        name+ "_Sam2USeq.log"
+    shell:
+        "{java7} -Xmx{allMemory} -jar {useq}/Sam2USeq {params} -f {input} "
+        "-b {regionsForQC} -p {output.cs} -j {output.json} -n {name} &> {log} && "
+        "echo [`date`] rule Sam2USeq: COMPLETE "
+
+
+############# Parse Alignments ############
+
+# Parse to raw PointData
+rule NovoalignBisulfiteParser:
+    input:
+        bam = name+ ".bam",
+        bai = name+ ".bai"
+    output:
+        dir = name + "_NBP",
+        con = name + "_NBP/ConvertedC",
+        non = name + "_NBP/NonConvertedC"
+    log:
+        name + "_NovoalignBisulfiteParser.log"
+    threads:
+        allThreads
+    params:
+        "hg38"
+    shell:
+        "{java7} -Xmx{allMemory} -jar {useq}/NovoalignBisulfiteParser -v {params} -f {fasta} -a {input.bam} -s {output.dir} &> {log} && "
+        "echo [`date`] rule NovoalignBisulfiteParser: COMPLETE "
+
+# Filter Point Data for those in target regions
+rule FilterPointData:
+    input:
+        con = name + "_NBP/ConvertedC",
+        non = name + "_NBP/NonConvertedC"
+    output:
+        dir = name + "_FilteredNBP",
+        con = name + "_FilteredNBP/ConvertedC",
+        non = name + "_FilteredNBP/NonConvertedC"
+    log:
+        name + "_FilterPointData.log"
+    threads:
+        halfThreads
+    shell:
+        "{java7} -Xmx{allMemory} -jar {useq}/FilterPointData -p {input.con},{input.non} -r {regionsForAnalysis} "
+        "-i -f {output.dir} &> {log} && "
+        "echo [`date`] rule FilterPointData: COMPLETE "
+
+# Parse out just CG contexts
+rule ParsePointDataContextsCon:
+    input:
+        name + "_FilteredNBP/ConvertedC"
+    output:
+        name + "_PPDC/Con"
+    log:
+        name + "_ParsePointDataContextsCon.log"
+    threads:
+        halfThreads
+    shell:
+        "{java7} -Xmx{allMemory} -jar {useq}/ParsePointDataContexts -f {fasta} -c '..CG.' -p {input} -s {output} &> {log} && "
+        "echo [`date`] rule ParsePointDataContextsCon: COMPLETE "
+
+rule ParsePointDataContextsNon:
+    input:
+        name + "_FilteredNBP/NonConvertedC"
+    output:
+        name + "_PPDC/Non"
+    log:
+        name + "_ParsePointDataContextsNon.log"
+    threads:
+        halfThreads
+    shell:
+        "{java7} -Xmx{allMemory} -jar {useq}/ParsePointDataContexts -f {fasta} -c '..CG.' -p {input} -s {output} &> {log} && "
+        "echo [`date`] rule ParsePointDataContextsNon: COMPLETE "
+
+
+############# Methylome Analysis ############
+
+# Run single methylome analysis on all the C contexts
+rule BisStatAll:
+    input:
+        con = name + "_FilteredNBP/ConvertedC",
+        non = name + "_FilteredNBP/NonConvertedC"
+    output:
+        name + "_BisStatAll"
+    log:
+        name + "_BisStatAll.log"
+    threads:
+        allThreads
+    shell:
+        "{java7} -Xmx{allMemory} -jar {useq}/BisStat -s {output} -c {input.con} -n {input.non} -f {fasta} -r {r} &> {log} && "
+        "echo [`date`] rule BisStatAll: COMPLETE "
+
+# Run single methylome analysis on just the CG contexts
+rule BisStatCG:
+    input:
+        con = name + "_PPDC/Con",
+        non = name + "_PPDC/Non"
+    output:
+        name + "_BisStatCG"
+    log:
+        name + "_BisStatCG.log"
+    threads:
+        allThreads
+    shell:
+        "{java7} -Xmx{allMemory} -jar {useq}/BisStat -s {output} -c {input.con} -n {input.non} -f {fasta} -r {r} &> {log} && "
+        "echo [`date`] rule BisStatCG: COMPLETE "
+
+# Convert all the xxx.useq graph files into xxx.bw format for IGV compatibility
+rule USeq2UCSCBig:
+    input:
+        name + "_BisStatAll",
+        name + "_BisStatCG"
+    output:
+        name+ "_USeq2UCSCBig.complete",
+        name+ "_BisStatCG/Base/BaseFractionNonConverted.bw"
+    threads:
+        allThreads    
+    log:
+        name+ "_USeq2UCSCBig.log"
+    shell:
+        "{java7} -Xmx{allMemory} -jar {useq}/USeq2UCSCBig -u . -f -d {ucsc} &> {log} && "
+        "touch {output} && "        
+        "echo [`date`] rule USeq2UCSCBig: COMPLETE "
+
+
+############# Cleanup and Organization ############# 
+
+# Move files about, the inputs are used for anything but do trigger the upstream analysis
+rule OrganizeFiles:
+    input:
+        name+ "_BisStatCG/Base/BaseFractionNonConverted.bw",
+        name+ "_CheckGzipFiles.complete",
+        name+ "_perRegionCoverageStats.txt.gz"
+    output:
+        name+ "_OrganizeFiles.complete"
+    shell:
+        "mkdir -p Log Int QC && "
+        "mv -f *.log Log/ && "
+        "mv -f *_NBP Int/ && "
+        "mv -f *_FilteredNBP Int/ && "
+        "mv -f *_PPDC Int/ && "
+        "mv -f *.useq QC/ && "
+        "mv -f *.bw QC/ && "
+        "mv -f *.bed.gz QC/ && "
+        "mv -f *Stats.txt.gz QC/ && "
+        "mv -f *json.gz QC/ && "
+        "touch {output} && "
+        "echo [`date`] rule OrganizeFiles: COMPLETE "
+
