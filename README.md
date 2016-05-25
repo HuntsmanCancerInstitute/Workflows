@@ -1,2 +1,2 @@
 # Workflows
-Primarily snakemake workflows for best practice genomic analysis
+Snakemake workflows for best practice genomic analysis
