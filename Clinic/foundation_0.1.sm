@@ -1,0 +1,519 @@
+#Define the resources from the config file
+
+## Base name to prepend on all files
+name = config["name"]
+
+
+############# Messaging ##############
+email = config["email"]
+onstart:
+    shell( "dir=`pwd`; mail -s \"Started: {name} ($dir)\" {email} < {log}")
+onerror:
+    shell( "dir=`pwd`; mail -s \"Failed: {name} ($dir)\" {email} < {log}; sleep 4s")
+onsuccess:
+    shell( "dir=`pwd`; mail -s \"Complete: {name} ($dir)\" {email} < {log}; sleep 4s")
+
+# Workflow trigger
+rule OrganizeResults:
+    input:
+        name+ "_FastqCount.json.gz",
+        name+ "_uniObReadCov.bw",
+        name+"_MergedFoundationRecall.vcf.gz.tbi"
+    output:
+        name+ "_COMPLETE"
+    shell:
+        "touch {output} && "
+        "echo [`date`] rule OrganizeResults: COMPLETE; echo "
+
+# Convert Foundation Bam to fastq
+rule Sam2Fastq:
+    input:
+        bam = config["sampleBam"],
+        java = config["java8"],
+        picard = config["picard"]
+    output:
+        f1 = name+ "_1.fastq",
+        f2 = name+ "_2.fastq"
+    log:
+        name+ "_Sam2Fastq.log"
+    threads:
+        int(config["allThreads"])
+    params:
+        r= config["allRam"]
+    shell:
+        "{input.java} -Xmx{params.r} -jar {input.picard} SamToFastq INPUT={input.bam} FASTQ={output.f1} "
+        "SECOND_END_FASTQ={output.f2} TMP_DIR=. VALIDATION_STRINGENCY=SILENT &> {log} && "
+        "echo [`date`] rule Sam2Fastq: COMPLETE; echo "
+
+# Count the number of fastq records
+rule CountFastq:
+    input:
+        name+ "_1.fastq"
+    output:
+        name+ "_FastqCount.json.gz"
+    shell:
+        "x=$(cat {input} | wc -l | tr -d \" \") && "
+        "y=$(($x/2)) && "
+        "echo \{{ > {name}_FastqCount.json && "
+        "echo \\\"numberFastqReads\\\": $y >> {name}_FastqCount.json && "
+        "echo \}} >> {name}_FastqCount.json && "
+        "gzip {name}_FastqCount.json && "
+        "echo [`date`] rule CountFastq: COMPLETE; echo "
+
+# Align with bwa mem, mark dups, write out as bam
+rule Align:
+    input:
+        f1 = name+ "_1.fastq",
+        f2 = name+ "_2.fastq",
+        bwa = config["bwa"],
+        index = config["indexFasta"],
+        samtools = config["samtools"],
+        samblaster = config["samblaster"]
+    output:
+        name+ "_raw.bam"
+    log:
+        name+ "_Align.log"
+    params: 
+        rg ="\"@RG\\tID:"+name+"\\tPL:ILLUMINA\\tLB:"+name+"\\tSM:"+name+ "\\tCN:HCI\\tPU:"+name+"\""
+    threads:    
+        int(config["allThreads"])
+    shell:
+        # Remove the log
+        "rm -rf {log}; "
+        # Align with bwa mem
+        "{input.bwa} mem -v 1 -t {threads} -R {params.rg} {input.index} {input.f1} {input.f2} 2>> {log} | "
+        # Mark duplicates
+        "{input.samblaster} 2>> {log} | "
+        # Write as bam
+        "{input.samtools} view -Sb - 2>> {log} > {output} && "
+        "echo [`date`] rule Align: COMPLETE; echo "
+
+# Fix mate info and sort, not always necessary but doesn't hurt
+rule FixMateInformation:
+    input:
+        bam = name+ "_raw.bam",
+        java = config["java8"],
+        picard = config["picard"]
+    output:
+        name+ "_unfiltered.bam"
+    params:
+        r= config["allRam"]
+    threads:
+        int(config["allThreads"])
+    log:
+        name+ "_FixMateInformation.log"
+    shell:
+        "{input.java} -Xmx{params.r} -jar {input.picard} FixMateInformation CREATE_INDEX=true SO=coordinate "
+        "MAX_RECORDS_IN_RAM=5000000 TMP_DIR=. VALIDATION_STRINGENCY=SILENT INPUT={input.bam} "
+        "OUTPUT={output} &> {log} && "
+        "echo [`date`] rule FixMateInformation: COMPLETE; echo "
+
+# Use the SamAlignmentExtractor to remove poor quality alignments and those off all exons +/- 150bp
+rule SamAlignmentExtractor:
+    input:
+        bam = name+ "_unfiltered.bam",
+        java = config["java7"],
+        useq = config["useq"],
+        bed = config["allExon150"]
+    output:
+        dir = name+ "_SAE",
+        bam = name+ "_filtered.bam",
+        bai = name+ "_filtered.bai",
+        json = name+ "_SamAlignmentExtractor.json.gz"
+    params:
+        u= config["useqSamAlignmentExtractor"],
+        r= config["allRam"]
+    log:
+        name+ "_SamAlignmentExtractor.log",
+    shell:
+        "{input.java} -Xmx{params.r} -jar {input.useq}/SamAlignmentExtractor {params.u} "
+        "-s {output.dir} -b {input.bam} "
+        "-r {input.bed} -j {output.json} &> {log} && "
+        "mv {output.dir}/*_passSAE.bam {output.bam} &>> {log} && "
+        "mv {output.dir}/*_passSAE.bai {output.bai} &>> {log} && "
+        "echo [`date`] rule SamAlignmentExtractor: COMPLETE; echo "
+
+# Remove duplicates with Picard
+rule RemoveDuplicates:
+    input:
+        bam = name+ "_filtered.bam",
+        java = config["java8"],
+        picard = config["picard"]
+    output:
+        bam = name+ "_dupFree.bam",
+        metrics = name+ "_removeDuplicates.metrics"
+    params:
+        config["allRam"]
+    threads:
+        int(config["allThreads"])
+    log:
+        name+ "_RemoveDuplicates.log"
+    shell:
+        "{input.java} -Xmx{params} -jar {input.picard} MarkDuplicates REMOVE_DUPLICATES=true TMP_DIR=. VERBOSITY=ERROR "
+        "VALIDATION_STRINGENCY=SILENT MAX_RECORDS_IN_RAM=5000000 CREATE_INDEX=true "
+        "METRICS_FILE={output.metrics} INPUT={input.bam} OUTPUT={output.bam} &> {log} && "
+        "echo [`date`] rule RemoveDuplicates: COMPLETE; echo "
+
+# Base recalibration with GATK, target creator
+rule RecalibrateBases:
+    input:
+        bam= name+ "_dupFree.bam",
+        java= config["java7"],
+        gatk= config["gatk"],
+        index= config["indexFasta"],
+        dbsnp= config["dbsnp"]
+    output:
+        name+ "_recalibration.grp"
+    params:
+        r= config["allRam"]
+    threads:
+        int(config["allThreads"])
+    log:
+        name+ "_BaseRecalibrator.log"
+    shell:
+        "{input.java} -Xmx{params.r} -jar {input.gatk} -nct {threads} -T BaseRecalibrator -R {input.index} "
+        "-knownSites {input.dbsnp} -I {input.bam} -o {output} &> {log} && "
+        "echo [`date`] rule RecalibrateBases: COMPLETE; echo "
+
+# Write out recalibrated bam with GATK
+rule PrintRecalibratedBam:
+    input:
+        grp = name+ "_recalibration.grp",
+        bam = name+ "_dupFree.bam",
+        java= config["java7"],
+        gatk= config["gatk"],
+        index= config["indexFasta"]
+    output:
+        name+ "_recal.bam"
+    params:
+        r= config["allRam"]
+    threads:
+        int(config["allThreads"])
+    log:
+        name+ "_PrintRecalibratedBam.log"
+    shell:
+        "{input.java} -Xmx{params.r} -jar {input.gatk} -nct {threads} -T PrintReads -R {input.index} "
+        "-I {input.bam} -BQSR {input.grp} -o {output} &> {log} && "
+        "echo [`date`] rule PrintRecalibratedBam: COMPLETE; echo "
+
+# Realign INDEL alignments
+rule Abra:
+    input:
+        bam= name+ "_recal.bam",
+        java= config["java7"],
+        abra= config["abra"],
+        index= config["indexFasta"],
+        bed= config["allExon150"],
+        bwa= config["bwaDir"]
+    output:
+        bam = name+ "_abra_unsorted.bam",
+        dir = name+ "_AbraTemp"
+    params:
+        r= config["allRam"]
+    threads:
+        int(config["allThreads"])
+    log:
+        name+ "_Abra.log"
+    shell:
+        "rm -rf {name}_AbraTemp && "
+        "export PATH=\"{input.bwa}:$PATH\" &> {log} && "
+        "{input.java} -Xmx{params.r} -jar {input.abra} --mad 5000 --adc 1000000 "
+        "--mbq 30 --threads {threads} "
+        "--working {output.dir} --ref {input.index} --targets {input.bed} "
+        "--in {input.bam} --out {output.bam} &>> {log} && "
+        "echo [`date`] rule Abra: COMPLETE; echo"
+
+# Fix mate info and sort, necessary for Abra
+rule FixAbraMateInformation:
+    input:
+        bam = name+ "_abra_unsorted.bam",
+        java = config["java8"],
+        picard = config["picard"]
+    output:
+        bam= name+ "_final.bam",
+        bai= name+ "_final.bai"
+    params:
+        r= config["allRam"]
+    threads:
+        int(config["allThreads"])
+    log:
+        name+ "_FixAbraMateInformation.log"
+    shell:
+        "{input.java} -Xmx{params.r} -jar {input.picard} FixMateInformation "
+        "CREATE_INDEX=true SO=coordinate "
+        "MAX_RECORDS_IN_RAM=5000000 TMP_DIR=. VALIDATION_STRINGENCY=SILENT INPUT={input.bam} "
+        "OUTPUT={output.bam} &> {log} && "
+        "echo [`date`] rule FixAbraMateInformation: COMPLETE; echo "
+
+# QC, Merge paired alignments for unique observation QC
+rule MergePairedAlignments:
+    input:
+        bam = name+ "_final.bam",
+        java = config["java7"],
+        useq = config["useq"]
+    output:
+        dir = name+ "_MPA",
+        json = name+ "_MergePairedAlignments.json.gz"
+    params:
+        r= config["allRam"],    
+    threads: 
+        int(config["halfThreads"])
+    log:
+        name+ "_MergePairedAlignments.log"
+    shell:
+        "{input.java} -Xmx{params.r} -jar {input.useq}/MergePairedAlignments -b {input.bam} -d {output.dir} "
+        "-j {output.json} -t {threads} &> {log} && "
+        "echo [`date`] rule MergePairedAlignments: COMPLETE; echo "
+
+# QC, Generate read coverage QC metrics and bed pass fail files with Sam2USeq
+rule Sam2USeq:
+    input:
+        mpa= name+ "_MPA",
+        java= config["java7"],
+        useq= config["useq"],
+        bed = config["allExon150"]
+    output:
+        useq = name+ "_uniObReadCov.useq",
+        cs = name+ "_perRegionCoverageStats.txt.gz",
+        json = name+ "_Sam2USeq.json.gz",
+        bed = name+ "_Pass.bed.gz"
+    params:
+        u= config["useqSam2USeq"],
+        r= config["allRam"]
+    threads:
+        int(config["halfThreads"])    
+    log:
+        name+ "_Sam2USeq.log"
+    shell:
+        "{input.java} -Xmx{params.r} -jar {input.useq}/Sam2USeq {params.u} -f {input.mpa} "
+        "-b {input.bed} -p {output.cs} -j {output.json} -n {name} &> {log} && "
+        "cp {input.mpa}/*useq {output.useq} &>> {log} && "
+        "echo [`date`] rule Sam2USeq: COMPLETE; echo "
+        
+# QC, Convert the uniOb read coverage track to something that will play nicely with IGV and the UCSC genome browsers
+rule Useq2UCSCBig:
+    input:
+        rc= name+ "_uniObReadCov.useq",
+        java= config["java7"],
+        useq= config["useq"],
+        ucsc= config["ucsc"]
+    output:
+        name+ "_uniObReadCov.bw"
+    params:
+        r= config["allRam"]    
+    threads:
+        int(config["halfThreads"])    
+    log:
+        name+ "_Useq2UCSCBig.log"
+    shell:
+        "{input.java} -Xmx{params.r} -jar {input.useq}/USeq2UCSCBig -u {input.rc} -f "
+        "-d {input.ucsc} &> {log} && "
+        "echo [`date`] rule Useq2UCSCBig: COMPLETE; echo "
+ 
+# Call INDELs with Scalpel, use ABRA alignments, and grab the main/somatic.indel.vcf raw variant file
+rule Scalpel:
+    input:
+        bam = name+ "_final.bam",
+        cBam = config["controlBam"],
+        scalpel = config["scalpel"],
+        bed = name+ "_Pass.bed.gz",
+        index= config["indexFasta"]
+    output:
+        dir= name+ "_Scalpel",
+        vcf= name+ "_unfiltered_indel.vcf.gz",
+        bed= name+ "_Pass.bed"
+    log:
+        name+ "_Scalpel.log"
+    threads: 
+        int(config["allThreads"])
+    shell:
+        "gunzip -c {input.bed} > {output.bed} && "
+        "{input.scalpel}/scalpel-discovery --somatic --ref {input.index} --numprocs {threads} "
+        "--maxregcov 10000000 " 
+        "--normal {input.cBam} --tumor {input.bam} --bed {output.bed} --dir {output.dir} &> {log} && "
+        "cp {output.dir}/main/somatic.indel.vcf {name}_unfiltered_indel.vcf &>> {log} && "
+        "gzip {name}_unfiltered_indel.vcf &>> {log} && "
+        "echo [`date`] rule Scalpel: COMPLETE; echo "
+
+# Filter the Scalpel INDEL calls                                                                            
+rule FilterScalpelIndels:
+    input:
+        vcf= name+ "_unfiltered_indel.vcf.gz",
+        useq = config["useq"],
+        java = config["java7"]
+    output:
+        name+ "_filtered_indel.vcf.gz"
+    params:
+        s= config["scalpelFiltering"],
+        r= config["halfRam"]
+    log:
+        name+ "_FilterScalpelIndels.log"
+    shell:
+        "{input.java} -jar -Xmx{params.r} {input.useq}/ScalpelVCFParser {params.s} "
+        "-v {input.vcf} &> {log} && "
+        "mv {name}_unfiltered_indel_Filtered.vcf.gz {output} &>> {log} && "
+        "echo [`date`] rule FilterScalpelIndels: COMPLETE; echo "
+
+# Calls lofreq for snv tumor analysis
+rule Lofreq:
+    input:
+        bam = name+ "_final.bam",
+        index = config["indexFasta"],
+        dbsnp = config["dbsnp"],
+        bed = config["allExon150"],
+        lofreq = config["lofreq"]
+    output:
+        vcf = name+ "_unfiltered_snv.vcf.gz"
+    params:    
+        config["lofreqParams"]    
+    threads:
+        int(config["halfThreads"])
+    log:
+        name+ "_Lofreq.log"
+    shell:
+        "{input.lofreq} call {params} -f {input.index} -o {name}_unfiltered_snv.vcf -s -S {input.dbsnp} "
+        "-l {input.bed} {input.bam} &> {log} && "
+        "gzip {name}_unfiltered_snv.vcf &>> {log} && "
+        "echo [`date`] rule Lofreq: COMPLETE; echo "
+
+# Filter lofreq snvs
+rule FilterLofreqSnvs:
+    input:
+        vcf = name+ "_unfiltered_snv.vcf.gz",
+        useq = config["useq"],
+        java = config["java7"]
+    output:
+        name+ "_filtered_snv.vcf.gz"
+    params:
+        l= config["lofreqFiltering"],
+        r= config["halfRam"]
+    log:
+        name+ "_FilterLofreqSnvs.log"
+    shell:
+        "{input.java} -jar -Xmx{params.r} {input.useq}/LofreqVCFParser {params.l} "
+        "-v {input.vcf}  &> {log} && "
+        "mv {name}_unfiltered_snv_Filtered.vcf.gz {output} &>> {log} && "
+        "echo [`date`] rule FilterLofreqSnvs: COMPLETE; echo "
+
+# Merge the Strelka snvs and indels
+rule ScalpelLofreqVcfMerger:
+    input:
+        s = name+ "_filtered_indel.vcf.gz",
+        l = name+ "_filtered_snv.vcf.gz",
+        useq = config["useq"],
+        java = config["java7"]
+    output:
+        dir = name+ "_VcfsToMerge",
+        vcf = name+ "_VcfsToMerge/merged.vcf.gz"
+    log:
+        name+ "_ScalpelLofreqVcfMerger.log"
+    threads:
+        int(config["halfThreads"])    
+    params:
+        config["allRam"]
+    shell:
+        "mkdir -p {output.dir} &> {log} && "
+        "cp {input.s} {output.dir} &>> {log} && "
+        "cp {input.l} {output.dir} &>> {log} && "
+        "{input.java} -jar -Xmx{params} {input.useq}/VCFMerger -v {output.dir} &>> {log} && "
+        "echo [`date`] rule scalpelLofreqVcfMerger: COMPLETE; echo "
+
+# Remove variants falling outside the regions meeting good read coverage
+rule VcfRegionFilter:
+    input:
+        vcf = name+ "_VcfsToMerge/merged.vcf.gz",
+        useq = config["useq"],
+        java = config["java7"],
+        bed = name+ "_Pass.bed.gz"
+    output:
+        name+ "_snvIndel.vcf.gz"
+    log:
+        name+ "_VcfRegionFilter.log"
+    threads:
+        int(config["halfThreads"])
+    params:
+        config["allRam"]
+    shell:
+        "{input.java} -jar -Xmx{params} {input.useq}/VCFRegionFilter -v {input.vcf} "
+        "-s {name}_VcfsToMerge -b {input.bed} &> {log} && "
+        "cp {name}_VcfsToMerge/merged_int.vcf.gz {output} &>> {log} && "
+        "echo [`date`] rule VcfRegionFilter: COMPLETE; echo "
+
+
+# Convert the Foundation XML report to vcf, currently this is an inprecise process
+rule FoundationXml2Vcf:
+    input:
+        xml = config["sampleXml"],
+        useq = config["useq"],
+        java = config["java7"],
+        index = config["indexFasta"]
+    output:
+        dir = name+ "_Foundation",
+        vcf = name+"_NoNormFoundation.vcf"
+    log:
+        name+ "_FoundationXml2Vcf.log"
+    threads:
+        int(config["halfThreads"])
+    params:
+        config["allRam"]
+    shell:
+        "{input.java} -jar -Xmx{params} {input.useq}/FoundationXml2Vcf -x {input.xml} "
+        "-s {output.dir} -f {input.index} &> {log} && "
+        "cp {name}_Foundation/*vcf {output.vcf} &>> {log} && "
+        "echo [`date`] rule FoundationXml2Vcf: COMPLETE; echo "
+
+# Normalize the Foundation vcf with Vt
+rule NormalizeVcf:
+    input:
+        vcf= name+"_NoNormFoundation.vcf",
+        vt= config["vt"],
+        index = config["indexFasta"]
+    output:
+        vcf= name+"_Foundation.vcf.gz"
+    log:
+        name+ "_NormalizeVcf.log"
+    threads:
+        int(config["halfThreads"])
+    shell:
+        "{input.vt} normalize -r {input.index} {input.vcf} -o {name}_tempFoundation.vcf &> {log} && "
+        "{input.vt} decompose_blocksub {name}_tempFoundation.vcf -o {name}_Foundation.vcf &>> {log} && "
+        "rm -f {name}_tempFoundation.vcf && "
+        "gzip {name}_Foundation.vcf &>> {log} && "
+        "echo [`date`] rule NormalizeVcf: COMPLETE; echo "
+
+# Compare the Foundation vcf with the recalled vcf, this generates a merged vcf too
+rule FoundationVcfComparator:
+    input:
+        fVcf = name+"_Foundation.vcf.gz",
+        rVcf = name+ "_snvIndel.vcf.gz",
+        useq = config["useq"],
+        java = config["java7"]
+    output:
+        name+"_MergedFoundationRecall.vcf.gz"
+    log:
+        name+ "_FoundationVcfComparator.log"
+    threads:
+        int(config["halfThreads"])
+    params:
+        config["halfRam"]
+    shell:
+        "{input.java} -jar -Xmx{params} {input.useq}/FoundationVcfComparator -f {input.fVcf} "
+        "-r {input.rVcf} -m {output} &> {log} && "
+        "echo [`date`] rule FoundationVcfComparator: COMPLETE; echo "
+
+# Tabix index all the vcfs in the folder
+rule VcfTabix:
+    input:
+        vcf = name+"_MergedFoundationRecall.vcf.gz",
+        useq = config["useq"],
+        java = config["java7"],
+        htsLib = config["htsLib"]
+    output:
+        name+"_MergedFoundationRecall.vcf.gz.tbi"
+    threads:
+        int(config["halfThreads"])
+    log:
+        name+ "_VcfTabix.log"
+    shell:
+        "{input.java} -jar -Xmx2G {input.useq}/VCFTabix -t {input.htsLib} -v . &> {log} && "
+        "echo [`date`] rule VcfTabix: COMPLETE; echo "
