@@ -1,0 +1,138 @@
+# Common rules for aligning and QC
+
+## Base name to prepend on all files
+name = config["name"]
+
+## Bed files
+# For ReadCov calc, smallest
+readCoverageBed= config["rCB"]
+# For OnTarget calc, largest
+onTargetBed= config["oTB"]
+# For analysis, just right, not used with alignment and QC, just for snv/indel variant calling
+analysisBed= config["aB"]
+
+## Params                                           
+allThreads = int(config["threads"])
+allMemory = config["memory"]
+
+## Apps
+useq = "/uufs/chpc.utah.edu/common/home/u0028003/BioApps/USeq/Apps"
+picard= "/uufs/chpc.utah.edu/common/home/u0028003/BioApps/Picard/2.1.1/picard.jar"
+ucsc= "/uufs/chpc.utah.edu/common/home/u0028003/BioApps/UCSC/08-Mar-2016"
+
+## Languages
+java7= "/uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.7.0-openjdk.x86_64/bin/java"
+java8= "/uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java"
+
+############# Fastq and resource check ##############
+
+# Uses ls to check if all the required resources are present 
+rule CheckResources:
+    output:
+        name+ "_checkResources.complete"
+    log:
+        name+ "_CheckResources.log"
+    shell:
+        "ls {requiredFiles} &> {log} && touch {output} && "
+        "echo [`date`] rule CheckResources: COMPLETE "
+
+# Uses gunzip -t to check the integrity of the xxx.gz files in the working directory
+rule CheckGzipFiles:
+    output:
+        name+ "_checkGzipFiles.complete"
+    log:
+        name+ "_CheckGzipFiles.log"
+    shell:
+        "gunzip -tv *.gz &> {log} && touch {output} && "
+        "echo [`date`] rule CheckGzipFiles: COMPLETE " 
+
+# Count the number of fastq records
+rule CountFastq:
+    output:
+        name+ "_FastqCount.json.gz"
+    shell:
+        "x=$(gunzip -c {fastqReadOne} | wc -l | tr -d \" \") && "
+        "y=$(($x/2)) && "
+        "echo \{{ > {name}_FastqCount.json && "
+        "echo \\\"numberFastqReads\\\": $y >> {name}_FastqCount.json && "
+        "echo \}} >> {name}_FastqCount.json && "
+        "gzip {name}_FastqCount.json && "
+        "echo [`date`] rule CountFastq: COMPLETE; echo "
+        
+############# BAM QC ##############
+
+# QC, Merge paired alignments for unique observation QC
+rule MergePairedAlignments:
+    input:
+        name+ "_filtered.bam"
+    output:
+        dir = name+ "_MPA",
+        json = name+ "_MergePairedAlignments.json.gz"   
+    threads:
+        allThreads
+    log:
+        name+ "_MergePairedAlignments.log"
+    shell:
+        "{java7} -Xmx{allMemory} -jar {useq}/MergePairedAlignments -b {input} -d {output.dir} "
+        "-j {output.json} -t {threads} &> {log} && "
+        "echo [`date`] rule MergePairedAlignments: COMPLETE "
+
+# QC, Generate read coverage QC metrics and bed pass fail files with Sam2USeq
+rule Sam2USeq:
+    input:
+        name+ "_MPA"
+    output:
+        useq = name+ "_uniObReadCov.useq",
+        cs = name+ "_perRegionCoverageStats.txt.gz",
+        json = name+ "_Sam2USeq.json.gz"
+    params:
+        "-v H_sapiens_Feb_2009 -x 1500 -r -c 300"    
+    threads:
+        allThreads    
+    log:
+        name+ "_Sam2USeq.log"
+    shell:
+        "{java7} -Xmx{allMemory} -jar {useq}/Sam2USeq {params} -f {input} "
+        "-b {readCoverageBed} -p {output.cs} -j {output.json} -n {name} &> {log} && "
+        "cp {input}/*useq {output.useq} &>> {log} && "
+        "echo [`date`] rule Sam2USeq: COMPLETE "
+        
+# QC, Convert the uniOb read coverage track to something that will play nicely with IGV and the UCSC genome browsers
+rule USeq2UCSCBig:
+    input:
+        name+ "_uniObReadCov.useq"
+    output:
+        name+ "_uniObReadCov.bw"
+    threads:
+        allThreads    
+    log:
+        name+ "_Useq2UCSCBig.log"
+    shell:
+        "{java7} -Xmx{allMemory} -jar {useq}/USeq2UCSCBig -u {input} -f -d {ucsc} &> {log} && "
+        "echo [`date`] rule USeq2UCSCBig: COMPLETE "
+
+
+
+############# Bam Filtering ##############
+
+# Use the SamAlignmentExtractor to remove poor quality alignments but keep off target in pass output for SV calling
+rule SamAlignmentExtractorNoDeDup:
+    input:
+        name+ "_unfiltered.bam"
+    output:
+        dir = name+ "_SAE",
+        bam = name+ "_filtered.bam",
+        bai = name+ "_filtered.bai",
+        json = name+ "_SamAlignmentExtractor.json.gz"
+    params:
+       "-q 20 -a 0.5 -d -f",
+    threads:
+        allThreads
+    log:
+        name+ "_SamAlignmentExtractorNoDeDup.log",
+    shell:
+        "{java7} -Xmx{allMemory} -jar {useq}/SamAlignmentExtractor {params} -s {output.dir} -b {input} "
+        "-r {onTargetBed} -j {output.json} &> {log} && "
+        "mv {output.dir}/*_passSAE.bam {output.bam} &>> {log} && "
+        "mv {output.dir}/*_passSAE.bai {output.bai} &>> {log} && "
+        "echo [`date`] rule SamAlignmentExtractorNoDeDup: COMPLETE "

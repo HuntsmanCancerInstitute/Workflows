@@ -1,0 +1,145 @@
+# Include rules from common workflow
+include: "bwaQCCommonRules_0.1.sm"
+
+#Define the resources from the config file
+
+## Base name to prepend on all files
+name = config["name"]
+
+## Gzipped Fastq files
+fastqReadOne = config["fR"]
+fastqReadTwo = config["sR"]
+fastqReadBarcode = config["bR"]
+
+## For messaging
+email = config["email"]
+
+## Bed files
+# For ReadCov calc, smallest 
+readCoverageBed= config["rCB"] 
+# For OnTarget calc, largest 
+onTargetBed= config["oTB"]
+# For analysis, just right, not used with alignment and QC, just for snv/indel variant calling
+analysisBed= config["aB"]
+
+## Params
+allThreads = int(config["threads"])
+halfThreads = int(round(allThreads/2,0))
+allMemory = config["memory"]
+
+## Apps
+useq = "/uufs/chpc.utah.edu/common/home/u0028003/BioApps/USeq/Apps"
+cutadapt = "/uufs/chpc.utah.edu/common/home/u0028003/BioApps/Cutadapt/1.11/cutadapt"
+bwa = "/uufs/chpc.utah.edu/common/home/u0028003/BioApps/Bwa/bwa-0.7.12/bwa"
+picard= "/uufs/chpc.utah.edu/common/home/u0028003/BioApps/Picard/2.1.1/picard.jar"
+ucsc= "/uufs/chpc.utah.edu/common/home/u0028003/BioApps/UCSC/08-Mar-2016"
+samtools= "/uufs/chpc.utah.edu/common/home/u0028003/BioApps/Samtools/1.3/bin/samtools"
+samblaster="/uufs/chpc.utah.edu/common/home/u0028003/BioApps/Samblaster/0.1.22/samblaster"
+bmftools="/uufs/chpc.utah.edu/common/home/u0028003/BioApps/BMFTools/BMFtools/bmftools"
+
+## Languages
+java7= "/uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.7.0-openjdk.x86_64/bin/java"
+java8= "/uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java"
+
+## References
+indexFasta= "/uufs/chpc.utah.edu/common/home/u0028003/HCIAtlatl/data/Human/B37/human_g1k_v37_decoy_phiXAdaptr.fasta"
+
+## File resources to check before launching
+requiredFiles = [fastqReadOne, fastqReadTwo, fastqReadBarcode, readCoverageBed, onTargetBed, analysisBed, bmftools, useq, cutadapt, indexFasta, bwa, picard, ucsc, samtools, java7, java8]
+
+############# Messaging ##############
+#onerror:
+#    shell( "dir=`pwd`; mail -s \"Failed: {name} ($dir)\" {email} < {log}; sleep 4s")
+#onsuccess:
+#    shell( "dir=`pwd`; mail -s \"Complete: {name} ($dir)\" {email} < {log}; sleep 4s")
+
+############# Rules ##############
+
+# One rule to trigger them all
+rule All:
+    input:
+        name+ "_uniObReadCov.bw",
+        name+ "_checkGzipFiles.complete",
+        name+ "_FastqCount.json.gz"
+        
+        
+############# BMFtools & Alignment ###############
+
+# Use of BMFtools to collapse identical barcoded fastq files
+rule BMFtoolsCollapse:
+    input:
+        name+ "_checkResources.complete"
+    output: 
+        f= name+ "_BMF.R1.fq.gz",
+        s= name+ "_BMF.R2.fq.gz"
+    threads:
+        allThreads
+    log:
+        name+ "_BMFtoolsCollapse.log"
+    shell:
+        # Load more recent gcc version, required on kingspeak
+        "module load gcc/4.9.2 && "
+	
+        # BMFtools exact match index collapsing
+        "{bmftools} collapse secondary -o {name}_BMF_Temp -s 4 -m 1 -p {threads} "
+        "-f {name}_BMF -i {fastqReadBarcode} {fastqReadOne} {fastqReadTwo} 2> {log} && "
+        "echo [`date`] rule BMFtoolsCollapse: COMPLETE "		
+		
+############# Alignment ###############
+
+# The BIG pipe for trimming and aligning standard paired fastq
+# The input isn't needed but triggers the resource check before the big pipe kicks off
+rule AlignBMFWithAdapterTrimming:
+    input:
+        f= name+ "_BMF.R1.fq.gz",
+        s= name+ "_BMF.R2.fq.gz"
+    output:
+        name+ "_raw.bam"
+    log:
+        name+ "_AlignBMFWithAdapterTrimming.log"
+    params: 
+        "\"@RG\\tID:" +name+ "\\tPL:ILLUMINA\\tLB:" +name+ "\\tSM:" +name+ "\\tCN:U2BSR\\tPU:" +name+ "\""
+    threads:    
+        allThreads
+    shell:
+        # Remove prior log
+        "rm -f {log} && "
+
+        # Interlace the fastq
+        "{java7} -jar -Xmx2G {useq}/FastqInterlacer -f {input.f} -s {input.s} 2>> {log} | "
+
+        # N adapter sequences, minimum >=3bp identity req
+        "{cutadapt} --interleaved -a AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC "
+        "-A AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGTAGATCTCGGTGGTCGCCGTATCATT --mask-adapter - 2>> {log} | "
+
+        # Align with bwa mem
+        "{bwa} mem -v 1 -t {threads} -R {params} -p {indexFasta} - 2>> {log} | "
+        
+        # Mark duplicates
+        "{samblaster} 2>> {log} | "
+
+        # Write as bam
+        "{samtools} view -Sb - 2>> {log} > {output} && "
+        "echo [`date`] rule AlignBMFWithAdapterTrimming: COMPLETE "
+
+# Fix mate info and sort, not always necessary but doesn't hurt
+rule FixMateInformation:
+    input:
+        name+ "_raw.bam"
+    output:
+        name+ "_unfiltered.bam"
+    threads:
+        allThreads
+    log:
+        name+ "_FixMateInformation.log"
+    shell:
+        "{java8} -Xmx{allMemory} -jar {picard} FixMateInformation CREATE_INDEX=true SO=coordinate "
+        "MAX_RECORDS_IN_RAM=5000000 TMP_DIR=. VALIDATION_STRINGENCY=SILENT INPUT={input} "
+        "OUTPUT={output} &> {log} && "
+        "echo [`date`] rule FixMateInformation: COMPLETE "
+ 
+
+
+
+
+
