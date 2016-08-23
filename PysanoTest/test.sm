@@ -1,0 +1,25 @@
+# Pull from config                                                                                             
+name = config["name"]
+email = config["email"]
+threads = config["threads"]
+memory = config["memory"]
+refBase = config["refBase"]
+
+############# Messaging ##############
+onstart:
+    shell( "dir=`pwd`; mail -s \"Started: {name} ($dir)\" {email} < {log}")
+onerror:
+    shell( "dir=`pwd`; mail -s \"Failed: {name} ($dir)\" {email} < {log}; sleep 4s")
+onsuccess:
+    shell( "dir=`pwd`; mail -s \"Complete: {name} ($dir)\" {email} < {log}; sleep 4s")
+
+
+############# Rules ##############
+
+rule lsUserDirSave2File:
+    output:
+        "res.txt"
+    shell:
+        "echo name:{name} email:{email} threads:{threads} memory:{memory} refBase:{refBase}  > {output}"
+
+    

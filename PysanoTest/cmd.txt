@@ -1,0 +1,25 @@
+#e david.nix@hci.utah.edu
+#c ember
+
+start=$(date +'%s')
+echo -e "---------- Starting -------- $((($(date +'%s') - $start)/60)) min"
+
+refBase=/uufs/chpc.utah.edu/common/home/hcibcore/atlatl
+sm=/uufs/chpc.utah.edu/common/home/u0028003/BioApps/Python/Miniconda3/bin/snakemake
+rdm=$RANDOM
+echo Random number: $rdm
+
+#Required
+name=SnakemakePysanoTest
+email=david.nix@hci.utah.edu
+
+# Print out a workflow, can execute many times to get status of job
+$sm --dag --snakefile *.sm --configfile *.yaml | dot -Tsvg > $name"_"$rdm"_dag.svg"
+
+# Launch the actual job
+$sm -p -T --cores $NCPU --snakefile *.sm --configfile *.yaml \
+--config threads=$NCPU memory=$SMGB name=$name refBase=$refBase email=$email \
+--stat $name"_"$rdm"_runStats.json"
+
+echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min total"
+

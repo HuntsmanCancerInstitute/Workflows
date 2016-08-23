@@ -1,0 +1,9 @@
+# Override on the cmd line when calling snakemake
+
+name: ""
+threads: ""
+memory: ""
+refBase: ""
+email: ""
+
+
