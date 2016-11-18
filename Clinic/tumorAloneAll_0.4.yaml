@@ -1,0 +1,58 @@
+# Base name to prepend on all output files, override on the cmd line
+bN: xxx_V3_TumorAlone
+
+# Fastq gzipped files, override on the cmd line
+fR: xxx_R1_001.fastq.gz
+sR: xxx_R3_001.fastq.gz
+bR: xxx_R2_001.fastq.gz
+
+# Email	to sent	status messages
+email: david.nix@aruplab.com
+
+params:
+    allThreads: 24
+    halfThreads: 12
+    allRam: 24G
+    halfRam: 12G
+    useqConsensus: "-t 6 -c 500000" # Tune -t threads and -c num reads to cluster for particular machine
+    useqSamAlignmentExtractor: "-q 20 -a 0.75 -d -f"
+    useqSam2USeq: "-v H_sapiens_Feb_2009 -x 1000 -r -c 300"
+    scalpelFiltering: "-a 100 -r 1.6 -n 0.5 -t 0.03"
+    lofreq: "-m 20 -q 13 -Q 13"
+    lofreqFiltering: "-d 100 -t 0.03 -i -f -a"
+
+pipeline:
+    analysisType: TumorAlone
+    webLinks: Results #not exactly sure what this is, placeholder
+    minimumReadDepth : "300" # must quote to force String typing
+
+# Base location for all the required refs, this will be prepended to the following, set it to match your deployment    
+refBase: /uufs/chpc.utah.edu/common/home/arup-storage3/Reference/
+
+# ABRA Bam file to use as non matched control, best is NA12878
+# 11054N_final.bam  3331N_final.bam
+controlBam: Data/B37/NormalBams/Somatic/APCompCancer/V3/3331N_abra.bam
+
+bed:
+    qc: Bed/B37/Somatic/APCompCancer/V3/A3370/compcancer_321transcripts_118gene_cds_v2_bed3.bed
+    analysis: Bed/B37/Somatic/APCompCancer/V3/A3370/compcancer_321transcripts_118gene_cds_v2_bed3.bed
+    problemBps: Bed/B37/Util/BadBpNextSeq/b37_probBps0.05Pad1bp_v1.0.bed
+    pseudogene: Bed/B37/Somatic/APCompCancer/apCompCancerMaskedPseudogenes_v0.1.bed
+ref:
+    dbsnp: Data/B37/DbSNP/dbSNP_146_20151104/All_20151104.vcf.gz
+    indexFasta: Data/B37/BWA/APCompCanPseudoMaskedv3/mod_3_human_g1k_v37_decoy.fasta
+    bwa: Apps/Bwa/bwa-0.7.13/bwa
+    abra: Apps/Abra/0.96/abra-0.96-SNAPSHOT-jar-with-dependencies.jar
+    cutadapt: Apps/Cutadapt/1.9.1/build/scripts-2.6/cutadapt
+    gatk: Apps/GATK/3.5-0-g36282e4/GenomeAnalysisTK.jar
+    htsLib: Apps/HTSlib/1.3/bin
+    java7: Apps/Java/1.7.0-openjdk.x86_64/bin/java
+    java8: Apps/Java/1.8.0_65/bin/java
+    lofreq: Apps/LoFreq/lofreq_star-2.1.2/bin/lofreq
+    picard: Apps/Picard/2.1.1/picard.jar
+    python: Apps/Miniconda/MC2_4.0.5/bin/python2.7
+    scalpel: Apps/Scalpel/0.5.3
+    ucsc: Apps/UCSC/08-Mar-2016/
+    useq: Apps/USeq/9.0.2/Apps
+    pipeline: Apps/Pipeline/NixDevDontUse/Pipeline-1.0-SNAPSHOT-jar-with-dependencies.jar
+    pipelineProp: Apps/Pipeline/NixDevDontUse/truncatedPipelineProperties.xml

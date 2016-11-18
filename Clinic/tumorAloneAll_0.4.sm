@@ -1,0 +1,605 @@
+#Define the resources from the config file
+
+## Base name to prepend on all files
+name = config["bN"]
+
+## Gzipped Fastq files
+fastqReadOne = config["fR"]
+fastqReadTwo = config["sR"]
+fastqReadBarcode = config["bR"]
+
+## For messaging
+email = config["email"]
+
+## Nonmatched normal control Bam
+controlBam = config["refBase"]+ config["controlBam"]
+
+## Bed files
+regionsForQC = config["refBase"] + config["bed"]["qc"]
+regionsForAnalysis = config["refBase"] + config["bed"]["analysis"]
+probBps = config["refBase"] + config["bed"]["problemBps"]
+pseudogene = config["refBase"] + config["bed"]["pseudogene"]
+
+## Apps
+useq= config["refBase"] + config["ref"]["useq"]
+bwa= config["refBase"] + config["ref"]["bwa"]
+abra= config["refBase"] + config["ref"]["abra"]
+picard= config["refBase"] + config["ref"]["picard"]
+cutadapt= config["refBase"] + config["ref"]["cutadapt"]
+dbsnp= config["refBase"] + config["ref"]["dbsnp"]
+ucsc= config["refBase"] + config["ref"]["ucsc"]
+picard= config["refBase"] + config["ref"]["picard"]
+gatk= config["refBase"] + config["ref"]["gatk"]
+abra= config["refBase"] + config["ref"]["abra"]
+scalpelDir = config["refBase"] + config["ref"]["scalpel"]
+htsLib= config["refBase"]+ config["ref"]["htsLib"]
+lofreq= config["refBase"]+ config["ref"]["lofreq"]
+pipeline= config["refBase"] + config["ref"]["pipeline"]
+pipeProp= config["refBase"] + config["ref"]["pipelineProp"]
+
+## Languages
+java7= config["refBase"] + config["ref"]["java7"]
+java8= config["refBase"] + config["ref"]["java8"]
+python= config["refBase"] + config["ref"]["python"]
+
+## References
+indexFasta= config["refBase"] + config["ref"]["indexFasta"]
+
+## File resources to check before launching
+requiredFiles = [fastqReadOne, fastqReadTwo, fastqReadBarcode, controlBam, regionsForQC, regionsForAnalysis, probBps, pseudogene, useq, indexFasta, bwa, abra, picard, python, cutadapt, dbsnp, ucsc, gatk, java7, java8, htsLib, lofreq, scalpelDir, pipeline, pipeProp]
+
+
+############# Messaging ##############
+onstart:
+    shell( "dir=`pwd`; mail -s \"Started: {name} ($dir)\" {email} < {log}")
+onerror:
+    shell( "dir=`pwd`; mail -s \"Failed: {name} ($dir)\" {email} < {log}; sleep 4s")
+onsuccess:
+    shell( "dir=`pwd`; mail -s \"Complete: {name} ($dir)\" {email} < {log}; sleep 4s")
+
+
+############# Rules ##############
+
+# One rule to rule them all
+rule all:
+    version: "0.1"
+    input:
+        name+ "_COMPLETE"
+
+
+############# Fastq and resource check ##############
+
+# Uses ls to check if all the required resources are present 
+rule checkResources:
+    version: "0.1"
+    output:
+        name+ "_checkResources.complete"
+    log:
+        name+ "_checkResources.log"
+    shell:
+        "ls {requiredFiles} &> {log} && touch {output} && "
+        "echo [`date`] rule checkResources: COMPLETE "
+
+# Uses gunzip -t to check the integrity of the xxx.gz files in the working directory
+rule checkGzipFiles:
+    version: "0.1"
+    output:
+        name+ "_checkGzipFiles.complete"
+    log:
+        name+ "_checkGzipFiles.log"
+    shell:
+        "gunzip -tv {fastqReadOne} {fastqReadTwo} {fastqReadBarcode} &> {log} && touch {output} && "
+        "echo [`date`] rule checkGzipFiles: COMPLETE " 
+
+############# Alignment ###############
+
+# The BIG pipe for aligning three read molecular barcoded fastq files 
+# The input isn't needed but triggers the resource check before the big pipe kicks off
+rule alignBarcodedFastqWithConsensus:
+    version: "0.1"
+    input:
+        name+ "_checkResources.complete",
+        name+ "_checkGzipFiles.complete"
+    output:
+        name+ "_MatchMates"
+    log:
+        name+ "_alignBarcodedFastqWithConsensus.log"
+    params: 
+        rg = "\"@RG\\tID:" +name+ "\\tPL:ILLUMINA\\tLB:" +name+ "\\tSM:" +name+ "\\tCN:ARUP\\tPU:" +name+ "\""
+    threads:    
+        config["params"]["allThreads"]
+    shell:
+        # Remove prior log
+        "rm -f {log} && "
+        
+        # Start the pipe! Append the barcode read onto the two fastq file headers
+        "{java7} -jar -Xmx2G {useq}/FastqBarcodeTagger -f {fastqReadOne} -s {fastqReadTwo} "
+        "-b {fastqReadBarcode} -i 2>> {log} | "
+
+        # N adapter sequences, minimum >=3bp identity req
+        "{python} {cutadapt} --interleaved -a AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC "
+        "-A AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGTAGATCTCGGTGGTCGCCGTATCATT --mask-adapter - 2>> {log} | "
+
+        # Align with bwa mem
+        "{bwa} mem -v 1 -t {threads} -R {params.rg} -p {indexFasta} - 2>> {log} | "
+
+        # Attach secondOfPair mates as attribute in firstOfPair sam records
+        "{java7} -jar -Xmx2G {useq}/MatchMates -s {output} &>> {log} && "
+        "echo [`date`] rule alignBarcodedFastqWithConsensus: COMPLETE "
+  
+# Call Consensus on the barcoded bam
+rule callConsensusOnBarcodedBam:
+    version: "0.1"
+    input:
+        name+ "_MatchMates"
+    output:
+        name+ "_Consensus",
+        name+ "_Consensus/paired_1.fastq.gz",
+        name+ "_Consensus/paired_2.fastq.gz",
+        name+ "_Consensus/unpaired.fastq.gz",
+        name+ "_Consensus/passing.sam.gz"
+    threads:
+        config["params"]["allThreads"]    
+    params:
+        u=config["params"]["useqConsensus"],
+        r=config["params"]["allRam"]
+    log:
+        name+ "_consensus.log"
+    shell:
+        "{java7} -jar -Xmx{params.r} {useq}/Consensus {params.u} -b {input}/passingMM.sorted.bam "
+        "-s {output[0]} &> {log} && "
+        "echo [`date`] rule callConsensusOnBarcodedBam: COMPLETE "
+
+# Align unpaired consensus fastq, might be no alignments
+rule alignUnpairedConsensusFastq:
+    version: "0.1"
+    input:
+        name+ "_Consensus/unpaired.fastq.gz"
+    output:
+        name+ "_Consensus/unpaired.sam.gz"
+    params:
+        rg = "\"@RG\\tID:" +name+ "\\tPL:ILLUMINA\\tLB:" +name+ "\\tSM:" +name+ "\\tCN:ARUP\\tPU:" +name+ "\""
+    threads:
+        config["params"]["halfThreads"]
+    log:
+        name+ "_alignPairedConsensusFastq.log"
+    shell:
+        #trapping the grep exit code with || : sometimes there are no unpaired alignments
+        "{bwa} mem -v 1 -t {threads} -R {params.rg} {indexFasta} {input} 2> {log} | "
+        "grep -v ^@ || : gzip > {output} && "
+        "echo [`date`] rule alignUnpairedConsensusFastq: COMPLETE "
+
+# Align paired consensus fastq
+rule alignPairedConsensusFastq:
+    version: "0.1"
+    input:
+        name+ "_Consensus/paired_1.fastq.gz",
+        name+ "_Consensus/paired_2.fastq.gz"
+    output:
+        name+ "_Consensus/paired.sam.gz"
+    params:
+        rg = "\"@RG\\tID:" +name+ "\\tPL:ILLUMINA\\tLB:" +name+ "\\tSM:" +name+ "\\tCN:ARUP\\tPU:" +name+ "\""    
+    threads:
+        config["params"]["halfThreads"]
+    log:
+        name+ "_alignPairedConsensusFastq.log"
+    shell:
+        "{bwa} mem -v 1 -t {threads} -R {params.rg} {indexFasta} {input} 2> {log} | "
+        "grep -v ^@ | gzip > {output} && "
+        "echo [`date`] rule alignPairedConsensusFastq: COMPLETE "
+
+# Concatinate alignments
+rule concatinateAlignments:
+    version: "0.1"
+    input:
+        name+ "_Consensus/passing.sam.gz",
+        name+ "_Consensus/unpaired.sam.gz",
+        name+ "_Consensus/paired.sam.gz"
+    output:
+        name+ "_Consensus/concatinated.sam.gz"
+    log:
+        name+ "_concatinateAlignments.log"
+    shell:
+        "cat {input} 2> {log} > {output} && "
+        "echo [`date`] rule concatinateAlignments: COMPLETE "
+
+# Fix mate info and sort, not always necessary but doesn't hurt
+rule fixMateInformation:
+    version: "0.1"
+    input:
+        name+ "_Consensus/concatinated.sam.gz"
+    output:
+        name+ "_unfiltered.bam"
+    params:
+        r= config["params"]["allRam"]
+    log:
+        name+ "_fixMateInformation.log"
+    shell:
+        "{java8} -Xmx{params.r} -jar {picard} FixMateInformation CREATE_INDEX=true SO=coordinate "
+        "MAX_RECORDS_IN_RAM=5000000 TMP_DIR=. VALIDATION_STRINGENCY=SILENT INPUT={input} "
+        "OUTPUT={output} &> {log} && "
+        "echo [`date`] rule fixMateInformation: COMPLETE "
+
+
+############# Bam Filtering ##############
+
+# Use the SamAlignmentExtractor to remove poor quality alignments but keep off target in pass output for SV calling
+rule samAlignmentExtractor:
+    version: "0.1"
+    input:
+        name+ "_unfiltered.bam"
+    output:
+        dir = name+ "_SAE",
+        bam = name+ "_filtered.bam",
+        bai = name+ "_filtered.bai",
+        json = name+ "_samAlignmentExtractor.json.gz"
+    params:
+       u= config["params"]["useqSamAlignmentExtractor"],
+       r= config["params"]["allRam"]
+    log:
+        name+ "_samAlignmentExtractor.log",
+    shell:
+        "{java7} -Xmx{params.r} -jar {useq}/SamAlignmentExtractor {params.u} -s {output.dir} -b {input} "
+        "-r {regionsForAnalysis} -j {output.json} &> {log} && "
+        "mv {output.dir}/*_passSAE.bam {output.bam} &>> {log} && "
+        "mv {output.dir}/*_passSAE.bai {output.bai} &>> {log} && "
+        "echo [`date`] rule samAlignmentExtractor: COMPLETE "
+
+
+############# BAM QC ##############
+
+# QC, Merge paired alignments for unique observation QC
+rule mergePairedAlignments:
+    version: "0.1"
+    input:
+        name+ "_filtered.bam"
+    output:
+        dir = name+ "_MPA",
+        json = name+ "_mergePairedAlignments.json.gz"
+    params:
+       r= config["params"]["allRam"]    
+    threads: 
+        config["params"]["halfThreads"]
+    log:
+        name+ "_mergePairedAlignments.log"
+    shell:
+        "{java7} -Xmx{params.r} -jar {useq}/MergePairedAlignments -b {input} -d {output.dir} "
+        "-j {output.json} -t {threads} &> {log} && "
+        "echo [`date`] rule mergePairedAlignments: COMPLETE "
+
+# QC, Generate read coverage QC metrics and bed pass fail files with Sam2USeq
+rule sam2USeq:
+    version: "0.1"
+    input:
+        name+ "_MPA"
+    output:
+        useq = name+ "_uniObReadCov.useq",
+        cs = name+ "_perRegionCoverageStats.txt.gz",
+        json = name+ "_sam2USeq.json.gz"
+    params:
+        u= config["params"]["useqSam2USeq"],
+        r= config["params"]["allRam"]    
+    threads:
+        config["params"]["halfThreads"]    
+    log:
+        name+ "_sam2USeq.log"
+    shell:
+        "{java7} -Xmx{params.r} -jar {useq}/Sam2USeq {params.u} -f {input} "
+        "-b {regionsForQC} -p {output.cs} -j {output.json} -n {name} &> {log} && "
+        "cp {input}/*useq {output.useq} &>> {log} && "
+        "echo [`date`] rule sam2USeq: COMPLETE "
+        
+# QC, Convert the uniOb read coverage track to something that will play nicely with IGV and the UCSC genome browsers
+rule useq2UCSCBig:
+    version: "0.1"
+    input:
+        name+ "_uniObReadCov.useq"
+    output:
+        name+ "_uniObReadCov.bw"
+    params:
+        r= config["params"]["allRam"]    
+    threads:
+        config["params"]["halfThreads"]    
+    log:
+        name+ "_useq2UCSCBig.log"
+    shell:
+        "{java7} -Xmx{params.r} -jar {useq}/USeq2UCSCBig -u {input} -f -d {ucsc} &> {log} && "
+        "echo [`date`] rule useq2UCSCBig: COMPLETE "
+
+################# Finalize Bam with ABRA indel realignment and GATK base score recalibration ###################
+        
+# Base recalibration with GATK, target creator
+rule recalibrateBases:
+    version: "0.1"
+    input:
+        name+ "_filtered.bam"
+    output:
+        name+ "_recalibration.grp"
+    params:
+        r= config["params"]["allRam"]    
+    threads:
+        config["params"]["allThreads"]    
+    log:
+        name+ "_baseRecalibrator.log"
+    shell:
+        "{java7} -Xmx{params.r} -jar {gatk} -nct {threads} -T BaseRecalibrator -R {indexFasta} "
+        "-knownSites {dbsnp} -I {input} -o {output} &> {log} && "
+        "echo [`date`] rule recalibrateBases: COMPLETE "
+
+# Write out recalibrated bam with GATK
+rule printRecalibratedBam:
+    version: "0.1"
+    input:
+        grp = name+ "_recalibration.grp",
+        bam = name+ "_filtered.bam"
+    output:
+        name+ "_recal.bam"
+    params:
+        r= config["params"]["allRam"]    
+    threads:
+        config["params"]["allThreads"]    
+    log:
+        name+ "_printRecalibratedBam.log"
+    shell:
+        "{java7} -Xmx{params.r} -jar {gatk} -nct {threads} -T PrintReads -R {indexFasta} "
+        "-I {input.bam} -BQSR {input.grp} -o {output} &> {log} && "
+        "echo [`date`] rule printRecalibratedBam: COMPLETE "        
+
+# Realign INDEL alignments        
+rule abra:
+    version: "0.1"
+    input:
+        name+ "_recal.bam"
+    output:
+        name+ "_abra_unsorted.bam"
+    params:
+        r= config["params"]["allRam"]
+    threads:
+        config["params"]["allThreads"]
+    log:
+        name+ "_abra.log"
+    shell:
+        "rm -rf {name}_AbraTemp && "
+        "{java7} -Xmx{params.r} -jar {abra} --mad 5000 --adc 1000000 --mbq 30 --threads {threads} "
+        "--working {name}_AbraTemp --ref {indexFasta} --targets {regionsForAnalysis} "
+        "--in {input} --out {output} &> {log} && rm -rf {name}_AbraTemp && "
+        "echo [`date`] rule abra: COMPLETE"
+        
+# Fix mate info and sort, necessary for Abra
+rule fixAbraMateInformation:
+    version: "0.1"    
+    input:
+        name+ "_abra_unsorted.bam"
+    output:
+        bam= name+ "_final.bam",
+        bai= name+ "_final.bai"
+    params:
+        r= config["params"]["allRam"]
+    threads:
+        config["params"]["allThreads"]
+    log:
+        name+ "_fixAbraMateInformation.log"
+    shell:
+        "{java8} -Xmx{params.r} -jar {picard} FixMateInformation CREATE_INDEX=true SO=coordinate "
+        "MAX_RECORDS_IN_RAM=5000000 TMP_DIR=. VALIDATION_STRINGENCY=SILENT INPUT={input} "
+        "OUTPUT={output.bam} &> {log} && "
+        "echo [`date`] rule fixAbraMateInformation: COMPLETE "
+
+############# Variant calling ##############
+
+# Call INDELs with Scalpel, use ABRA alignments, and grab the main/somatic.indel.vcf raw variant file, twopass not neeeded
+rule scalpel:
+    version: "0.1"
+    input:
+        name+ "_final.bam"
+    output:
+        dir= name+ "_Scalpel",
+        vcf= name+ "_Scalpel/main/somatic.indel.vcf"
+    log:
+        name+ "_scalpel.log"
+    threads: 
+        config["params"]["halfThreads"]
+    shell:
+        "{scalpelDir}/scalpel-discovery --somatic --ref {indexFasta} --numprocs {threads} --maxregcov 10000000 " 
+        "--normal {controlBam} --tumor {input} --bed {regionsForAnalysis} --dir {output.dir} &> {log} && "
+        "echo [`date`] rule scalpel: COMPLETE "
+
+# Filter the Scalpel INDEL calls                                                                              
+rule filterScalpelIndels:
+    version: "0.1"
+    input:
+        name+ "_Scalpel/main/somatic.indel.vcf"
+    output:
+        name+ "_Scalpel/main/somatic.indel_Filtered.vcf.gz"
+    params:
+        s= config["params"]["scalpelFiltering"],
+        r= config["params"]["halfRam"]
+    log:
+        name+ "_filterScalpelIndels.log"
+    shell:
+        "{java7} -jar -Xmx{params.r} {useq}/ScalpelVCFParser {params.s} "
+        "-v {input} &> {log} && "
+        "echo [`date`] rule filterScalpelIndels: COMPLETE "
+
+# Calls lofreq for snv tumor analysis                                                                         
+rule lofreq:
+    version: "0.1"
+    input:
+        name+ "_final.bam"
+    output:
+        name+ "_Lofreq/lofreq.snv.vcf"
+    params:    
+        config["params"]["lofreq"]    
+    threads:
+        config["params"]["halfThreads"]
+    log:
+        name+ "_lofreq.log"
+    shell:
+        "{lofreq} call {params} -f {indexFasta} -o {output} -s -S {dbsnp} -l {regionsForAnalysis} {input} &> {log} && "
+        "echo [`date`] rule lofreq: COMPLETE "
+
+# Filter lofreq snvs                                                                                          
+rule filterLofreqSnvs:
+    version: "0.1"
+    input:
+        name+ "_Lofreq/lofreq.snv.vcf"
+    output:
+        name+ "_Lofreq/lofreq.snv_Filtered.vcf.gz"
+    params:
+        l= config["params"]["lofreqFiltering"],
+        r= config["params"]["halfRam"]
+    log:
+        name+ "_filterLofreqSnvs.log"
+    shell:
+        "{java7} -jar -Xmx{params.r} {useq}/LofreqVCFParser {params.l} "
+        "-v {input}  &> {log} && "
+        "echo [`date`] rule filterLofreqSnvs: COMPLETE "
+
+# Merge the Strelka snvs and indels                                                                           
+rule scalpelLofreqVcfMerger:
+    version: "0.1"
+    input:
+        s = name+ "_Scalpel/main/somatic.indel_Filtered.vcf.gz",
+        l = name+ "_Lofreq/lofreq.snv_Filtered.vcf.gz"
+    output:
+        name+ "_VcfsToMerge/merged.vcf.gz"
+    log:
+        name+ "_scalpelLofreqVcfMerger.log"
+    params:
+        config["params"]["allRam"]
+    shell:
+        "mkdir -p {name}_VcfsToMerge && "
+        "cp {input.s} {name}_VcfsToMerge && "
+        "cp {input.l} {name}_VcfsToMerge && "
+        "{java7} -jar -Xmx{params} {useq}/VCFMerger -v {name}_VcfsToMerge &> {log} && "
+        "echo [`date`] rule scalpelLofreqVcfMerger: COMPLETE "
+
+# Remove variants falling outside the regions for analysis                                              
+rule vcfRegionFilter:
+    version: "0.1"
+    input:
+        name+ "_VcfsToMerge/merged.vcf.gz"
+    output:
+        name+ "_VcfsToMerge/merged_int.vcf.gz"
+    log:
+        name+ "_vcfRegionFilter.log"
+    params:
+        config["params"]["allRam"]
+    shell:
+        "{java7} -jar -Xmx{params} {useq}/VCFRegionFilter -v {input} "
+        "-s {name}_VcfsToMerge -b {regionsForAnalysis} &> {log} && "
+        "echo [`date`] rule vcfRegionFilter: COMPLETE "
+
+# Mark variants intersecting poor quality "rainbow" regions                                             
+rule vcfRegionMarker:
+    version: "0.1"
+    input:
+        name+ "_VcfsToMerge/merged_int.vcf.gz"
+    output:
+        name+ "_snvIndel.vcf.gz"
+    log:
+        name+ "_vcfRegionMarker.log"
+    params:
+        config["params"]["allRam"]
+    shell:
+        "{java7} -jar -Xmx{params} {useq}/VCFRegionMarker -c -s {name}_VcfsToMerge -v {input} -b {probBps},{pseudogene}  &> {log} && "
+        "mv {name}_VcfsToMerge/merged_int_marked.vcf.gz {output} && "
+        "echo [`date`] rule vcfRegionMarker: COMPLETE "
+
+# Tabix index the vcfs                                                                                   
+rule vcfTabix:
+    version: "0.1"
+    input:
+        name+ "_snvIndel.vcf.gz"
+    output:
+        name+ "_snvIndel.vcf.gz.tbi"
+    log:
+        name+ "_vcfTabix.log"
+    shell:
+        "{java7} -jar -Xmx2G {useq}/VCFTabix -t {htsLib} -v . &> {log} && "
+        "echo [`date`] rule vcfTabix: COMPLETE "
+
+
+############# Annotate and ReviewDir generation ###############                                                                                
+
+rule arupPipelineWrapper:
+    version: "0.1"
+    input:
+        finalBam = name+ "_final.bam",
+        unfilteredBam = name+ "_unfiltered.bam",
+        vcf = name+ "_snvIndel.vcf.gz",
+        index = name+ "_snvIndel.vcf.gz.tbi"
+    output:
+        name+ "_ANNO_QC_REVDIR_COMPLETE"
+    log:
+        name+ "_arupPipelineWrapper.log"
+    params:
+        jobId = name,
+        submitter =  "USeqArupPipelineWrapper",
+        analysisType =  config["pipeline"]["analysisType"],
+        minDepth =  config["pipeline"]["minimumReadDepth"],
+        resultsDir = name + "_ArupPipelineWrapper",
+        refbase = config["refBase"]
+    threads:
+        config["params"]["allThreads"]
+    shell:
+        "{java7} -jar -Xmx2G {useq}/ArupPipelineWrapper -c {params.refbase} -o {params.jobId} -m {params.submitter} -y {params.analysisType} "
+        "-i {params.minDepth} -d {params.resultsDir} -j {pipeline} -p {pipeProp} -q {regionsForQC} -b {regionsForAnalysis} "
+        "-t {threads} -r {indexFasta} -u {input.unfilteredBam} -f {input.finalBam} -v {input.vcf} -s {name} &> {log} && "
+        "touch {output} && "
+        "echo [`date`] rule arupPipelineWrapper: COMPLETE "
+
+
+############# Cleanup and Folder Org #############
+
+#For use with NGSWeb folders: array bed fastq report var bam depth log qc
+rule organizeFilesNGSWeb:
+    version: "0.1"
+    input:
+        name+ "_ANNO_QC_REVDIR_COMPLETE",
+        name+ "_uniObReadCov.bw"
+    output:
+        name+ "_ORG_COMPLETE"
+    shell:
+        "mv {name}_ArupPipelineWrapper/* {name}/ && "
+        "mv {name}_*.log {name}/log/ && "
+        "mv {name}_*.bam {name}/bam/ && "
+        "mv {name}_*.bai {name}/bam/ && "
+        "mv {name}_*.json* {name}/log/ && "
+        "mv {name}_*.bw {name}/depth/ && "
+        "mv {name}_perRegionCoverageStats.txt.gz {name}/qc/ && "
+        "mv {name}_*.bed.gz {name}/qc/ && "
+        "mv {name}_*.vcf* {name}/var/ && "
+        "mv {name}_Lofreq/lofreq.snv.vcf.gz {name}/var/{name}_unfiltered_snv.vcf.gz && "
+        "mv {name}_Lofreq/lofreq.snv.vcf.gz.tbi {name}/var/{name}_unfiltered_snv.vcf.gz.tbi && "
+        "mv {name}_Scalpel/main/somatic.indel.vcf.gz {name}/var/{name}_unfiltered_indel.vcf.gz && "
+        "mv {name}_Scalpel/main/somatic.indel.vcf.gz.tbi {name}/var/{name}_unfiltered_indel.vcf.gz.tbi && "
+        "mv {fastqReadOne} {name}/fastq/ && mv {fastqReadTwo} {name}/fastq/ && mv {fastqReadBarcode} {name}/fastq/ && "
+        "cp -f {regionsForQC} {name}/bed && cp -f {regionsForAnalysis} {name}/bed && cp -f {probBps} {name}/bed && "
+        "touch {output} && "
+        "echo [`date`] rule organizeFilesNGSWeb: COMPLETE "
+
+
+# Don't delete anything until the very end
+rule deleteIntermediateFiles:
+    version: "0.1"
+    input:
+        name+ "_ORG_COMPLETE"
+    output:
+        name+ "_COMPLETE"
+    shell:
+        "rm -r {name}_Consensus {name}_SAE {name}_MatchMates {name}_MPA && "
+        "rm {name}/bam/{name}_filtered.bai {name}/bam/{name}_filtered.bam && "
+        "rm {name}/bam/{name}_recal.ba* {name}/bam/{name}_abra_unsorted.bam && "
+        "rm {name}/var/{name}_snvIndel.vcf && "
+        "rm {name}_recalibration.grp && "
+        "rm {name}_uniObReadCov.useq && "
+        "rm -rf {name}_ArupPipelineWrapper && "
+        "rm {name}_ANNO_QC_REVDIR_COMPLETE && "
+        "rm {name}_ORG_COMPLETE && "
+        "rm {name}_*.complete && "
+        "rm snappy-* && "
+        "rm -rf {name}_Scalpel {name}_Lofreq {name}_VcfsToMerge && "
+        "touch {output} && "
+        "echo [`date`] rule deleteIntermediateFiles: COMPLETE "
+
