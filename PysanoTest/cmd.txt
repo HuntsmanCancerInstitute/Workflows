@@ -21,7 +21,7 @@ jobname=SnakemakePysanoTest
 echo "name: $jobname"
 
 # Print out a workflow, can execute many times to get status of job
-PYTHONUSERBASE=$SMPYBASE python $SM \
+PYTHONUSERBASE=$SMPYBASE $MyPyUser/bin/snakemake \
 --dag --snakefile test.sm --configfile test.yaml | \
 dot -Tsvg > ${jobname}_${rdm}_dag.svg
 
