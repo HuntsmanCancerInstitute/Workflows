@@ -1,0 +1,41 @@
+#e your.name@hci.utah.edu
+#c kingspeak
+
+# set target python base 
+MyPyUser=/uufs/chpc.utah.edu/common/home/hcibcore/Library
+
+
+start=$(date +'%s')
+echo -e "---------- Starting -------- $((($(date +'%s') - $start)/60)) min"
+
+
+
+# Job params
+jobName=MYNAME
+coreID=MYID
+firstReadFastq=`ls *_1.txt.gz`
+secondReadFastq=`ls *_2.txt.gz`
+memory=$(expr `free -g | grep -oP '\d+' | head -n 1` - 8)G
+
+# Bed
+readCoverageBed=panel_merged.bed
+onTargetBed=panel_merged_ext25.bed
+
+
+# Print out a workflow
+PYTHONUSERBASE=$MyPyUser $MyPyUser/bin/snakemake \
+--dag --snakefile qiaseq_AlignQC.sm  \
+--config fR=$firstReadFastq sR=$secondReadFastq \
+rCB=$readCoverageBed oTB=$onTargetBed \
+name=$jobName id=$coreID threads=$NCPU memory=$memory \
+| dot -Tsvg > ${jobName}_dag.svg
+
+# Launch the actual job
+PYTHONUSERBASE=$MyPyUser $MyPyUser/bin/snakemake \
+-p -T --cores $NCPU --snakefile qiaseq_AlignQC.sm \
+--config fR=$firstReadFastq sR=$secondReadFastq \
+rCB=$readCoverageBed oTB=$onTargetBed \
+name=$jobName id=$coreID threads=$NCPU memory=$memory 
+
+echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min total"
+
