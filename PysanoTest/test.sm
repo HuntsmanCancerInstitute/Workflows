@@ -1,25 +1,26 @@
 # Pull from config                                                                                             
 name = config["name"]
-email = config["email"]
 threads = config["threads"]
 memory = config["memory"]
 refBase = config["refBase"]
 
 ############# Messaging ##############
 onstart:
-    shell( "dir=`pwd`; mail -s \"Started: {name} ($dir)\" {email} < {log}")
+    shell( "echo \"I am starting!\"")
 onerror:
-    shell( "dir=`pwd`; mail -s \"Failed: {name} ($dir)\" {email} < {log}; sleep 4s")
+    shell( "echo \"I have failed!\"; sleep 4s")
 onsuccess:
-    shell( "dir=`pwd`; mail -s \"Complete: {name} ($dir)\" {email} < {log}; sleep 4s")
+    shell( "echo \"I have succussfully completed.\"; sleep 4s")
 
 
 ############# Rules ##############
 
 rule lsUserDirSave2File:
     output:
-        "res.txt"
+        "results.txt"
     shell:
-        "echo name:{name} email:{email} threads:{threads} memory:{memory} refBase:{refBase}  > {output}"
+        "which python > {output} && "
+        "python -c \"import sys, pprint; pprint.pprint(sys.path)\" >> {output} && "
+        "echo name:{name} threads:{threads} memory:{memory} refBase:{refBase} >> {output}"
 
     

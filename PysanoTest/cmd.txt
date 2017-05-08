@@ -1,25 +1,35 @@
-#e david.nix@hci.utah.edu
+#e your.name@hci.utah.edu
 #c ember
+
+# set target python base library
+# snakemake executable and libraries are installed here
+# we rely on the snakemake executable script shebang to call the appropriate 
+# python editor without having to load python through module, which interferes with
+# other python scripts based on different versions
+MyPyUser=/uufs/chpc.utah.edu/common/home/hcibcore/Library
+
 
 start=$(date +'%s')
 echo -e "---------- Starting -------- $((($(date +'%s') - $start)/60)) min"
 
-refBase=/uufs/chpc.utah.edu/common/home/hcibcore/atlatl
-sm=/uufs/chpc.utah.edu/common/home/u0028003/BioApps/Python/Miniconda3/bin/snakemake
+
 rdm=$RANDOM
 echo Random number: $rdm
 
-#Required
-name=SnakemakePysanoTest
-email=david.nix@hci.utah.edu
+# Required
+jobname=SnakemakePysanoTest
+echo "name: $jobname"
 
 # Print out a workflow, can execute many times to get status of job
-$sm --dag --snakefile *.sm --configfile *.yaml | dot -Tsvg > $name"_"$rdm"_dag.svg"
+PYTHONUSERBASE=$SMPYBASE python $SM \
+--dag --snakefile test.sm --configfile test.yaml | \
+dot -Tsvg > ${jobname}_${rdm}_dag.svg
 
 # Launch the actual job
-$sm -p -T --cores $NCPU --snakefile *.sm --configfile *.yaml \
---config threads=$NCPU memory=$SMGB name=$name refBase=$refBase email=$email \
---stat $name"_"$rdm"_runStats.json"
+PYTHONUSERBASE=$MyPyUser $MyPyUser/bin/snakemake \
+-p -T --cores $NCPU --snakefile test.sm --configfile test.yaml \
+--config threads=$NCPU memory=$SMGB name=$jobname refBase=$refBase \
+--stat ${jobname}_${rdm}_runStats.json
 
 echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min total"
 
