@@ -1,0 +1,167 @@
+## Base name to prepend on all files
+name = config["name"]
+
+# Common apps
+useq = config["useq"]
+picard = config["picard"]
+gatk = config["gatk"]
+java = config["java"] + " -jar -Djava.io.tmpdir=. " + "-Xmx" + str(config["allRam"]) + "G"
+
+## Threads
+allThreads = int(config["allThreads"])
+halfThreads = int(round(allThreads/2,0))
+
+
+# Sort alignments
+rule SortSam:
+    input:
+        name+ "_raw.bam"
+    output:
+        bam = temp(name+ "_unfiltered.bam"),
+        bai = temp(name+ "_unfiltered.bai")
+    threads:
+        halfThreads
+    log:
+        "Log/"+ name+ "_SortSam.log"
+    shell:
+        "{java} {picard} SortSam CREATE_INDEX=true SO=coordinate "
+        "MAX_RECORDS_IN_RAM=5000000 TMP_DIR=. VALIDATION_STRINGENCY=SILENT INPUT={input} "
+        "OUTPUT={output.bam} &> {log} && "
+        "echo [`date`] rule SortSam: COMPLETE; echo "
+        
+# Use the SamAlignmentExtractor to remove poor quality alignments 
+rule SamAlignmentExtractor:
+    input:
+        bam = name+ "_unfiltered.bam",
+        bai = name+ "_unfiltered.bai",
+        bed = config["regionsForOnTarget"]
+    output:
+        bam = temp(name+ "_sae.bam"),
+        bai = temp(name+ "_sae.bai"),
+        json = "Json/"+ name+ "_SamAlignmentExtractor.json.gz"
+    params:
+        sae= config["useqSamAlignmentExtractor"],
+    log:
+        "Log/"+ name+ "_SamAlignmentExtractor.log",
+    shell:
+        "{java} {useq}/SamAlignmentExtractor {params.sae} "
+        "-s {name}_SAE -b {input.bam} "
+        "-r {input.bed} -j {output.json} &> {log} && "
+        "mv {name}_SAE/*_passSAE.bam {output.bam} &>> {log} && "
+        "mv {name}_SAE/*_passSAE.bai {output.bai} &>> {log} && "
+        "rm -rf {name}_SAE && "
+        "echo [`date`] rule SamAlignmentExtractor: COMPLETE; echo "
+        
+# Remove duplicates
+rule RemoveDuplicates:
+    input:
+        bam = name+ "_sae.bam",
+        bai = name+ "_sae.bai"
+    output:
+        bam = temp(name+ "_dupFree.bam"),
+        bai = temp(name+ "_dupFree.bai"),
+        metrics = temp(name+ "_RemoveDuplicates.metrics")
+    threads:
+        halfThreads
+    log:
+        "Log/"+ name+ "_RemoveDuplicates.log"
+    shell:
+        "{java} {picard} MarkDuplicates REMOVE_DUPLICATES=true TMP_DIR=. VERBOSITY=ERROR "
+        "VALIDATION_STRINGENCY=SILENT MAX_RECORDS_IN_RAM=5000000 CREATE_INDEX=true "
+        "METRICS_FILE={output.metrics} INPUT={input.bam} OUTPUT={output.bam} &> {log} && "
+        "echo [`date`] rule RemoveDuplicates: COMPLETE; echo"
+
+# Write out recalibrated bam with GATK
+rule PrintRecalibratedBam:
+    input:
+        grp = name+ "_recalibration.grp",
+        bam = name+ "_realign.bam",
+        bai= name+ "_realign.bai"
+    output:
+        bam = "BamFastq/"+ name+ "_final.bam",
+        bai = "BamFastq/"+ name+ "_final.bai"
+    threads:
+        allThreads
+    log:
+        "Log/"+ name+ "_PrintRecalibratedBam.log"
+    shell:
+        "{java} {gatk} -nct {threads} -T PrintReads "
+        "-R {indexFasta} -I {input.bam} -BQSR {input.grp} -o {output.bam} &> {log} && "
+        "echo [`date`] rule PrintRecalibratedBam: COMPLETE; echo" 
+
+############################# QC ###############################
+
+# QC, Merge paired alignments for unique observation QC
+rule MergePairedAlignments:
+    input:
+        bam = "BamFastq/"+ name+ "_final.bam"
+    output:
+        dir = temp(name+ "_MPA"),
+        json = "Json/"+ name+ "_MergePairedAlignments.json.gz"   
+    threads: 
+        halfThreads
+    log:
+        "Log/"+ name+ "_MergePairedAlignments.log"
+    shell:
+        "{java} {useq}/MergePairedAlignments -b {input.bam} -d {output.dir} "
+        "-j {output.json} -t {threads} &> {log} && "
+        "echo [`date`] rule MergePairedAlignments: COMPLETE; echo "
+
+# QC, Generate read coverage QC metrics and bed pass fail files with Sam2USeq
+rule Sam2USeq:
+    input:
+        mpa = name+ "_MPA",
+        bed = config["regionsForReadCoverage"]
+    output:
+        useq = temp(name+ "_uniObReadCov.useq"),
+        cs = "QC/"+ name+ "_PerRegionCoverageStats.txt.gz",
+        json = "Json/"+ name+ "_Sam2USeq.json.gz",
+        bed = "QC/"+name+ "_Pass.bed.gz"
+    params:
+        config["useqSam2USeq"] 
+    log:
+        "Log/"+ name+ "_Sam2USeq.log"
+    shell:
+        "{java} {useq}/Sam2USeq {params} -f {input.mpa} "
+        "-b {input.bed} -p {output.cs} -j {output.json} -n {name} &> {log} && "
+        "cp {input.mpa}/*useq {output.useq} &>> {log} && "
+        "rm -rf {input.mpa} && "
+        "mv -f {name}_Pass.bed.gz QC/ && "
+        "mv -f {name}_Fail.bed.gz QC/ && "
+        "echo [`date`] rule Sam2USeq: COMPLETE; echo "
+        
+# QC, Convert the uniOb read coverage track to something that will play nicely with IGV and the UCSC genome browsers
+rule Useq2UCSCBig:
+    input:
+        rc= name+ "_uniObReadCov.useq",
+        ucsc= config["ucsc"]
+    output:
+        "QC/"+ name+ "_uniObReadCov.bw"     
+    log:
+        "Log/"+ name+ "_Useq2UCSCBig.log"
+    shell:
+        "{java} {useq}/USeq2UCSCBig -u {input.rc} -f "
+        "-d {input.ucsc} &> {log} && "
+        "mv -f {name}_uniObReadCov.bw {output} && " 
+        "echo [`date`] rule Useq2UCSCBig: COMPLETE; echo "
+ 
+# Pulls info from the json files into xls and html reports
+rule AggregateQCStats:
+    input:
+        f= "Json/"+ name+ "_FastqCount.json.gz",
+        s= "Json/"+name+ "_SamAlignmentExtractor.json.gz",
+        m= "Json/"+name+ "_MergePairedAlignments.json.gz",
+        u= "Json/"+name+ "_Sam2USeq.json.gz"
+    output:
+        "QC/"+ name+ "_AggQC"
+    log:
+        "Log/"+ name+ "_AggregateQCStats.log",
+    shell:
+        "{java} {useq}/AggregateQCStats -j . -r {output} -p {name}_ &> {log} && "
+        "echo [`date`] rule AggregateQCStats: COMPLETE; echo "
+
+
+############# Messaging ##############
+email = config["email"]
+onerror:
+    shell( "dir=`pwd`; mail -s \"Failed: {name} ($dir)\" {email} < {log}; sleep 4s")

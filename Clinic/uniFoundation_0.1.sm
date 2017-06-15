@@ -1,0 +1,417 @@
+# Base name to prepend on all files
+name = config["name"]
+
+# Common apps
+useq = config["useq"]
+picard = config["picard"]
+gatk = config["gatk"]
+java = config["java"] + " -jar -Djava.io.tmpdir=. " + "-Xmx" + str(config["allRam"]) + "G"
+
+# Common resources
+controlBam = config["controlBam"]
+regionsForOnTarget = config["regionsForOnTarget"]
+indexFasta = config["indexFastaB37"]
+dbsnp = config["dbsnpB37"]
+
+# Threads and memory
+allThreads = int(config["allThreads"])
+halfThreads = int(round(allThreads/2,0))
+
+# VCF variant filtering params
+minTumorAlignmentDepth = config["minTumorAlignmentDepth"]
+minNormalAlignmentDepth = config["minNormalAlignmentDepth"]
+minTumorAF = config["minTumorAF"]
+maxNormalAF = config["maxNormalAF"]
+minTNRatio = config["minTNRatio"]
+minTNDiff = config["minTNDiff"]
+
+# Include common rules
+include: "uniCommonRules_0.1.sm"
+
+# Workflow trigger
+rule Results:
+    input:
+        "QC/"+ name+ "_AggQC",
+        "Vcf/"+ name+"_Final.vcf.gz.tbi",
+        "BamFastq/"+ name+ "_MutectBams"
+    output:
+        name+ "_COMPLETE"
+    shell:
+        "touch {output}; "
+        "echo [`date`] rule OrganizeResults: COMPLETE; echo "        
+        
+############################# Realignment B37 ###############################
+
+# Convert Foundation Bam to fastq
+rule Sam2Fastq:
+    input:
+        bam = config["sampleBam"]
+    output:
+        f1 = "BamFastq/"+ name+ "_1.fastq.gz",
+        f2 = "BamFastq/"+ name+ "_2.fastq.gz"
+    log:
+        "Log/"+ name+ "_Sam2Fastq.log"
+    threads:
+        allThreads
+    shell:
+        "{java} {picard} SamToFastq INPUT={input.bam} FASTQ={output.f1} "
+        "SECOND_END_FASTQ={output.f2} TMP_DIR=. VALIDATION_STRINGENCY=SILENT &> {log} && "
+        "gzip -f {name}_1.fastq {name}_2.fastq &>> {log} && "  
+        "echo [`date`] rule Sam2Fastq: COMPLETE; echo "
+
+# Count the number of fastq records
+rule CountFastq:
+    input:
+        "BamFastq/"+name+ "_1.fastq.gz"
+    output:
+        "Json/" +name+ "_FastqCount.json.gz"
+    shell:
+        "x=$(gunzip -c {input} | wc -l | tr -d \" \") && "
+        "y=$(($x/2)) && "
+        "echo \{{ > Json/{name}_FastqCount.json && "
+        "echo \\\"numberFastqReads\\\": $y >> Json/{name}_FastqCount.json && "
+        "echo \}} >> Json/{name}_FastqCount.json && "
+        "gzip Json/{name}_FastqCount.json && "
+        "echo [`date`] rule CountFastq: COMPLETE; echo "
+
+# Align with bwa mem, mark dups, write out as bam
+rule Align:
+    input:
+        f1 = "BamFastq/"+ name+ "_1.fastq.gz",
+        f2 = "BamFastq/"+ name+ "_2.fastq.gz",
+        bwa = config["bwa"],
+        samtools = config["samtools"],
+        samblaster = config["samblaster"]
+    output:
+        temp(name+ "_raw.bam")
+    log:
+        "Log/"+ name+ "_Align.log"
+    params: 
+        rg ="\"@RG\\tID:"+name+"\\tPL:ILLUMINA\\tLB:"+name+"\\tSM:"+name+ "\\tCN:HCI\\tPU:"+name+"\""
+    threads:    
+        allThreads
+    shell:
+        # Remove the log
+        "rm -rf {log}; "
+        # Align with bwa mem
+        "{input.bwa} mem -v 1 -t {threads} -R {params.rg} {indexFasta} {input.f1} {input.f2} 2>> {log} | "
+        # Mark duplicates
+        "{input.samblaster} 2>> {log} | "
+        # Write as bam
+        "{input.samtools} view -Sb - 2>> {log} > {output} && "
+        "echo [`date`] rule Align: COMPLETE; echo "
+
+
+############# Indel Realignment and Recalibration ##############
+
+# Realign Indels with GATK, target creator
+rule CreateTargetsForIndelRealignment:
+    input:
+        bam = name+ "_dupFree.bam",
+        bai = name+ "_dupFree.bai",
+        gI = config["goldIndelsB37"],
+        oI = config["oneKIndelsB37"]
+    output:
+        temp( name+ "_indelRealign.intervals")
+    threads:
+        allThreads
+    log:
+        "Log/"+ name+ "_CreateTargetsForIndelRealignment.log"
+    shell:
+        "{java} {gatk} -T RealignerTargetCreator -R {indexFasta} "
+        "-I {input.bam} -o {output} --known {input.gI} "
+        "--known {input.oI} &> {log} && "
+        "echo [`date`] rule CreateTargetsForIndelRealignment: COMPLETE; echo" 
+
+# Realign Indels with GATK, perform realignments
+rule RealignIndels:
+    input:
+        bam = name+ "_dupFree.bam",
+        bai = name+ "_dupFree.bai",
+        targets = name+ "_indelRealign.intervals",
+        gI = config["goldIndelsB37"],
+        oI = config["oneKIndelsB37"]
+    output:
+        bam= temp(name+ "_realign.bam"),
+        bai= temp(name+ "_realign.bai")
+    threads:
+        allThreads
+    log:
+        "Log/"+ name+ "_IndelRealign.log"
+    shell:
+        "{java} {gatk} -T IndelRealigner -R {indexFasta} "
+        "-targetIntervals {input.targets} -I {input.bam} -o {output.bam} "
+        "-known {input.gI} --maxReadsForRealignment 100000 --maxReadsForConsensuses 500 "
+        "-known {input.oI} &> {log} && "
+        "echo [`date`] rule RealignIndels: COMPLETE; echo" 
+        
+# Base recalibration with GATK, target creator
+rule RecalibrateBases:
+    input:
+        bam= name+ "_realign.bam",
+        bai= name+ "_realign.bai"
+    output:
+        temp( name+ "_recalibration.grp")
+    threads:
+        allThreads    
+    log:
+        "Log/"+ name+ "_RecalibrateBases.log"
+    shell:
+        "{java} {gatk} -nct {threads} -T BaseRecalibrator "
+        "-R {indexFasta} -knownSites {dbsnp} -I {input.bam} -o {output} &> {log} && "
+        "echo [`date`] rule RecalibrateBases: COMPLETE; echo" 
+
+############################# Variant Calling ###############################        
+        
+# Calls Strelka for tumor vs non matched control normal analysis
+rule Strelka:
+    input:
+         tumorBam = "BamFastq/"+ name+ "_final.bam",
+         tumorBai= "BamFastq/"+ name+ "_final.bai",
+         strelka = config["strelka"]
+    output:
+        dir = temp (name+ "_Strelka"),
+        vcf1 = temp (name+ "_Strelka/results/all.somatic.indels.vcf"),
+        vcf2 = temp (name+ "_Strelka/results/all.somatic.snvs.vcf")
+    log:
+        "Log/"+ name+ "_Strelka.log"
+    threads: 
+        allThreads
+    shell:
+        "rm -rf {output.dir} && "
+        "t=`readlink -f {input.tumorBam}` && "
+        "{input.strelka}/bin/configureStrelkaWorkflow.pl "
+        "--normal={controlBam} --tumor=$t --ref={indexFasta} "
+        "--config={input.strelka}/etc/strelka_config_bwa_relaxedIndel.ini "
+        "--output-dir={output.dir} &> {log} && "
+        "make -j {threads} -C {output.dir} &>> {log} && "
+        "echo [`date`] rule Strelka: COMPLETE && echo "
+
+rule StrelkaPostProc:
+    input:
+        dir = name+ "_Strelka",
+        vcf1 = name+ "_Strelka/results/all.somatic.indels.vcf",
+        vcf2 = name+ "_Strelka/results/all.somatic.snvs.vcf"
+    output:
+        vcf = "Vcf/" + name+"_Strelka.raw.vcf.gz",
+        dir = "BamFastq/"+ name+"_StrelkaBams"
+    log:
+        "Log/"+ name+ "_StrelkaPostProc.log"
+    shell:
+        "rm -f {input.dir}/results/passed* && "
+        "{java} {useq}/VCFMerger -o {output.vcf} -v {input.dir}/results/ &> {log} && "
+        "mkdir -p {output.dir} && "
+        "cp -f {input.dir}/realigned/normal.realigned.ba* {output.dir}/ && "
+        "cp -f {input.dir}/realigned/tumor.realigned.ba* {output.dir}/ && "
+        "echo [`date`] rule StrelkaPostProc: COMPLETE && echo "
+
+rule StrelkaRegionFilter:
+    input:
+        vcf = "Vcf/"+ name+"_Strelka.raw.vcf.gz"    
+    output:
+        dir = temp(name+ "_StrelkaRegionFilter"),
+        vcf = temp(name+ "_Strelka.regionFilt.vcf.gz")
+    log:
+        "Log/"+ name+ "_StrelkaRegionFilter.log"
+    shell:
+        "{java} {useq}/VCFRegionFilter -v {input.vcf} -b {regionsForOnTarget} "
+        "-s {output.dir} &> {log} && "
+        "mv -f {output.dir}/*_int.vcf.gz {output.vcf} && "
+        "echo [`date`] rule StrelkaRegionFilter: COMPLETE && echo "
+
+rule StrelkaFilter:
+    input:
+        name+ "_Strelka.regionFilt.vcf.gz"
+    output:
+        temp (name+ "_Strelka.filt.vcf.gz")
+    log:
+        "Log/"+ name+ "_StrelkaFilter.log"
+    shell:
+        "{java} {useq}/StrelkaVCFParser -v {input} -t {minTumorAF} "
+        "-n {maxNormalAF} -u {minTumorAlignmentDepth} -o {minNormalAlignmentDepth} "
+        "-d {minTNDiff} -r {minTNRatio} &> {log} && "
+        "mv -f {name}_Strelka.regionFilt_Filtered.vcf.gz {output} && "
+        "rm -rf {name}_StrelkaRegionFilter && "
+        "echo [`date`] rule StrelkaFilter: COMPLETE && echo "
+
+rule Lofreq:
+    input:
+        ignore = name+ "_Strelka",
+        tumorBam = "BamFastq/"+ name+ "_final.bam",
+        lofreq = config["lofreq"]
+    output:
+        dir= temp(name+ "_Lofreq"),        
+        indels= temp(name+ "_Lofreq/"+name+"_somatic_final.indels.vcf.gz"),
+        snvs= temp(name+ "_Lofreq/"+name+"_somatic_final.snvs.vcf.gz")
+    log:
+        "Log/"+ name+ "_lofreq.log"
+    threads: 
+        allThreads
+    shell:
+        "mkdir -p {output.dir} &> {log} && "
+        "{input.lofreq} somatic --tumor-mtc-alpha 10.0 --indel-tumor-mtc-alpha 0.5 --call-indels "
+        "-f {indexFasta} -o {name}_Lofreq/{name}_ -l {regionsForOnTarget} -n {controlBam} "
+        "-t {input.tumorBam} --threads {threads} &>> {log} && "
+        "rm -rf {name}_Lofreq/*_relaxed.* {name}_Lofreq/*_raw.* {name}_Lofreq/*stringent.* {input.ignore} &>> {log} && "
+        "echo [`date`] rule Lofreq: COMPLETE && echo "
+
+rule LofreqMerge:
+    input:
+        indels= name+ "_Lofreq/"+name+"_somatic_final.indels.vcf.gz",
+        snvs= name+ "_Lofreq/"+name+"_somatic_final.snvs.vcf.gz"
+    output:
+        "Vcf/"+ name+"_Lofreq.raw.vcf.gz"
+    log:
+        "Log/"+ name+ "_LofreqMerge.log"
+    shell:
+        "{java} {useq}/VCFMerger -v {name}_Lofreq -o {output} &> {log} && "
+        "echo [`date`] rule LofreqMerge: COMPLETE && echo "
+
+rule LofreqFilter:
+    input:
+        "Vcf/"+ name+ "_Lofreq.raw.vcf.gz"
+    output:
+        temp (name+"_Lofreq.filt.vcf.gz")
+    log:
+        "Log/"+ name+ "_LofreqFilter.log"
+    shell:
+        "{java} {useq}/LofreqVCFParser -d {minTumorAlignmentDepth} -t {minTumorAF} "
+        "-a -v {input} &> {log} && "
+        "mv -f Vcf/{name}_Lofreq.raw_Filtered.vcf.gz {output} &>> {log} && "
+        "echo [`date`] rule LofreqFilter: COMPLETE && echo "
+
+rule Mutect:
+    input:
+        ignore = name+ "_Lofreq",
+        tumorBam = "BamFastq/"+ name+ "_final.bam",
+        gatk = config["gatk"],
+        cosmic = config["cosmicB37"],
+        j = config["java"]
+    output:
+        dir= temp (name+ "_Mutect"),
+        vcf= "Vcf/"+ name+ "_Mutect.raw.vcf.gz",
+        bam= temp (name+ "_Mutect/mutect.realigned.bam")
+    log:
+        "Log/"+ name+ "_Mutect.log"
+    threads: 
+        allThreads
+    shell:
+        "{java} {useq}/GatkRunner -t {halfThreads} -s {output.dir} -r {regionsForOnTarget} "
+        "-b -c '{input.j} -jar -Xmx5G -jar -Djava.io.tmpdir=. {input.gatk} -T MuTect2 -I:tumor {input.tumorBam} "
+        "-I:normal {controlBam} -mbq 20 -R {indexFasta} --dbsnp {dbsnp} --cosmic {input.cosmic} -dt NONE "
+        "--max_alt_allele_in_normal_fraction {maxNormalAF} ' &> {log} && "
+        "cat {output.dir}/gatk.raw.vcf | gzip > {output.vcf} && "
+        "rm -rf {input.ignore} && "
+        "echo [`date`] rule Mutect: COMPLETE && echo "
+
+rule SplitMutectBam:
+    input:
+        name+ "_Mutect/mutect.realigned.bam"
+    output:
+        "BamFastq/"+ name+ "_MutectBams"
+    log:
+        "Log/"+ name+ "_SplitMutectBam.log"
+    threads: 
+        halfThreads
+    shell:
+        "mkdir -p {output} && "
+        "{java} {picard} SplitSamByLibrary CREATE_INDEX=true "
+        "MAX_RECORDS_IN_RAM=5000000 TMP_DIR=. VALIDATION_STRINGENCY=SILENT I={input} "
+        "O={output} &> {log} && "
+        "rm -rf {name}_Mutect && "
+        "echo [`date`] rule SplitMutectBam: COMPLETE "
+
+rule MutectFilter:
+    input:
+        "Vcf/"+ name+"_Mutect.raw.vcf.gz",
+    output:
+        vcf = temp (name+"_Mutect.filt.vcf.gz"),
+    log:
+        "Log/"+ name+ "_MutectFilter.log"
+    shell:
+        "{java} {useq}/MutectVCFParser -v {input} -t {minTumorAF} "
+        "-n {maxNormalAF} -u {minTumorAlignmentDepth} -o {minNormalAlignmentDepth} "
+        "-d {minTNDiff} -r {minTNRatio} &> {log} && "
+        "mv -f Vcf/{name}_Mutect.raw_Filtered.vcf.gz {output.vcf} && "
+        "echo [`date`] rule MutectFilter: COMPLETE && echo "
+
+rule VCFConsensus:
+    input:
+        mu= name+"_Mutect.filt.vcf.gz",
+        sc= name+"_Lofreq.filt.vcf.gz",
+        st= name+"_Strelka.filt.vcf.gz"
+    output:
+        "Vcf/"+ name+"_RecallConsensus.vcf.gz"
+    log:
+        "Log/"+ name+"_VCFConsensus.log"
+    threads:
+        halfThreads
+    shell:
+        "{java} {useq}/VCFConsensus -p {input.mu} -s {input.st} -o {name}_tempCon.vcf.gz &> {log} && "
+        "{java} {useq}/VCFConsensus -p {name}_tempCon.vcf.gz -s {input.sc} -o {output} &>> {log} && "
+        "rm -f {name}_tempCon.vcf.gz && "
+        "echo [`date`] rule VCFConsensus: COMPLETE && echo "
+
+
+# Convert the Foundation XML report to vcf, currently this is an inprecise process
+rule FoundationXml2Vcf:
+    input:
+        xml = config["sampleXml"]
+    output:
+        vcf = temp (name+"_NoNormFoundation.vcf")
+    log:
+        "Log/"+ name+ "_FoundationXml2Vcf.log"
+    shell:
+        "{java} {useq}/FoundationXml2Vcf -x {input.xml} "
+        "-s {name}_Foundation -f {indexFasta} &> {log} && "
+        "cp {name}_Foundation/*vcf {output.vcf} &>> {log} && "
+        "rm -rf {name}_Foundation && "
+        "echo [`date`] rule FoundationXml2Vcf: COMPLETE; echo "
+
+# Normalize the Foundation vcf with Vt
+rule NormalizeVcf:
+    input:
+        vcf= name+"_NoNormFoundation.vcf",
+        vt= config["vt"]
+    output:
+        "Vcf/"+ name+"_Foundation.vcf.gz"
+    log:
+        "Log/"+ name+ "_NormalizeVcf.log"
+    shell:
+        "{input.vt} normalize -r {indexFasta} {input.vcf} -o {name}_tempFoundation.vcf &> {log} && "
+        "{input.vt} decompose_blocksub {name}_tempFoundation.vcf -o Vcf/{name}_Foundation.vcf &>> {log} && "
+        "rm -f {name}_tempFoundation.vcf && "
+        "gzip Vcf/{name}_Foundation.vcf &>> {log} && "
+        "echo [`date`] rule NormalizeVcf: COMPLETE; echo "
+
+# Compare the Foundation vcf with the recalled vcf, this generates a merged vcf too
+rule FoundationVcfComparator:
+    input:
+        fVcf = "Vcf/"+ name+ "_Foundation.vcf.gz",
+        rVcf = "Vcf/"+ name+ "_RecallConsensus.vcf.gz"
+    output:
+        "Vcf/"+ name+ "_Final.vcf.gz"
+    log:
+        "Log/"+ name+ "_FoundationVcfComparator.log"
+    threads:
+        halfThreads
+    shell:
+        "{java} {useq}/FoundationVcfComparator -f {input.fVcf} "
+        "-r {input.rVcf} -m {output} &> {log} && "
+        "echo [`date`] rule FoundationVcfComparator: COMPLETE; echo "
+
+# Tabix index all the vcfs in the folder
+rule VcfTabix:
+    input:
+        vcf = "Vcf/"+ name+"_Final.vcf.gz",
+        htsLib = config["htsLib"]
+    output:
+        "Vcf/"+ name+"_Final.vcf.gz.tbi"
+    threads:
+        halfThreads
+    log:
+        "Log/"+ name+ "_VcfTabix.log"
+    shell:
+        "{java} {useq}/VCFTabix -t {input.htsLib} -v . &> {log} && "
+        "echo [`date`] rule VcfTabix: COMPLETE; echo "
+

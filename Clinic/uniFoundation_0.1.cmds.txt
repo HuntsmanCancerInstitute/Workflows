@@ -1,0 +1,191 @@
+[Thu Jun 15 13:46:53 2017] rule Sam2Fastq:
+	input: TRF132623_DNA.bam
+	output: BamFastq/TRF132623_2.fastq.gz, BamFastq/TRF132623_1.fastq.gz
+	log: Log/TRF132623_Sam2Fastq.log
+	threads: 32
+[Thu Jun 15 13:46:53 2017] /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx60G /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Picard/2.1.1/picard.jar SamToFastq INPUT=TRF132623_DNA.bam FASTQ=BamFastq/TRF132623_1.fastq.gz SECOND_END_FASTQ=BamFastq/TRF132623_2.fastq.gz TMP_DIR=. VALIDATION_STRINGENCY=SILENT &> Log/TRF132623_Sam2Fastq.log && gzip -f TRF132623_1.fastq TRF132623_2.fastq &>> Log/TRF132623_Sam2Fastq.log && echo [`date`] rule Sam2Fastq: COMPLETE; echo 
+[Thu Jun 15 13:46:53 2017] rule Align:
+	input: BamFastq/TRF132623_2.fastq.gz, BamFastq/TRF132623_1.fastq.gz, /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Samtools/1.3/bin/samtools, /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Bwa/bwa-0.7.12/bwa, /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Samblaster/0.1.22/samblaster
+	output: TRF132623_raw.bam
+	log: Log/TRF132623_Align.log
+	threads: 32
+[Thu Jun 15 13:46:53 2017] rm -rf Log/TRF132623_Align.log; /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Bwa/bwa-0.7.12/bwa mem -v 1 -t 32 -R "@RG\tID:TRF132623\tPL:ILLUMINA\tLB:TRF132623\tSM:TRF132623\tCN:HCI\tPU:TRF132623" /uufs/chpc.utah.edu/common/home/u0028003/HCIAtlatl/data/Human/B37/human_g1k_v37_decoy_phiXAdaptr.fasta BamFastq/TRF132623_1.fastq.gz BamFastq/TRF132623_2.fastq.gz 2>> Log/TRF132623_Align.log | /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Samblaster/0.1.22/samblaster 2>> Log/TRF132623_Align.log | /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Samtools/1.3/bin/samtools view -Sb - 2>> Log/TRF132623_Align.log > TRF132623_raw.bam && echo [`date`] rule Align: COMPLETE; echo 
+[Thu Jun 15 13:46:53 2017] rule CountFastq:
+	input: BamFastq/TRF132623_1.fastq.gz
+	output: Json/TRF132623_FastqCount.json.gz
+[Thu Jun 15 13:46:53 2017] x=$(gunzip -c BamFastq/TRF132623_1.fastq.gz | wc -l | tr -d " ") && y=$(($x/2)) && echo \{ > Json/TRF132623_FastqCount.json && echo \"numberFastqReads\": $y >> Json/TRF132623_FastqCount.json && echo \} >> Json/TRF132623_FastqCount.json && gzip Json/TRF132623_FastqCount.json && echo [`date`] rule CountFastq: COMPLETE; echo 
+[Thu Jun 15 13:46:53 2017] rule SortSam:
+	input: TRF132623_raw.bam
+	output: TRF132623_unfiltered.bam, TRF132623_unfiltered.bai
+	log: Log/TRF132623_SortSam.log
+	threads: 16
+[Thu Jun 15 13:46:53 2017] /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx60G /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Picard/2.1.1/picard.jar SortSam CREATE_INDEX=true SO=coordinate MAX_RECORDS_IN_RAM=5000000 TMP_DIR=. VALIDATION_STRINGENCY=SILENT INPUT=TRF132623_raw.bam OUTPUT=TRF132623_unfiltered.bam &> Log/TRF132623_SortSam.log && echo [`date`] rule SortSam: COMPLETE; echo 
+[Thu Jun 15 13:46:53 2017] rule FoundationXml2Vcf:
+	input: TRF132623.xml
+	output: TRF132623_NoNormFoundation.vcf
+	log: Log/TRF132623_FoundationXml2Vcf.log
+[Thu Jun 15 13:46:53 2017] /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx60G /uufs/chpc.utah.edu/common/home/u0028003/BioApps/USeq/Apps/FoundationXml2Vcf -x TRF132623.xml -s TRF132623_Foundation -f /uufs/chpc.utah.edu/common/home/u0028003/HCIAtlatl/data/Human/B37/human_g1k_v37_decoy_phiXAdaptr.fasta &> Log/TRF132623_FoundationXml2Vcf.log && cp TRF132623_Foundation/*vcf TRF132623_NoNormFoundation.vcf &>> Log/TRF132623_FoundationXml2Vcf.log && rm -rf TRF132623_Foundation && echo [`date`] rule FoundationXml2Vcf: COMPLETE; echo 
+[Thu Jun 15 13:46:53 2017] rule SamAlignmentExtractor:
+	input: TRF132623_unfiltered.bam, TRF132623_unfiltered.bai, /uufs/chpc.utah.edu/common/home/u0028003/Anno/B37/FoundationMed/t7D2BaitSetB37EnsGeneExonsPad25bp.bed
+	output: TRF132623_sae.bam, Json/TRF132623_SamAlignmentExtractor.json.gz, TRF132623_sae.bai
+	log: Log/TRF132623_SamAlignmentExtractor.log
+[Thu Jun 15 13:46:53 2017] /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx60G /uufs/chpc.utah.edu/common/home/u0028003/BioApps/USeq/Apps/SamAlignmentExtractor -q 20 -a 0.65 -d -f -s TRF132623_SAE -b TRF132623_unfiltered.bam -r /uufs/chpc.utah.edu/common/home/u0028003/Anno/B37/FoundationMed/t7D2BaitSetB37EnsGeneExonsPad25bp.bed -j Json/TRF132623_SamAlignmentExtractor.json.gz &> Log/TRF132623_SamAlignmentExtractor.log && mv TRF132623_SAE/*_passSAE.bam TRF132623_sae.bam &>> Log/TRF132623_SamAlignmentExtractor.log && mv TRF132623_SAE/*_passSAE.bai TRF132623_sae.bai &>> Log/TRF132623_SamAlignmentExtractor.log && rm -rf TRF132623_SAE && echo [`date`] rule SamAlignmentExtractor: COMPLETE; echo 
+[Thu Jun 15 13:46:53 2017] rule NormalizeVcf:
+	input: /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Vt/vt_2June2015/vt, TRF132623_NoNormFoundation.vcf
+	output: Vcf/TRF132623_Foundation.vcf.gz
+	log: Log/TRF132623_NormalizeVcf.log
+[Thu Jun 15 13:46:53 2017] /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Vt/vt_2June2015/vt normalize -r /uufs/chpc.utah.edu/common/home/u0028003/HCIAtlatl/data/Human/B37/human_g1k_v37_decoy_phiXAdaptr.fasta TRF132623_NoNormFoundation.vcf -o TRF132623_tempFoundation.vcf &> Log/TRF132623_NormalizeVcf.log && /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Vt/vt_2June2015/vt decompose_blocksub TRF132623_tempFoundation.vcf -o Vcf/TRF132623_Foundation.vcf &>> Log/TRF132623_NormalizeVcf.log && rm -f TRF132623_tempFoundation.vcf && gzip Vcf/TRF132623_Foundation.vcf &>> Log/TRF132623_NormalizeVcf.log && echo [`date`] rule NormalizeVcf: COMPLETE; echo 
+[Thu Jun 15 13:46:53 2017] rule RemoveDuplicates:
+	input: TRF132623_sae.bam, TRF132623_sae.bai
+	output: TRF132623_dupFree.bam, TRF132623_dupFree.bai, TRF132623_RemoveDuplicates.metrics
+	log: Log/TRF132623_RemoveDuplicates.log
+	threads: 16
+[Thu Jun 15 13:46:53 2017] /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx60G /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Picard/2.1.1/picard.jar MarkDuplicates REMOVE_DUPLICATES=true TMP_DIR=. VERBOSITY=ERROR VALIDATION_STRINGENCY=SILENT MAX_RECORDS_IN_RAM=5000000 CREATE_INDEX=true METRICS_FILE=TRF132623_RemoveDuplicates.metrics INPUT=TRF132623_sae.bam OUTPUT=TRF132623_dupFree.bam &> Log/TRF132623_RemoveDuplicates.log && echo [`date`] rule RemoveDuplicates: COMPLETE; echo
+[Thu Jun 15 13:46:53 2017] rule CreateTargetsForIndelRealignment:
+	input: TRF132623_dupFree.bam, /uufs/chpc.utah.edu/common/home/u0028003/HCIAtlatl/data/Human/B37/2.8/1000G_phase1.indels.b37.vcf, TRF132623_dupFree.bai, /uufs/chpc.utah.edu/common/home/u0028003/HCIAtlatl/data/Human/B37/2.8/Mills_and_1000G_gold_standard.indels.b37.vcf
+	output: TRF132623_indelRealign.intervals
+	log: Log/TRF132623_CreateTargetsForIndelRealignment.log
+	threads: 32
+[Thu Jun 15 13:46:53 2017] /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx60G /uufs/chpc.utah.edu/common/home/u0028003/BioApps/GATK/3.7-0-gcfedb67/GenomeAnalysisTK.jar -T RealignerTargetCreator -R /uufs/chpc.utah.edu/common/home/u0028003/HCIAtlatl/data/Human/B37/human_g1k_v37_decoy_phiXAdaptr.fasta -I TRF132623_dupFree.bam -o TRF132623_indelRealign.intervals --known /uufs/chpc.utah.edu/common/home/u0028003/HCIAtlatl/data/Human/B37/2.8/Mills_and_1000G_gold_standard.indels.b37.vcf --known /uufs/chpc.utah.edu/common/home/u0028003/HCIAtlatl/data/Human/B37/2.8/1000G_phase1.indels.b37.vcf &> Log/TRF132623_CreateTargetsForIndelRealignment.log && echo [`date`] rule CreateTargetsForIndelRealignment: COMPLETE; echo
+[Thu Jun 15 13:46:53 2017] rule RealignIndels:
+	input: TRF132623_dupFree.bam, /uufs/chpc.utah.edu/common/home/u0028003/HCIAtlatl/data/Human/B37/2.8/1000G_phase1.indels.b37.vcf, TRF132623_dupFree.bai, /uufs/chpc.utah.edu/common/home/u0028003/HCIAtlatl/data/Human/B37/2.8/Mills_and_1000G_gold_standard.indels.b37.vcf, TRF132623_indelRealign.intervals
+	output: TRF132623_realign.bam, TRF132623_realign.bai
+	log: Log/TRF132623_IndelRealign.log
+	threads: 32
+[Thu Jun 15 13:46:53 2017] /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx60G /uufs/chpc.utah.edu/common/home/u0028003/BioApps/GATK/3.7-0-gcfedb67/GenomeAnalysisTK.jar -T IndelRealigner -R /uufs/chpc.utah.edu/common/home/u0028003/HCIAtlatl/data/Human/B37/human_g1k_v37_decoy_phiXAdaptr.fasta -targetIntervals TRF132623_indelRealign.intervals -I TRF132623_dupFree.bam -o TRF132623_realign.bam -known /uufs/chpc.utah.edu/common/home/u0028003/HCIAtlatl/data/Human/B37/2.8/Mills_and_1000G_gold_standard.indels.b37.vcf --maxReadsForRealignment 100000 --maxReadsForConsensuses 500 -known /uufs/chpc.utah.edu/common/home/u0028003/HCIAtlatl/data/Human/B37/2.8/1000G_phase1.indels.b37.vcf &> Log/TRF132623_IndelRealign.log && echo [`date`] rule RealignIndels: COMPLETE; echo
+[Thu Jun 15 13:46:53 2017] rule RecalibrateBases:
+	input: TRF132623_realign.bam, TRF132623_realign.bai
+	output: TRF132623_recalibration.grp
+	log: Log/TRF132623_RecalibrateBases.log
+	threads: 32
+[Thu Jun 15 13:46:53 2017] /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx60G /uufs/chpc.utah.edu/common/home/u0028003/BioApps/GATK/3.7-0-gcfedb67/GenomeAnalysisTK.jar -nct 32 -T BaseRecalibrator -R /uufs/chpc.utah.edu/common/home/u0028003/HCIAtlatl/data/Human/B37/human_g1k_v37_decoy_phiXAdaptr.fasta -knownSites /uufs/chpc.utah.edu/common/home/u0028003/HCIAtlatl/data/Human/B37/MuTect/dbsnp_132_b37.leftAligned.vcf -I TRF132623_realign.bam -o TRF132623_recalibration.grp &> Log/TRF132623_RecalibrateBases.log && echo [`date`] rule RecalibrateBases: COMPLETE; echo
+[Thu Jun 15 13:46:53 2017] rule PrintRecalibratedBam:
+	input: TRF132623_realign.bam, TRF132623_recalibration.grp, TRF132623_realign.bai
+	output: BamFastq/TRF132623_final.bam, BamFastq/TRF132623_final.bai
+	log: Log/TRF132623_PrintRecalibratedBam.log
+	threads: 32
+[Thu Jun 15 13:46:53 2017] /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx60G /uufs/chpc.utah.edu/common/home/u0028003/BioApps/GATK/3.7-0-gcfedb67/GenomeAnalysisTK.jar -nct 32 -T PrintReads -R /uufs/chpc.utah.edu/common/home/u0028003/HCIAtlatl/data/Human/B37/human_g1k_v37_decoy_phiXAdaptr.fasta -I TRF132623_realign.bam -BQSR TRF132623_recalibration.grp -o BamFastq/TRF132623_final.bam &> Log/TRF132623_PrintRecalibratedBam.log && echo [`date`] rule PrintRecalibratedBam: COMPLETE; echo
+[Thu Jun 15 13:46:53 2017] rule Strelka:
+	input: BamFastq/TRF132623_final.bai, BamFastq/TRF132623_final.bam, /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Strelka/1.0.15/InstallDir
+	output: TRF132623_Strelka, TRF132623_Strelka/results/all.somatic.snvs.vcf, TRF132623_Strelka/results/all.somatic.indels.vcf
+	log: Log/TRF132623_Strelka.log
+	threads: 32
+[Thu Jun 15 13:46:53 2017] rm -rf TRF132623_Strelka && t=`readlink -f BamFastq/TRF132623_final.bam` && /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Strelka/1.0.15/InstallDir/bin/configureStrelkaWorkflow.pl --normal=/uufs/chpc.utah.edu/common/home/u0028003/HCINix/NA12878/B37/HG001.NA12878DJ.UCSCKnwnEnsPad150bp.bwa.bam --tumor=$t --ref=/uufs/chpc.utah.edu/common/home/u0028003/HCIAtlatl/data/Human/B37/human_g1k_v37_decoy_phiXAdaptr.fasta --config=/uufs/chpc.utah.edu/common/home/u0028003/BioApps/Strelka/1.0.15/InstallDir/etc/strelka_config_bwa_relaxedIndel.ini --output-dir=TRF132623_Strelka &> Log/TRF132623_Strelka.log && make -j 32 -C TRF132623_Strelka &>> Log/TRF132623_Strelka.log && echo [`date`] rule Strelka: COMPLETE && echo 
+[Thu Jun 15 13:46:53 2017] rule MergePairedAlignments:
+	input: BamFastq/TRF132623_final.bam
+	output: TRF132623_MPA, Json/TRF132623_MergePairedAlignments.json.gz
+	log: Log/TRF132623_MergePairedAlignments.log
+	threads: 16
+[Thu Jun 15 13:46:53 2017] /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx60G /uufs/chpc.utah.edu/common/home/u0028003/BioApps/USeq/Apps/MergePairedAlignments -b BamFastq/TRF132623_final.bam -d TRF132623_MPA -j Json/TRF132623_MergePairedAlignments.json.gz -t 16 &> Log/TRF132623_MergePairedAlignments.log && echo [`date`] rule MergePairedAlignments: COMPLETE; echo 
+[Thu Jun 15 13:46:53 2017] rule StrelkaPostProc:
+	input: TRF132623_Strelka, TRF132623_Strelka/results/all.somatic.snvs.vcf, TRF132623_Strelka/results/all.somatic.indels.vcf
+	output: BamFastq/TRF132623_StrelkaBams, Vcf/TRF132623_Strelka.raw.vcf.gz
+	log: Log/TRF132623_StrelkaPostProc.log
+[Thu Jun 15 13:46:53 2017] rm -f TRF132623_Strelka/results/passed* && /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx60G /uufs/chpc.utah.edu/common/home/u0028003/BioApps/USeq/Apps/VCFMerger -o Vcf/TRF132623_Strelka.raw.vcf.gz -v TRF132623_Strelka/results/ &> Log/TRF132623_StrelkaPostProc.log && mkdir -p BamFastq/TRF132623_StrelkaBams && cp -f TRF132623_Strelka/realigned/normal.realigned.ba* BamFastq/TRF132623_StrelkaBams/ && cp -f TRF132623_Strelka/realigned/tumor.realigned.ba* BamFastq/TRF132623_StrelkaBams/ && echo [`date`] rule StrelkaPostProc: COMPLETE && echo 
+[Thu Jun 15 13:46:53 2017] rule Lofreq:
+	input: TRF132623_Strelka, BamFastq/TRF132623_final.bam, /uufs/chpc.utah.edu/common/home/u0028003/BioApps/LoFreq/lofreq_star-2.1.2/bin/lofreq
+	output: TRF132623_Lofreq, TRF132623_Lofreq/TRF132623_somatic_final.snvs.vcf.gz, TRF132623_Lofreq/TRF132623_somatic_final.indels.vcf.gz
+	log: Log/TRF132623_lofreq.log
+	threads: 32
+[Thu Jun 15 13:46:53 2017] mkdir -p TRF132623_Lofreq &> Log/TRF132623_lofreq.log && /uufs/chpc.utah.edu/common/home/u0028003/BioApps/LoFreq/lofreq_star-2.1.2/bin/lofreq somatic --tumor-mtc-alpha 10.0 --indel-tumor-mtc-alpha 0.5 --call-indels -f /uufs/chpc.utah.edu/common/home/u0028003/HCIAtlatl/data/Human/B37/human_g1k_v37_decoy_phiXAdaptr.fasta -o TRF132623_Lofreq/TRF132623_ -l /uufs/chpc.utah.edu/common/home/u0028003/Anno/B37/FoundationMed/t7D2BaitSetB37EnsGeneExonsPad25bp.bed -n /uufs/chpc.utah.edu/common/home/u0028003/HCINix/NA12878/B37/HG001.NA12878DJ.UCSCKnwnEnsPad150bp.bwa.bam -t BamFastq/TRF132623_final.bam --threads 32 &>> Log/TRF132623_lofreq.log && rm -rf TRF132623_Lofreq/*_relaxed.* TRF132623_Lofreq/*_raw.* TRF132623_Lofreq/*stringent.* TRF132623_Strelka &>> Log/TRF132623_lofreq.log && echo [`date`] rule Lofreq: COMPLETE && echo 
+[Thu Jun 15 13:46:53 2017] rule LofreqMerge:
+	input: TRF132623_Lofreq/TRF132623_somatic_final.snvs.vcf.gz, TRF132623_Lofreq/TRF132623_somatic_final.indels.vcf.gz
+	output: Vcf/TRF132623_Lofreq.raw.vcf.gz
+	log: Log/TRF132623_LofreqMerge.log
+[Thu Jun 15 13:46:53 2017] /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx60G /uufs/chpc.utah.edu/common/home/u0028003/BioApps/USeq/Apps/VCFMerger -v TRF132623_Lofreq -o Vcf/TRF132623_Lofreq.raw.vcf.gz &> Log/TRF132623_LofreqMerge.log && echo [`date`] rule LofreqMerge: COMPLETE && echo 
+[Thu Jun 15 13:46:53 2017] rule Sam2USeq:
+	input: TRF132623_MPA, /uufs/chpc.utah.edu/common/home/u0028003/Anno/B37/FoundationMed/t7D2BaitSetB37EnsGeneExonsPad25bp.bed
+	output: TRF132623_uniObReadCov.useq, QC/TRF132623_PerRegionCoverageStats.txt.gz, QC/TRF132623_Pass.bed.gz, Json/TRF132623_Sam2USeq.json.gz
+	log: Log/TRF132623_Sam2USeq.log
+[Thu Jun 15 13:46:53 2017] /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx60G /uufs/chpc.utah.edu/common/home/u0028003/BioApps/USeq/Apps/Sam2USeq -v H_sapiens_Feb_2009 -x 2000 -r -c 100 -f TRF132623_MPA -b /uufs/chpc.utah.edu/common/home/u0028003/Anno/B37/FoundationMed/t7D2BaitSetB37EnsGeneExonsPad25bp.bed -p QC/TRF132623_PerRegionCoverageStats.txt.gz -j Json/TRF132623_Sam2USeq.json.gz -n TRF132623 &> Log/TRF132623_Sam2USeq.log && cp TRF132623_MPA/*useq TRF132623_uniObReadCov.useq &>> Log/TRF132623_Sam2USeq.log && rm -rf TRF132623_MPA && mv -f TRF132623_Pass.bed.gz QC/ && mv -f TRF132623_Fail.bed.gz QC/ && echo [`date`] rule Sam2USeq: COMPLETE; echo 
+[Thu Jun 15 13:46:53 2017] rule StrelkaRegionFilter:
+	input: Vcf/TRF132623_Strelka.raw.vcf.gz
+	output: TRF132623_StrelkaRegionFilter, TRF132623_Strelka.regionFilt.vcf.gz
+	log: Log/TRF132623_StrelkaRegionFilter.log
+[Thu Jun 15 13:46:53 2017] /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx60G /uufs/chpc.utah.edu/common/home/u0028003/BioApps/USeq/Apps/VCFRegionFilter -v Vcf/TRF132623_Strelka.raw.vcf.gz -b /uufs/chpc.utah.edu/common/home/u0028003/Anno/B37/FoundationMed/t7D2BaitSetB37EnsGeneExonsPad25bp.bed -s TRF132623_StrelkaRegionFilter &> Log/TRF132623_StrelkaRegionFilter.log && mv -f TRF132623_StrelkaRegionFilter/*_int.vcf.gz TRF132623_Strelka.regionFilt.vcf.gz && echo [`date`] rule StrelkaRegionFilter: COMPLETE && echo 
+[Thu Jun 15 13:46:53 2017] rule Mutect:
+	input: TRF132623_Lofreq, /uufs/chpc.utah.edu/common/home/u0028003/BioApps/GATK/3.7-0-gcfedb67/GenomeAnalysisTK.jar, BamFastq/TRF132623_final.bam, /uufs/chpc.utah.edu/common/home/u0028003/HCIAtlatl/data/Human/B37/MuTect/b37_cosmic_v54_120711.vcf, /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java
+	output: TRF132623_Mutect, Vcf/TRF132623_Mutect.raw.vcf.gz, TRF132623_Mutect/mutect.realigned.bam
+	log: Log/TRF132623_Mutect.log
+	threads: 32
+[Thu Jun 15 13:46:53 2017] /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx60G /uufs/chpc.utah.edu/common/home/u0028003/BioApps/USeq/Apps/GatkRunner -t 16 -s TRF132623_Mutect -r /uufs/chpc.utah.edu/common/home/u0028003/Anno/B37/FoundationMed/t7D2BaitSetB37EnsGeneExonsPad25bp.bed -b -c '/uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Xmx5G -jar -Djava.io.tmpdir=. /uufs/chpc.utah.edu/common/home/u0028003/BioApps/GATK/3.7-0-gcfedb67/GenomeAnalysisTK.jar -T MuTect2 -I:tumor BamFastq/TRF132623_final.bam -I:normal /uufs/chpc.utah.edu/common/home/u0028003/HCINix/NA12878/B37/HG001.NA12878DJ.UCSCKnwnEnsPad150bp.bwa.bam -mbq 20 -R /uufs/chpc.utah.edu/common/home/u0028003/HCIAtlatl/data/Human/B37/human_g1k_v37_decoy_phiXAdaptr.fasta --dbsnp /uufs/chpc.utah.edu/common/home/u0028003/HCIAtlatl/data/Human/B37/MuTect/dbsnp_132_b37.leftAligned.vcf --cosmic /uufs/chpc.utah.edu/common/home/u0028003/HCIAtlatl/data/Human/B37/MuTect/b37_cosmic_v54_120711.vcf -dt NONE --max_alt_allele_in_normal_fraction 1 ' &> Log/TRF132623_Mutect.log && cat TRF132623_Mutect/gatk.raw.vcf | gzip > Vcf/TRF132623_Mutect.raw.vcf.gz && rm -rf TRF132623_Lofreq && echo [`date`] rule Mutect: COMPLETE && echo 
+[Thu Jun 15 13:46:53 2017] rule StrelkaFilter:
+	input: TRF132623_Strelka.regionFilt.vcf.gz
+	output: TRF132623_Strelka.filt.vcf.gz
+	log: Log/TRF132623_StrelkaFilter.log
+[Thu Jun 15 13:46:53 2017] /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx60G /uufs/chpc.utah.edu/common/home/u0028003/BioApps/USeq/Apps/StrelkaVCFParser -v TRF132623_Strelka.regionFilt.vcf.gz -t 0.015 -n 1 -u 100 -o 10 -d 0.015 -r 1.2 &> Log/TRF132623_StrelkaFilter.log && mv -f TRF132623_Strelka.regionFilt_Filtered.vcf.gz TRF132623_Strelka.filt.vcf.gz && rm -rf TRF132623_StrelkaRegionFilter && echo [`date`] rule StrelkaFilter: COMPLETE && echo 
+[Thu Jun 15 13:46:53 2017] rule SplitMutectBam:
+	input: TRF132623_Mutect/mutect.realigned.bam
+	output: BamFastq/TRF132623_MutectBams
+	log: Log/TRF132623_SplitMutectBam.log
+	threads: 16
+[Thu Jun 15 13:46:53 2017] mkdir -p BamFastq/TRF132623_MutectBams && /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx60G /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Picard/2.1.1/picard.jar SplitSamByLibrary CREATE_INDEX=true MAX_RECORDS_IN_RAM=5000000 TMP_DIR=. VALIDATION_STRINGENCY=SILENT I=TRF132623_Mutect/mutect.realigned.bam O=BamFastq/TRF132623_MutectBams &> Log/TRF132623_SplitMutectBam.log && rm -rf TRF132623_Mutect && echo [`date`] rule SplitMutectBam: COMPLETE 
+[Thu Jun 15 13:46:53 2017] rule LofreqFilter:
+	input: Vcf/TRF132623_Lofreq.raw.vcf.gz
+	output: TRF132623_Lofreq.filt.vcf.gz
+	log: Log/TRF132623_LofreqFilter.log
+[Thu Jun 15 13:46:53 2017] /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx60G /uufs/chpc.utah.edu/common/home/u0028003/BioApps/USeq/Apps/LofreqVCFParser -d 100 -t 0.015 -a -v Vcf/TRF132623_Lofreq.raw.vcf.gz &> Log/TRF132623_LofreqFilter.log && mv -f Vcf/TRF132623_Lofreq.raw_Filtered.vcf.gz TRF132623_Lofreq.filt.vcf.gz &>> Log/TRF132623_LofreqFilter.log && echo [`date`] rule LofreqFilter: COMPLETE && echo 
+[Thu Jun 15 13:46:53 2017] rule MutectFilter:
+	input: Vcf/TRF132623_Mutect.raw.vcf.gz
+	output: TRF132623_Mutect.filt.vcf.gz
+	log: Log/TRF132623_MutectFilter.log
+[Thu Jun 15 13:46:53 2017] /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx60G /uufs/chpc.utah.edu/common/home/u0028003/BioApps/USeq/Apps/MutectVCFParser -v Vcf/TRF132623_Mutect.raw.vcf.gz -t 0.015 -n 1 -u 100 -o 10 -d 0.015 -r 1.2 &> Log/TRF132623_MutectFilter.log && mv -f Vcf/TRF132623_Mutect.raw_Filtered.vcf.gz TRF132623_Mutect.filt.vcf.gz && echo [`date`] rule MutectFilter: COMPLETE && echo 
+[Thu Jun 15 13:46:53 2017] rule AggregateQCStats:
+	input: Json/TRF132623_MergePairedAlignments.json.gz, Json/TRF132623_SamAlignmentExtractor.json.gz, Json/TRF132623_FastqCount.json.gz, Json/TRF132623_Sam2USeq.json.gz
+	output: QC/TRF132623_AggQC
+	log: Log/TRF132623_AggregateQCStats.log
+[Thu Jun 15 13:46:53 2017] /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx60G /uufs/chpc.utah.edu/common/home/u0028003/BioApps/USeq/Apps/AggregateQCStats -j . -r QC/TRF132623_AggQC -p TRF132623_ &> Log/TRF132623_AggregateQCStats.log && echo [`date`] rule AggregateQCStats: COMPLETE; echo 
+[Thu Jun 15 13:46:53 2017] rule VCFConsensus:
+	input: TRF132623_Mutect.filt.vcf.gz, TRF132623_Lofreq.filt.vcf.gz, TRF132623_Strelka.filt.vcf.gz
+	output: Vcf/TRF132623_RecallConsensus.vcf.gz
+	log: Log/TRF132623_VCFConsensus.log
+	threads: 16
+[Thu Jun 15 13:46:53 2017] /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx60G /uufs/chpc.utah.edu/common/home/u0028003/BioApps/USeq/Apps/VCFConsensus -p TRF132623_Mutect.filt.vcf.gz -s TRF132623_Strelka.filt.vcf.gz -o TRF132623_tempCon.vcf.gz &> Log/TRF132623_VCFConsensus.log && /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx60G /uufs/chpc.utah.edu/common/home/u0028003/BioApps/USeq/Apps/VCFConsensus -p TRF132623_tempCon.vcf.gz -s TRF132623_Lofreq.filt.vcf.gz -o Vcf/TRF132623_RecallConsensus.vcf.gz &>> Log/TRF132623_VCFConsensus.log && rm -f TRF132623_tempCon.vcf.gz && echo [`date`] rule VCFConsensus: COMPLETE && echo 
+[Thu Jun 15 13:46:53 2017] rule FoundationVcfComparator:
+	input: Vcf/TRF132623_Foundation.vcf.gz, Vcf/TRF132623_RecallConsensus.vcf.gz
+	output: Vcf/TRF132623_Final.vcf.gz
+	log: Log/TRF132623_FoundationVcfComparator.log
+	threads: 16
+[Thu Jun 15 13:46:53 2017] /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx60G /uufs/chpc.utah.edu/common/home/u0028003/BioApps/USeq/Apps/FoundationVcfComparator -f Vcf/TRF132623_Foundation.vcf.gz -r Vcf/TRF132623_RecallConsensus.vcf.gz -m Vcf/TRF132623_Final.vcf.gz &> Log/TRF132623_FoundationVcfComparator.log && echo [`date`] rule FoundationVcfComparator: COMPLETE; echo 
+[Thu Jun 15 13:46:53 2017] rule VcfTabix:
+	input: Vcf/TRF132623_Final.vcf.gz, /uufs/chpc.utah.edu/common/home/u0028003/BioApps/HTSlib/1.3/bin/
+	output: Vcf/TRF132623_Final.vcf.gz.tbi
+	log: Log/TRF132623_VcfTabix.log
+	threads: 16
+[Thu Jun 15 13:46:53 2017] /uufs/chpc.utah.edu/common/home/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx60G /uufs/chpc.utah.edu/common/home/u0028003/BioApps/USeq/Apps/VCFTabix -t /uufs/chpc.utah.edu/common/home/u0028003/BioApps/HTSlib/1.3/bin/ -v . &> Log/TRF132623_VcfTabix.log && echo [`date`] rule VcfTabix: COMPLETE; echo 
+[Thu Jun 15 13:46:53 2017] rule Results:
+	input: QC/TRF132623_AggQC, Vcf/TRF132623_Final.vcf.gz.tbi, BamFastq/TRF132623_MutectBams
+	output: TRF132623_COMPLETE
+[Thu Jun 15 13:46:53 2017] touch TRF132623_COMPLETE; echo [`date`] rule OrganizeResults: COMPLETE; echo 
+[Thu Jun 15 13:46:53 2017] Job counts:
+	count	jobs
+	1	AggregateQCStats
+	1	Align
+	1	CountFastq
+	1	CreateTargetsForIndelRealignment
+	1	FoundationVcfComparator
+	1	FoundationXml2Vcf
+	1	Lofreq
+	1	LofreqFilter
+	1	LofreqMerge
+	1	MergePairedAlignments
+	1	Mutect
+	1	MutectFilter
+	1	NormalizeVcf
+	1	PrintRecalibratedBam
+	1	RealignIndels
+	1	RecalibrateBases
+	1	RemoveDuplicates
+	1	Results
+	1	Sam2Fastq
+	1	Sam2USeq
+	1	SamAlignmentExtractor
+	1	SortSam
+	1	SplitMutectBam
+	1	Strelka
+	1	StrelkaFilter
+	1	StrelkaPostProc
+	1	StrelkaRegionFilter
+	1	VCFConsensus
+	1	VcfTabix
+	29
