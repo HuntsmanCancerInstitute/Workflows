@@ -1,0 +1,318 @@
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule Sam2Fastq:
+    input: TRF116267_DNA.bam
+    output: Fastq/TRF116267_1.fastq.gz, Fastq/TRF116267_2.fastq.gz
+    log: Log/TRF116267_Sam2Fastq.log
+    jobid: 14
+    threads: 16
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Picard/2.1.1/picard.jar SamToFastq INPUT=TRF116267_DNA.bam FASTQ=Fastq/TRF116267_1.fastq.gz SECOND_END_FASTQ=Fastq/TRF116267_2.fastq.gz TMP_DIR=. VALIDATION_STRINGENCY=SILENT &> Log/TRF116267_Sam2Fastq.log && echo [`date`] rule Sam2Fastq: COMPLETE; echo 
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule Align:
+    input: Fastq/TRF116267_1.fastq.gz, Fastq/TRF116267_2.fastq.gz, /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Bwa/bwa-0.7.12/bwa, /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Samtools/1.3.1/bin/samtools, /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Samblaster/0.1.22/samblaster
+    output: TRF116267_B37_raw.bam
+    log: Log/TRF116267_B37_Align.log
+    jobid: 17
+    threads: 16
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rm -rf Log/TRF116267_B37_Align.log; /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Bwa/bwa-0.7.12/bwa mem -v 1 -t 16 -R "@RG\tID:TRF116267_B37\tPL:ILLUMINA\tLB:TRF116267_B37\tSM:TRF116267_B37\tCN:HCI\tPU:TRF116267_B37" /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Ref/human_g1k_v37_decoy_phiXAdaptr.fasta Fastq/TRF116267_1.fastq.gz Fastq/TRF116267_2.fastq.gz 2>> Log/TRF116267_B37_Align.log | /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Samblaster/0.1.22/samblaster 2>> Log/TRF116267_B37_Align.log | /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Samtools/1.3.1/bin/samtools view -Sb - 2>> Log/TRF116267_B37_Align.log > TRF116267_B37_raw.bam && echo [`date`] rule Align: COMPLETE; echo 
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule FoundationXml2Vcf:
+    input: TRF116267.xml
+    output: TRF116267_B37_NoNormFoundation.vcf
+    log: Log/TRF116267_B37_FoundationXml2Vcf.log
+    jobid: 29
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps/FoundationXml2Vcf -x TRF116267.xml -s TRF116267_B37_Foundation -f /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Ref/human_g1k_v37_decoy_phiXAdaptr.fasta &> Log/TRF116267_B37_FoundationXml2Vcf.log && cp TRF116267_B37_Foundation/*vcf TRF116267_B37_NoNormFoundation.vcf &>> Log/TRF116267_B37_FoundationXml2Vcf.log && rm -rf TRF116267_B37_Foundation && echo [`date`] rule FoundationXml2Vcf: COMPLETE; echo 
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule SortSam:
+    input: TRF116267_B37_raw.bam
+    output: TRF116267_B37_unfiltered.bam, TRF116267_B37_unfiltered.bai
+    log: Log/TRF116267_B37_SortSam.log
+    jobid: 12
+    threads: 8
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Picard/2.1.1/picard.jar SortSam CREATE_INDEX=true SO=coordinate MAX_RECORDS_IN_RAM=5000000 TMP_DIR=. VALIDATION_STRINGENCY=SILENT INPUT=TRF116267_B37_raw.bam OUTPUT=TRF116267_B37_unfiltered.bam &> Log/TRF116267_B37_SortSam.log && echo [`date`] rule SortSam: COMPLETE; echo 
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule CountFastq:
+    input: Fastq/TRF116267_1.fastq.gz
+    output: Json/TRF116267_B37_FastqCount.json.gz
+    jobid: 9
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] x=$(gunzip -c Fastq/TRF116267_1.fastq.gz | wc -l | tr -d " ") && y=$(($x/2)) && echo \{ > Json/TRF116267_B37_FastqCount.json && echo \"numberFastqReads\": $y >> Json/TRF116267_B37_FastqCount.json && echo \} >> Json/TRF116267_B37_FastqCount.json && gzip Json/TRF116267_B37_FastqCount.json && echo [`date`] rule CountFastq: COMPLETE; echo 
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule SamAlignmentExtractor:
+    input: TRF116267_B37_unfiltered.bam, TRF116267_B37_unfiltered.bai, /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Foundation/Bed/t7D2BaitSetB37EnsGeneExonsPad25bp.bed
+    output: TRF116267_B37_sae.bam, TRF116267_B37_sae.bai, Json/TRF116267_B37_SamAlignmentExtractor.json.gz
+    log: Log/TRF116267_B37_SamAlignmentExtractor.log
+    jobid: 7
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps/SamAlignmentExtractor -q 20 -a 0.65 -d -f -s TRF116267_B37_SAE -b TRF116267_B37_unfiltered.bam -r /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Foundation/Bed/t7D2BaitSetB37EnsGeneExonsPad25bp.bed -j Json/TRF116267_B37_SamAlignmentExtractor.json.gz &> Log/TRF116267_B37_SamAlignmentExtractor.log && mv TRF116267_B37_SAE/*_passSAE.bam TRF116267_B37_sae.bam &>> Log/TRF116267_B37_SamAlignmentExtractor.log && mv TRF116267_B37_SAE/*_passSAE.bai TRF116267_B37_sae.bai &>> Log/TRF116267_B37_SamAlignmentExtractor.log && rm -rf TRF116267_B37_SAE && echo [`date`] rule SamAlignmentExtractor: COMPLETE; echo 
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule NormalizeVcf:
+    input: TRF116267_B37_NoNormFoundation.vcf, /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Vt/vt_2June2015/vt
+    output: Vcf/TRF116267_B37_Foundation.vcf.gz
+    log: Log/TRF116267_B37_NormalizeVcf.log
+    jobid: 25
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Vt/vt_2June2015/vt normalize -r /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Ref/human_g1k_v37_decoy_phiXAdaptr.fasta TRF116267_B37_NoNormFoundation.vcf -o TRF116267_B37_tempFoundation.vcf &> Log/TRF116267_B37_NormalizeVcf.log && /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Vt/vt_2June2015/vt decompose_blocksub TRF116267_B37_tempFoundation.vcf -o Vcf/TRF116267_B37_Foundation.vcf &>> Log/TRF116267_B37_NormalizeVcf.log && rm -f TRF116267_B37_tempFoundation.vcf && gzip Vcf/TRF116267_B37_Foundation.vcf &>> Log/TRF116267_B37_NormalizeVcf.log && echo [`date`] rule NormalizeVcf: COMPLETE; echo 
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule RemoveDuplicates:
+    input: TRF116267_B37_sae.bam, TRF116267_B37_sae.bai
+    output: TRF116267_B37_dupFree.bam, TRF116267_B37_dupFree.bai, TRF116267_B37_RemoveDuplicates.metrics
+    log: Log/TRF116267_B37_RemoveDuplicates.log
+    jobid: 23
+    threads: 8
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Picard/2.1.1/picard.jar MarkDuplicates REMOVE_DUPLICATES=true TMP_DIR=. VERBOSITY=ERROR VALIDATION_STRINGENCY=SILENT MAX_RECORDS_IN_RAM=5000000 CREATE_INDEX=true METRICS_FILE=TRF116267_B37_RemoveDuplicates.metrics INPUT=TRF116267_B37_sae.bam OUTPUT=TRF116267_B37_dupFree.bam &> Log/TRF116267_B37_RemoveDuplicates.log && echo [`date`] rule RemoveDuplicates: COMPLETE; echo
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule CreateTargetsForIndelRealignment:
+    input: TRF116267_B37_dupFree.bam, TRF116267_B37_dupFree.bai, /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Vcf/Mills_and_1000G_gold_standard.indels.b37.vcf, /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Vcf/1000G_phase1.indels.b37.vcf
+    output: TRF116267_B37_indelRealign.intervals
+    log: Log/TRF116267_B37_CreateTargetsForIndelRealignment.log
+    jobid: 22
+    threads: 16
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/GATK/3.7-0-gcfedb67/GenomeAnalysisTK.jar -T RealignerTargetCreator -R /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Ref/human_g1k_v37_decoy_phiXAdaptr.fasta -I TRF116267_B37_dupFree.bam -o TRF116267_B37_indelRealign.intervals --known /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Vcf/Mills_and_1000G_gold_standard.indels.b37.vcf --known /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Vcf/1000G_phase1.indels.b37.vcf &> Log/TRF116267_B37_CreateTargetsForIndelRealignment.log && echo [`date`] rule CreateTargetsForIndelRealignment: COMPLETE; echo
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule RealignIndels:
+    input: TRF116267_B37_dupFree.bam, TRF116267_B37_dupFree.bai, TRF116267_B37_indelRealign.intervals, /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Vcf/Mills_and_1000G_gold_standard.indels.b37.vcf, /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Vcf/1000G_phase1.indels.b37.vcf
+    output: TRF116267_B37_realign.bam, TRF116267_B37_realign.bai
+    log: Log/TRF116267_B37_IndelRealign.log
+    jobid: 19
+    threads: 16
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/GATK/3.7-0-gcfedb67/GenomeAnalysisTK.jar -T IndelRealigner -R /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Ref/human_g1k_v37_decoy_phiXAdaptr.fasta -targetIntervals TRF116267_B37_indelRealign.intervals -I TRF116267_B37_dupFree.bam -o TRF116267_B37_realign.bam -known /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Vcf/Mills_and_1000G_gold_standard.indels.b37.vcf --maxReadsForRealignment 100000 --maxReadsForConsensuses 500 -known /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Vcf/1000G_phase1.indels.b37.vcf &> Log/TRF116267_B37_IndelRealign.log && echo [`date`] rule RealignIndels: COMPLETE; echo
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule RecalibrateBases:
+    input: TRF116267_B37_realign.bam, TRF116267_B37_realign.bai
+    output: TRF116267_B37_recalibration.grp
+    log: Log/TRF116267_B37_RecalibrateBases.log
+    jobid: 18
+    threads: 16
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/GATK/3.7-0-gcfedb67/GenomeAnalysisTK.jar -nct 16 -T BaseRecalibrator -R /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Ref/human_g1k_v37_decoy_phiXAdaptr.fasta -knownSites /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Vcf/dbsnp_132_b37.leftAligned.vcf -I TRF116267_B37_realign.bam -o TRF116267_B37_recalibration.grp &> Log/TRF116267_B37_RecalibrateBases.log && echo [`date`] rule RecalibrateBases: COMPLETE; echo
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule PrintRecalibratedBam:
+    input: TRF116267_B37_recalibration.grp, TRF116267_B37_realign.bam, TRF116267_B37_realign.bai
+    output: Bam/TRF116267_B37_final.bam, Bam/TRF116267_B37_final.bai
+    log: Log/TRF116267_B37_PrintRecalibratedBam.log
+    jobid: 13
+    threads: 16
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/GATK/3.7-0-gcfedb67/GenomeAnalysisTK.jar -nct 16 -T PrintReads -R /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Ref/human_g1k_v37_decoy_phiXAdaptr.fasta -I TRF116267_B37_realign.bam -BQSR TRF116267_B37_recalibration.grp -o Bam/TRF116267_B37_final.bam &> Log/TRF116267_B37_PrintRecalibratedBam.log && echo [`date`] rule PrintRecalibratedBam: COMPLETE; echo
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule Strelka:
+    input: Bam/TRF116267_B37_final.bam, Bam/TRF116267_B37_final.bai, /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Strelka/1.0.15/InstallDir
+    output: TRF116267_B37_Strelka, TRF116267_B37_Strelka/results/all.somatic.indels.vcf, TRF116267_B37_Strelka/results/all.somatic.snvs.vcf
+    log: Log/TRF116267_B37_Strelka.log
+    jobid: 20
+    threads: 16
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rm -rf TRF116267_B37_Strelka && t=`readlink -f Bam/TRF116267_B37_final.bam` && /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Strelka/1.0.15/InstallDir/bin/configureStrelkaWorkflow.pl --normal=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Bams/HG001.NA12878DJ.UCSCKnwnEnsPad150bp.bwa.bam --tumor=$t --ref=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Ref/human_g1k_v37_decoy_phiXAdaptr.fasta --config=/uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Strelka/1.0.15/InstallDir/etc/strelka_config_bwa_relaxedIndel.ini --output-dir=TRF116267_B37_Strelka &> Log/TRF116267_B37_Strelka.log && make -j 16 -C TRF116267_B37_Strelka &>> Log/TRF116267_B37_Strelka.log && echo [`date`] rule Strelka: COMPLETE && echo 
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule Lofreq:
+    input: TRF116267_B37_Strelka, Bam/TRF116267_B37_final.bam, /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/LoFreq/lofreq_star-2.1.2/bin/lofreq, /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Foundation/Bed/t7D2BaitSetB37EnsGeneExonsPad25bp.bed
+    output: TRF116267_B37_Lofreq, TRF116267_B37_Lofreq/TRF116267_B37_somatic_final.indels.vcf.gz, TRF116267_B37_Lofreq/TRF116267_B37_somatic_final.snvs.vcf.gz
+    log: Log/TRF116267_B37_lofreq.log
+    jobid: 15
+    threads: 16
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rm -rf TRF116267_B37_Lofreq && mkdir -p TRF116267_B37_Lofreq &> Log/TRF116267_B37_lofreq.log && /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/LoFreq/lofreq_star-2.1.2/bin/lofreq somatic --tumor-mtc-alpha 10.0 --indel-tumor-mtc-alpha 0.5 --call-indels -f /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Ref/human_g1k_v37_decoy_phiXAdaptr.fasta -o TRF116267_B37_Lofreq/TRF116267_B37_ -l /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Foundation/Bed/t7D2BaitSetB37EnsGeneExonsPad25bp.bed -n /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Bams/HG001.NA12878DJ.UCSCKnwnEnsPad150bp.bwa.bam -t Bam/TRF116267_B37_final.bam --threads 16 &>> Log/TRF116267_B37_lofreq.log && rm -rf TRF116267_B37_Lofreq/*_relaxed.* TRF116267_B37_Lofreq/*_raw.* TRF116267_B37_Lofreq/*stringent.*  &>> Log/TRF116267_B37_lofreq.log && echo [`date`] rule Lofreq: COMPLETE && echo 
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule LofreqMerge:
+    input: TRF116267_B37_Lofreq/TRF116267_B37_somatic_final.indels.vcf.gz, TRF116267_B37_Lofreq/TRF116267_B37_somatic_final.snvs.vcf.gz
+    output: Vcf/TRF116267_B37_Lofreq.raw.vcf.gz
+    log: Log/TRF116267_B37_LofreqMerge.log
+    jobid: 30
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps/VCFMerger -v TRF116267_B37_Lofreq -o Vcf/TRF116267_B37_Lofreq.raw.vcf.gz &> Log/TRF116267_B37_LofreqMerge.log && echo [`date`] rule LofreqMerge: COMPLETE && echo 
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule StrelkaPostProc:
+    input: TRF116267_B37_Strelka, TRF116267_B37_Strelka/results/all.somatic.indels.vcf, TRF116267_B37_Strelka/results/all.somatic.snvs.vcf
+    output: Vcf/TRF116267_B37_Strelka.raw.vcf.gz, Bam/TRF116267_B37_StrelkaBams
+    log: Log/TRF116267_B37_StrelkaPostProc.log
+    jobid: 32
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rm -f TRF116267_B37_Strelka/results/passed* && /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps/VCFMerger -o Vcf/TRF116267_B37_Strelka.raw.vcf.gz -v TRF116267_B37_Strelka/results/ &> Log/TRF116267_B37_StrelkaPostProc.log && mkdir -p Bam/TRF116267_B37_StrelkaBams && cp -f TRF116267_B37_Strelka/realigned/normal.realigned.ba* Bam/TRF116267_B37_StrelkaBams/ && cp -f TRF116267_B37_Strelka/realigned/tumor.realigned.ba* Bam/TRF116267_B37_StrelkaBams/ && echo [`date`] rule StrelkaPostProc: COMPLETE && echo 
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule MergePairedAlignments:
+    input: Bam/TRF116267_B37_final.bam
+    output: TRF116267_B37_MPA, Json/TRF116267_B37_MergePairedAlignments.json.gz
+    log: Log/TRF116267_B37_MergePairedAlignments.log
+    jobid: 8
+    threads: 8
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps/MergePairedAlignments -b Bam/TRF116267_B37_final.bam -d TRF116267_B37_MPA -j Json/TRF116267_B37_MergePairedAlignments.json.gz -t 8 &> Log/TRF116267_B37_MergePairedAlignments.log && echo [`date`] rule MergePairedAlignments: COMPLETE; echo 
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule Mutect:
+    input: TRF116267_B37_Lofreq, Bam/TRF116267_B37_final.bam, /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/GATK/3.8-0-ge9d806836/GenomeAnalysisTK.jar, /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Vcf/b37_cosmic_v54_120711.vcf, /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java, /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Foundation/Bed/t7D2BaitSetB37EnsGeneExonsPad25bp.bed, /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Vcf/dbsnp_132_b37.leftAligned.vcf
+    output: TRF116267_B37_Mutect, Vcf/TRF116267_B37_Mutect.raw.vcf.gz, TRF116267_B37_Mutect/mutect.realigned.bam
+    log: Log/TRF116267_B37_Mutect.log
+    jobid: 10
+    threads: 16
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] java -jar -Xmx5G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps/GatkRunner  -s TRF116267_B37_Mutect -r /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Foundation/Bed/t7D2BaitSetB37EnsGeneExonsPad25bp.bed -t 10 -b -c '/uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -Xmx5G -jar -Djava.io.tmpdir=. /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/GATK/3.8-0-ge9d806836/GenomeAnalysisTK.jar -T MuTect2 -I:tumor Bam/TRF116267_B37_final.bam -I:normal /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Bams/HG001.NA12878DJ.UCSCKnwnEnsPad150bp.bwa.bam -mbq 20 -R /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Ref/human_g1k_v37_decoy_phiXAdaptr.fasta --dbsnp /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Vcf/dbsnp_132_b37.leftAligned.vcf --cosmic /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Vcf/b37_cosmic_v54_120711.vcf -dt NONE --max_alt_allele_in_normal_fraction 1 ' &> Log/TRF116267_B37_Mutect.log && cat TRF116267_B37_Mutect/gatk.raw.vcf | gzip > Vcf/TRF116267_B37_Mutect.raw.vcf.gz && echo [`date`] rule Mutect: COMPLETE && echo 
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule LofreqFilter:
+    input: Vcf/TRF116267_B37_Lofreq.raw.vcf.gz
+    output: TRF116267_B37_Lofreq.filt.vcf.gz
+    log: Log/TRF116267_B37_LofreqFilter.log
+    jobid: 26
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps/LofreqVCFParser -d 100 -t 0.01 -a -v Vcf/TRF116267_B37_Lofreq.raw.vcf.gz &> Log/TRF116267_B37_LofreqFilter.log && mv -f Vcf/TRF116267_B37_Lofreq.raw_Filtered.vcf.gz TRF116267_B37_Lofreq.filt.vcf.gz &>> Log/TRF116267_B37_LofreqFilter.log && echo [`date`] rule LofreqFilter: COMPLETE && echo 
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule Sam2USeq:
+    input: TRF116267_B37_MPA, /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Foundation/Bed/t7D2BaitSetB37EnsGeneExonsPad25bp.bed
+    output: TRF116267_B37_uniObReadCov.useq, QC/TRF116267_B37_PerRegionCoverageStats.txt.gz, Json/TRF116267_B37_Sam2USeq.json.gz, QC/TRF116267_B37_Pass.bed.gz
+    log: Log/TRF116267_B37_Sam2USeq.log
+    jobid: 6
+    threads: 8
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps/Sam2USeq -v B37 -x 2000 -r -c 100 -f TRF116267_B37_MPA -b /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Foundation/Bed/t7D2BaitSetB37EnsGeneExonsPad25bp.bed -p QC/TRF116267_B37_PerRegionCoverageStats.txt.gz -j Json/TRF116267_B37_Sam2USeq.json.gz -n TRF116267_B37 &> Log/TRF116267_B37_Sam2USeq.log && cp TRF116267_B37_MPA/*useq TRF116267_B37_uniObReadCov.useq &>> Log/TRF116267_B37_Sam2USeq.log && mv -f TRF116267_B37_Pass.bed.gz QC/ && mv -f TRF116267_B37_Fail.bed.gz QC/ && echo [`date`] rule Sam2USeq: COMPLETE; echo 
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule StrelkaRegionFilter:
+    input: Vcf/TRF116267_B37_Strelka.raw.vcf.gz, /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Foundation/Bed/t7D2BaitSetB37EnsGeneExonsPad25bp.bed
+    output: TRF116267_B37_Strelka.regionFilt.vcf.gz
+    log: Log/TRF116267_B37_StrelkaRegionFilter.log
+    jobid: 31
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps/VCFRegionFilter -v Vcf/TRF116267_B37_Strelka.raw.vcf.gz -b /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Foundation/Bed/t7D2BaitSetB37EnsGeneExonsPad25bp.bed -s TRF116267_B37_StrelkaRegionFilter &> Log/TRF116267_B37_StrelkaRegionFilter.log && mv -f TRF116267_B37_StrelkaRegionFilter/*_int.vcf.gz TRF116267_B37_Strelka.regionFilt.vcf.gz &>> Log/TRF116267_B37_StrelkaRegionFilter.log && rm -rf TRF116267_B37_StrelkaRegionFilter && echo [`date`] rule StrelkaRegionFilter: COMPLETE && echo 
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule MutectFilter:
+    input: Vcf/TRF116267_B37_Mutect.raw.vcf.gz
+    output: TRF116267_B37_Mutect.filt.vcf.gz
+    log: Log/TRF116267_B37_MutectFilter.log
+    jobid: 27
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps/MutectVCFParser -v Vcf/TRF116267_B37_Mutect.raw.vcf.gz -t 0.01 -n 1 -u 100 -o 10 -d 0.01 -r 1.2 &> Log/TRF116267_B37_MutectFilter.log && mv -f Vcf/TRF116267_B37_Mutect.raw_Filtered.vcf.gz TRF116267_B37_Mutect.filt.vcf.gz && echo [`date`] rule MutectFilter: COMPLETE && echo 
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule StrelkaFilter:
+    input: TRF116267_B37_Strelka.regionFilt.vcf.gz
+    output: TRF116267_B37_Strelka.filt.vcf.gz
+    log: Log/TRF116267_B37_StrelkaFilter.log
+    jobid: 28
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps/StrelkaVCFParser -v TRF116267_B37_Strelka.regionFilt.vcf.gz -t 0.01 -n 1 -u 100 -o 10 -d 0.01 -r 1.2 &> Log/TRF116267_B37_StrelkaFilter.log && mv -f TRF116267_B37_Strelka.regionFilt_Filtered.vcf.gz TRF116267_B37_Strelka.filt.vcf.gz &>> Log/TRF116267_B37_StrelkaFilter.log && echo [`date`] rule StrelkaFilter: COMPLETE && echo 
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule AggregateQCStats:
+    input: Json/TRF116267_B37_FastqCount.json.gz, Json/TRF116267_B37_SamAlignmentExtractor.json.gz, Json/TRF116267_B37_MergePairedAlignments.json.gz, Json/TRF116267_B37_Sam2USeq.json.gz
+    output: QC/TRF116267_B37_AggQC
+    log: Log/TRF116267_B37_AggregateQCStats.log
+    jobid: 2
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps/AggregateQCStats -j . -r QC/TRF116267_B37_AggQC -p TRF116267_B37_ &> Log/TRF116267_B37_AggregateQCStats.log && echo [`date`] rule AggregateQCStats: COMPLETE; echo 
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule USeq2UCSCBig:
+    input: TRF116267_B37_uniObReadCov.useq, /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/UCSC/08-Mar-2016
+    output: QC/TRF116267_B37_uniObReadCov.bw
+    log: Log/TRF116267_B37_Useq2UCSCBig.log
+    jobid: 4
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps/USeq2UCSCBig -u TRF116267_B37_uniObReadCov.useq -f -d /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/UCSC/08-Mar-2016 &> Log/TRF116267_B37_Useq2UCSCBig.log && mv -f TRF116267_B37_uniObReadCov.bw QC/TRF116267_B37_uniObReadCov.bw && echo [`date`] rule USeq2UCSCBig: COMPLETE; echo 
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule SplitMutectBam:
+    input: TRF116267_B37_Mutect/mutect.realigned.bam
+    output: Bam/TRF116267_B37_MutectBams
+    log: Log/TRF116267_B37_SplitMutectBam.log
+    jobid: 3
+    threads: 8
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] mkdir -p Bam/TRF116267_B37_MutectBams && /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Picard/2.1.1/picard.jar SplitSamByLibrary CREATE_INDEX=true MAX_RECORDS_IN_RAM=5000000 TMP_DIR=. VALIDATION_STRINGENCY=SILENT I=TRF116267_B37_Mutect/mutect.realigned.bam O=Bam/TRF116267_B37_MutectBams &> Log/TRF116267_B37_SplitMutectBam.log && echo [`date`] rule SplitMutectBam: COMPLETE 
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule VCFConsensus:
+    input: TRF116267_B37_Mutect.filt.vcf.gz, TRF116267_B37_Lofreq.filt.vcf.gz, TRF116267_B37_Strelka.filt.vcf.gz
+    output: Vcf/TRF116267_B37_LoMuStConsensus.vcf.gz
+    log: Log/TRF116267_B37_VCFConsensus.log
+    jobid: 24
+    threads: 8
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps/VCFConsensus -p TRF116267_B37_Mutect.filt.vcf.gz -s TRF116267_B37_Strelka.filt.vcf.gz -o TRF116267_B37_tempCon.vcf.gz &> Log/TRF116267_B37_VCFConsensus.log && /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps/VCFConsensus -p TRF116267_B37_tempCon.vcf.gz -s TRF116267_B37_Lofreq.filt.vcf.gz -o Vcf/TRF116267_B37_LoMuStConsensus.vcf.gz &>> Log/TRF116267_B37_VCFConsensus.log && rm -f TRF116267_B37_tempCon.vcf.gz && echo [`date`] rule VCFConsensus: COMPLETE && echo 
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule FoundationVcfComparator:
+    input: Vcf/TRF116267_B37_Foundation.vcf.gz, Vcf/TRF116267_B37_LoMuStConsensus.vcf.gz
+    output: Vcf/TRF116267_B37_Merged.vcf.gz
+    log: Log/TRF116267_B37_FoundationVcfComparator.log
+    jobid: 21
+    threads: 8
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps/FoundationVcfComparator -f Vcf/TRF116267_B37_Foundation.vcf.gz -r Vcf/TRF116267_B37_LoMuStConsensus.vcf.gz -m Vcf/TRF116267_B37_Merged.vcf.gz &> Log/TRF116267_B37_FoundationVcfComparator.log && echo [`date`] rule FoundationVcfComparator: COMPLETE; echo 
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule VCFBackgroundChecker:
+    input: Vcf/TRF116267_B37_Merged.vcf.gz, /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Foundation/MpileupBkgFound50Bams/b37Foundation50.mpileup.gz
+    output: TRF116267_B37_VCFBackgroundChecker, Vcf/TRF116267_B37_VBC.vcf.gz
+    log: Log/TRF116267_B37_VCFBackgroundChecker.log
+    jobid: 16
+    threads: 16
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps/VCFBackgroundChecker -v Vcf/TRF116267_B37_Merged.vcf.gz -m /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Foundation/MpileupBkgFound50Bams/b37Foundation50.mpileup.gz -c 10 -s TRF116267_B37_VCFBackgroundChecker -t 16 -b 1 -u  &> Log/TRF116267_B37_VCFBackgroundChecker.log && mv -f TRF116267_B37_VCFBackgroundChecker/TRF116267_B37_Merged.vcf.gz Vcf/TRF116267_B37_VBC.vcf.gz && echo [`date`] rule VCFBackgroundChecker: COMPLETE && echo 
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule VCFSpliceScanner:
+    input: Vcf/TRF116267_B37_VBC.vcf.gz, /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Genes/b37EnsTranscripts12June2017.ucsc.gz, /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Documentation/splicemodels/
+    output: Vcf/TRF116267_B37_Final.vcf.gz
+    log: Log/TRF116267_B37_VCFSpliceScanner.log
+    jobid: 11
+    threads: 16
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps/VCFSpliceScanner -v Vcf/TRF116267_B37_VBC.vcf.gz -r Vcf/TRF116267_B37_Final.vcf.gz -f /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Ref/human_g1k_v37_decoy_phiXAdaptr.fasta -u /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/B37/Genes/b37EnsTranscripts12June2017.ucsc.gz -m /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Documentation/splicemodels/  &> Log/TRF116267_B37_VCFSpliceScanner.log && echo [`date`] rule VCFSpliceScanner: COMPLETE && echo 
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule SnpEff:
+    input: Vcf/TRF116267_B37_Final.vcf.gz, /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/Clinvar/B37/norm_clinvar.vcf.gz, /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/DbNSFP/B37/dbNSFP3.5a_hg19.txt.gz, /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/SnpEff/4.3/snpEff
+    output: Vcf/TRF116267_B37_Final.AnnoSnpEff.vcf.gz, Vcf/TRF116267_B37_Final.AnnoSnpEff.txt.gz
+    log: Log/TRF116267_B37_SnpEff.log
+    jobid: 5
+    threads: 16
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] mkdir -p TRF116267_B37_SnpEffTemp &> Log/TRF116267_B37_SnpEff.log && /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/SnpEff/4.3/snpEff/snpEff.jar -v -no-intergenic GRCh37.75 Vcf/TRF116267_B37_Final.vcf.gz > TRF116267_B37_SnpEffTemp/anno.vcf 2>> Log/TRF116267_B37_SnpEff.log && mv -f snpEff_* TRF116267_B37_SnpEffTemp/ &>> Log/TRF116267_B37_SnpEff.log && /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/SnpEff/4.3/snpEff/SnpSift.jar annotate -v /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/Clinvar/B37/norm_clinvar.vcf.gz TRF116267_B37_SnpEffTemp/anno.vcf > TRF116267_B37_SnpEffTemp/annoClinvar.vcf 2>> Log/TRF116267_B37_SnpEff.log && /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/SnpEff/4.3/snpEff/SnpSift.jar dbnsfp -db /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/Anno/DbNSFP/B37/dbNSFP3.5a_hg19.txt.gz -v -a -m -collapse TRF116267_B37_SnpEffTemp/annoClinvar.vcf 2>> Log/TRF116267_B37_SnpEff.log | gzip > Vcf/TRF116267_B37_Final.AnnoSnpEff.vcf.gz && gunzip -c Vcf/TRF116267_B37_Final.AnnoSnpEff.vcf.gz | /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/SnpEff/4.3/snpEff/scripts/vcfInfoOnePerLine.pl | egrep -v -e '.+dbNSFP.+\.$' | gzip > Vcf/TRF116267_B37_Final.AnnoSnpEff.txt.gz && rm -rf TRF116267_B37_SnpEffTemp && echo [`date`] rule SnpEff: COMPLETE; echo 
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule VcfTabix:
+    input: Vcf/TRF116267_B37_Final.AnnoSnpEff.vcf.gz, /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/HTSlib/1.3/bin/
+    output: Vcf/TRF116267_B37_Final.AnnoSnpEff.vcf.gz.tbi
+    log: Log/TRF116267_B37_VcfTabix.log
+    jobid: 1
+    threads: 8
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Java/1.8.0_65/bin/java -jar -Djava.io.tmpdir=. -Xmx21G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps/VCFTabix -t /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/HTSlib/1.3/bin/ -v Vcf/ &> Log/TRF116267_B37_VcfTabix.log && echo [`date`] rule VcfTabix: COMPLETE; echo 
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] rule Results:
+    input: QC/TRF116267_B37_AggQC, QC/TRF116267_B37_uniObReadCov.bw, Vcf/TRF116267_B37_Final.AnnoSnpEff.vcf.gz.tbi, Bam/TRF116267_B37_MutectBams
+    output: TRF116267_B37_FoundationWorkflow_COMPLETE
+    jobid: 0
+[Wed Nov 29 12:50:43 2017] 
+[Wed Nov 29 12:50:43 2017] touch TRF116267_B37_FoundationWorkflow_COMPLETE && gzip -f Log/*log && rm -rf TRF116267_B37_raw.bam TRF116267_B37_unfiltered.bam TRF116267_B37_unfiltered.bai snappy* TRF116267_B37_sae.bam TRF116267_B37_sae.bai TRF116267_B37_dupFree.bam TRF116267_B37_dupFree.bai TRF116267_B37_indelRealign.intervals TRF116267_B37_realign.bam TRF116267_B37_realign.bai TRF116267_B37_recalibration.grp TRF116267_B37_StrelkaRegionFilter TRF116267_B37_Strelka.regionFilt.vcf.gz TRF116267_B37_Strelka.filt.vcf.gz TRF116267_B37_Lofreq TRF116267_B37_Lofreq.filt.vcf.gz TRF116267_B37_Mutect TRF116267_B37_Mutect.filt.vcf.gz TRF116267_B37_VCFBackgroundChecker TRF116267_B37_MPA TRF116267_B37_uniObReadCov.useq TRF116267_B37_RemoveDuplicates.metrics TRF116267_B37_Strelka TRF116267_B37_StrelkaRegionFilter TRF116267_B37_StrelkaTemp Vcf/TRF116267_B37_Merged.vcf.gz Vcf/TRF116267_B37_VBC.vcf.gz TRF116267_B37_NoNormFoundation.vcf && echo [`date`] rule OrganizeResults: COMPLETE; echo 
+[Wed Nov 29 12:50:43 2017] Job counts:
+	count	jobs
+	1	AggregateQCStats
+	1	Align
+	1	CountFastq
+	1	CreateTargetsForIndelRealignment
+	1	FoundationVcfComparator
+	1	FoundationXml2Vcf
+	1	Lofreq
+	1	LofreqFilter
+	1	LofreqMerge
+	1	MergePairedAlignments
+	1	Mutect
+	1	MutectFilter
+	1	NormalizeVcf
+	1	PrintRecalibratedBam
+	1	RealignIndels
+	1	RecalibrateBases
+	1	RemoveDuplicates
+	1	Results
+	1	Sam2Fastq
+	1	Sam2USeq
+	1	SamAlignmentExtractor
+	1	SnpEff
+	1	SortSam
+	1	SplitMutectBam
+	1	Strelka
+	1	StrelkaFilter
+	1	StrelkaPostProc
+	1	StrelkaRegionFilter
+	1	USeq2UCSCBig
+	1	VCFBackgroundChecker
+	1	VCFConsensus
+	1	VCFSpliceScanner
+	1	VcfTabix
+	33

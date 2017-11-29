@@ -1,0 +1,216 @@
+# Base name to prepend on all files
+name = config["name"]
+nameBuild = config["name"] + "_" + config["genomeBuild"]
+
+# Common apps
+useq = config["useq"]
+picard = config["picard"]
+gatk = config["gatk"]
+java = config["java"] + " -jar -Djava.io.tmpdir=. " + "-Xmx" + str(config["allRam"]) + "G"
+
+# Common resources
+controlBam = config["controlBam"]
+regionsForOnTarget = config["regionsForOnTarget"]
+indexFasta = config["indexFasta"]
+dbsnp = config["dbsnp"]
+
+# Threads and memory
+allThreads = int(config["allThreads"])
+halfThreads = int(round(allThreads/2,0))
+
+# VCF variant filtering params
+minTumorAlignmentDepth = config["minTumorAlignmentDepth"]
+minNormalAlignmentDepth = config["minNormalAlignmentDepth"]
+minTumorAF = config["minTumorAF"]
+maxNormalAF = config["maxNormalAF"]
+minTNRatio = config["minTNRatio"]
+minTNDiff = config["minTNDiff"]
+
+# Include common rules
+include: "uniCommonRules_0.4.sm"
+
+# Workflow trigger
+rule Results:
+    input:
+        "QC/"+ nameBuild+ "_AggQC",
+        "QC/"+ nameBuild+ "_uniObReadCov.bw",
+        "Vcf/"+ nameBuild+ "_Final.AnnoSnpEff.vcf.gz.tbi",
+        "Bam/"+ nameBuild+ "_MutectBams"
+    output:
+        nameBuild+ "_FoundationWorkflow_COMPLETE"
+    shell:
+        "touch {output} && "
+        "gzip -f Log/*log && "
+        "rm -rf {nameBuild}_raw.bam {nameBuild}_unfiltered.bam {nameBuild}_unfiltered.bai snappy* "
+        "{nameBuild}_sae.bam {nameBuild}_sae.bai {nameBuild}_dupFree.bam {nameBuild}_dupFree.bai "
+        "{nameBuild}_indelRealign.intervals {nameBuild}_realign.bam {nameBuild}_realign.bai "
+        "{nameBuild}_recalibration.grp {nameBuild}_StrelkaRegionFilter {nameBuild}_Strelka.regionFilt.vcf.gz "
+        "{nameBuild}_Strelka.filt.vcf.gz {nameBuild}_Lofreq {nameBuild}_Lofreq.filt.vcf.gz {nameBuild}_Mutect "
+        "{nameBuild}_Mutect.filt.vcf.gz {nameBuild}_VCFBackgroundChecker {nameBuild}_MPA {nameBuild}_uniObReadCov.useq "
+        "{nameBuild}_RemoveDuplicates.metrics {nameBuild}_Strelka {nameBuild}_StrelkaRegionFilter "
+        "{nameBuild}_StrelkaTemp Vcf/{nameBuild}_Merged.vcf.gz Vcf/{nameBuild}_VBC.vcf.gz "
+        "{nameBuild}_NoNormFoundation.vcf && "
+        "echo [`date`] rule OrganizeResults: COMPLETE; echo "
+
+############################# Realignment B37 ###############################
+
+# Convert Foundation Bam to fastq
+rule Sam2Fastq:
+    input:
+        bam = config["sampleBam"]
+    output:
+        f1 = "Fastq/"+ name+ "_1.fastq.gz",
+        f2 = "Fastq/"+ name+ "_2.fastq.gz"
+    log:
+        "Log/"+ name+ "_Sam2Fastq.log"
+    threads:
+        allThreads
+    shell:
+        "{java} {picard} SamToFastq INPUT={input.bam} FASTQ={output.f1} "
+        "SECOND_END_FASTQ={output.f2} TMP_DIR=. VALIDATION_STRINGENCY=SILENT &> {log} && " 
+        "echo [`date`] rule Sam2Fastq: COMPLETE; echo "
+
+# Align with bwa mem, mark dups, write out as bam
+rule Align:
+    input:
+        f1 = "Fastq/"+ name+ "_1.fastq.gz",
+        f2 = "Fastq/"+ name+ "_2.fastq.gz",
+        bwa = config["bwa"],
+        samtools = config["samtools"],
+        samblaster = config["samblaster"]
+    output:
+        nameBuild+ "_raw.bam"
+    log:
+        "Log/"+ nameBuild+ "_Align.log"
+    params: 
+        rg ="\"@RG\\tID:"+nameBuild+"\\tPL:ILLUMINA\\tLB:"+nameBuild+"\\tSM:"+nameBuild+ "\\tCN:HCI\\tPU:"+nameBuild+"\""
+    threads:    
+        allThreads
+    shell:
+        # Remove the log
+        "rm -rf {log}; "
+        # Align with bwa mem
+        "{input.bwa} mem -v 1 -t {threads} -R {params.rg} {indexFasta} {input.f1} {input.f2} 2>> {log} | "
+        # Mark duplicates
+        "{input.samblaster} 2>> {log} | "
+        # Write as bam
+        "{input.samtools} view -Sb - 2>> {log} > {output} && "
+        "echo [`date`] rule Align: COMPLETE; echo "
+
+
+############# Indel Realignment and Recalibration ##############
+
+# Realign Indels with GATK, target creator
+rule CreateTargetsForIndelRealignment:
+    input:
+        bam = nameBuild+ "_dupFree.bam",
+        bai = nameBuild+ "_dupFree.bai",
+        gI = config["goldIndels"],
+        oI = config["oneKIndels"]
+    output:
+        nameBuild+ "_indelRealign.intervals"
+    threads:
+        allThreads
+    log:
+        "Log/"+ nameBuild+ "_CreateTargetsForIndelRealignment.log"
+    shell:
+        "{java} {gatk} -T RealignerTargetCreator -R {indexFasta} "
+        "-I {input.bam} -o {output} --known {input.gI} "
+        "--known {input.oI} &> {log} && "
+        "echo [`date`] rule CreateTargetsForIndelRealignment: COMPLETE; echo" 
+
+# Realign Indels with GATK, perform realignments
+rule RealignIndels:
+    input:
+        bam = nameBuild+ "_dupFree.bam",
+        bai = nameBuild+ "_dupFree.bai",
+        targets = nameBuild+ "_indelRealign.intervals",
+        gI = config["goldIndels"],
+        oI = config["oneKIndels"]
+    output:
+        bam= nameBuild+ "_realign.bam",
+        bai= nameBuild+ "_realign.bai"
+    threads:
+        allThreads
+    log:
+        "Log/"+ nameBuild+ "_IndelRealign.log"
+    shell:
+        "{java} {gatk} -T IndelRealigner -R {indexFasta} "
+        "-targetIntervals {input.targets} -I {input.bam} -o {output.bam} "
+        "-known {input.gI} --maxReadsForRealignment 100000 --maxReadsForConsensuses 500 "
+        "-known {input.oI} &> {log} && "
+        "echo [`date`] rule RealignIndels: COMPLETE; echo" 
+        
+# Base recalibration with GATK, target creator
+rule RecalibrateBases:
+    input:
+        bam= nameBuild+ "_realign.bam",
+        bai= nameBuild+ "_realign.bai"
+    output:
+        nameBuild+ "_recalibration.grp"
+    threads:
+        allThreads    
+    log:
+        "Log/"+ nameBuild+ "_RecalibrateBases.log"
+    shell:
+        "{java} {gatk} -nct {threads} -T BaseRecalibrator "
+        "-R {indexFasta} -knownSites {dbsnp} -I {input.bam} -o {output} &> {log} && "
+        "echo [`date`] rule RecalibrateBases: COMPLETE; echo" 
+
+############################# Variant Calling ###############################        
+        
+# Calls Strelka for tumor vs non matched control normal analysis
+rule Strelka:
+    input:
+         tumorBam = "Bam/"+ nameBuild+ "_final.bam",
+         tumorBai= "Bam/"+ nameBuild+ "_final.bai",
+         strelka = config["strelka"]
+    output:
+        dir = nameBuild+ "_Strelka",
+        vcf1 = nameBuild+ "_Strelka/results/all.somatic.indels.vcf",
+        vcf2 = nameBuild+ "_Strelka/results/all.somatic.snvs.vcf"
+    log:
+        "Log/"+ nameBuild+ "_Strelka.log"
+    threads: 
+        allThreads
+    shell:
+        "rm -rf {output.dir} && "
+        "t=`readlink -f {input.tumorBam}` && "
+        "{input.strelka}/bin/configureStrelkaWorkflow.pl "
+        "--normal={controlBam} --tumor=$t --ref={indexFasta} "
+        "--config={input.strelka}/etc/strelka_config_bwa_relaxedIndel.ini "
+        "--output-dir={output.dir} &> {log} && "
+        "make -j {threads} -C {output.dir} &>> {log} && "
+        "echo [`date`] rule Strelka: COMPLETE && echo "
+
+# Convert the Foundation XML report to vcf, currently this is an inprecise process
+rule FoundationXml2Vcf:
+    input:
+        xml = config["sampleXml"]
+    output:
+        vcf = nameBuild+"_NoNormFoundation.vcf"
+    log:
+        "Log/"+ nameBuild+ "_FoundationXml2Vcf.log"
+    shell:
+        "{java} {useq}/FoundationXml2Vcf -x {input.xml} "
+        "-s {nameBuild}_Foundation -f {indexFasta} &> {log} && "
+        "cp {nameBuild}_Foundation/*vcf {output.vcf} &>> {log} && "
+        "rm -rf {nameBuild}_Foundation && "
+        "echo [`date`] rule FoundationXml2Vcf: COMPLETE; echo "
+
+# Normalize the Foundation vcf with Vt
+rule NormalizeVcf:
+    input:
+        vcf= nameBuild+"_NoNormFoundation.vcf",
+        vt= config["vt"]
+    output:
+        "Vcf/"+ nameBuild+"_Foundation.vcf.gz"
+    log:
+        "Log/"+ nameBuild+ "_NormalizeVcf.log"
+    shell:
+        "{input.vt} normalize -r {indexFasta} {input.vcf} -o {nameBuild}_tempFoundation.vcf &> {log} && "
+        "{input.vt} decompose_blocksub {nameBuild}_tempFoundation.vcf -o Vcf/{nameBuild}_Foundation.vcf &>> {log} && "
+        "rm -f {nameBuild}_tempFoundation.vcf && "
+        "gzip Vcf/{nameBuild}_Foundation.vcf &>> {log} && "
+        "echo [`date`] rule NormalizeVcf: COMPLETE; echo "
+

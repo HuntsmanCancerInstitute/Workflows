@@ -1,0 +1,456 @@
+## Base nameBuild to prepend on all files
+nameBuild = config["name"] + "_" + config["genomeBuild"]
+
+# Common apps
+useq = config["useq"]
+picard = config["picard"]
+gatk = config["gatk"]
+java = config["java"] + " -jar -Djava.io.tmpdir=. " + "-Xmx" + str(config["allRam"]) + "G"
+
+## Threads
+allThreads = int(config["allThreads"])
+halfThreads = int(round(allThreads/2,0))
+
+# Count the number of fastq records
+rule CountFastq:
+    input:
+        "Fastq/"+name+ "_1.fastq.gz"
+    output:
+        "Json/" +nameBuild+ "_FastqCount.json.gz"
+    shell:
+        "x=$(gunzip -c {input} | wc -l | tr -d \" \") && "
+        "y=$(($x/2)) && "
+        "echo \{{ > Json/{nameBuild}_FastqCount.json && "
+        "echo \\\"numberFastqReads\\\": $y >> Json/{nameBuild}_FastqCount.json && "
+        "echo \}} >> Json/{nameBuild}_FastqCount.json && "
+        "gzip Json/{nameBuild}_FastqCount.json && "
+        "echo [`date`] rule CountFastq: COMPLETE; echo "
+
+# Sort alignments
+rule SortSam:
+    input:
+        nameBuild+ "_raw.bam"
+    output:
+        bam = nameBuild+ "_unfiltered.bam",
+        bai = nameBuild+ "_unfiltered.bai"
+    threads:
+        halfThreads
+    log:
+        "Log/"+ nameBuild+ "_SortSam.log"
+    shell:
+        "{java} {picard} SortSam CREATE_INDEX=true SO=coordinate "
+        "MAX_RECORDS_IN_RAM=5000000 TMP_DIR=. VALIDATION_STRINGENCY=SILENT INPUT={input} "
+        "OUTPUT={output.bam} &> {log} && "
+        "echo [`date`] rule SortSam: COMPLETE; echo "
+        
+# Use the SamAlignmentExtractor to remove poor quality alignments 
+rule SamAlignmentExtractor:
+    input:
+        bam = nameBuild+ "_unfiltered.bam",
+        bai = nameBuild+ "_unfiltered.bai",
+        bed = config["regionsForOnTarget"]
+    output:
+        bam = nameBuild+ "_sae.bam",
+        bai = nameBuild+ "_sae.bai",
+        json = "Json/"+ nameBuild+ "_SamAlignmentExtractor.json.gz"
+    params:
+        sae= config["useqSamAlignmentExtractor"],
+    log:
+        "Log/"+ nameBuild+ "_SamAlignmentExtractor.log",
+    shell:
+        "{java} {useq}/SamAlignmentExtractor {params.sae} "
+        "-s {nameBuild}_SAE -b {input.bam} "
+        "-r {input.bed} -j {output.json} &> {log} && "
+        "mv {nameBuild}_SAE/*_passSAE.bam {output.bam} &>> {log} && "
+        "mv {nameBuild}_SAE/*_passSAE.bai {output.bai} &>> {log} && "
+        "rm -rf {nameBuild}_SAE && "
+        "echo [`date`] rule SamAlignmentExtractor: COMPLETE; echo "
+        
+# Remove duplicates
+rule RemoveDuplicates:
+    input:
+        bam = nameBuild+ "_sae.bam",
+        bai = nameBuild+ "_sae.bai"
+    output:
+        bam = nameBuild+ "_dupFree.bam",
+        bai = nameBuild+ "_dupFree.bai",
+        metrics = nameBuild+ "_RemoveDuplicates.metrics"
+    threads:
+        halfThreads
+    log:
+        "Log/"+ nameBuild+ "_RemoveDuplicates.log"
+    shell:
+        "{java} {picard} MarkDuplicates REMOVE_DUPLICATES=true TMP_DIR=. VERBOSITY=ERROR "
+        "VALIDATION_STRINGENCY=SILENT MAX_RECORDS_IN_RAM=5000000 CREATE_INDEX=true "
+        "METRICS_FILE={output.metrics} INPUT={input.bam} OUTPUT={output.bam} &> {log} && "
+        "echo [`date`] rule RemoveDuplicates: COMPLETE; echo"
+
+# Write out recalibrated bam with GATK
+rule PrintRecalibratedBam:
+    input:
+        grp = nameBuild+ "_recalibration.grp",
+        bam = nameBuild+ "_realign.bam",
+        bai= nameBuild+ "_realign.bai"
+    output:
+        bam = "Bam/"+ nameBuild+ "_final.bam",
+        bai = "Bam/"+ nameBuild+ "_final.bai"
+    threads:
+        allThreads
+    log:
+        "Log/"+ nameBuild+ "_PrintRecalibratedBam.log"
+    shell:
+        "{java} {gatk} -nct {threads} -T PrintReads "
+        "-R {indexFasta} -I {input.bam} -BQSR {input.grp} -o {output.bam} &> {log} && "
+        "echo [`date`] rule PrintRecalibratedBam: COMPLETE; echo" 
+
+############################# Variant Calling ###############################
+
+rule StrelkaPostProc:
+    input:
+        dir = nameBuild+ "_Strelka",
+        vcf1 = nameBuild+ "_Strelka/results/all.somatic.indels.vcf",
+        vcf2 = nameBuild+ "_Strelka/results/all.somatic.snvs.vcf"
+    output:
+        vcf = "Vcf/" + nameBuild+"_Strelka.raw.vcf.gz",
+        dir = "Bam/"+ nameBuild+"_StrelkaBams"
+    log:
+        "Log/"+ nameBuild+ "_StrelkaPostProc.log"
+    shell:
+        "rm -f {input.dir}/results/passed* && "
+        "{java} {useq}/VCFMerger -o {output.vcf} -v {input.dir}/results/ &> {log} && "
+        "mkdir -p {output.dir} && "
+        "cp -f {input.dir}/realigned/normal.realigned.ba* {output.dir}/ && "
+        "cp -f {input.dir}/realigned/tumor.realigned.ba* {output.dir}/ && "
+        "echo [`date`] rule StrelkaPostProc: COMPLETE && echo "
+
+rule StrelkaRegionFilter:
+    input:
+        vcf = "Vcf/"+ nameBuild+"_Strelka.raw.vcf.gz",
+        regions = config["regionsForAnalysis"]    
+    output:
+        vcf = nameBuild+ "_Strelka.regionFilt.vcf.gz"
+    log:
+        "Log/"+ nameBuild+ "_StrelkaRegionFilter.log"
+    shell:
+        "{java} {useq}/VCFRegionFilter -v {input.vcf} -b {input.regions} "
+        "-s {nameBuild}_StrelkaRegionFilter &> {log} && "
+        "mv -f {nameBuild}_StrelkaRegionFilter/*_int.vcf.gz {output.vcf} &>> {log} && "
+        "rm -rf {nameBuild}_StrelkaRegionFilter && "
+        "echo [`date`] rule StrelkaRegionFilter: COMPLETE && echo "
+
+rule StrelkaFilter:
+    input:
+        nameBuild+ "_Strelka.regionFilt.vcf.gz"
+    output:
+        nameBuild+ "_Strelka.filt.vcf.gz"
+    log:
+        "Log/"+ nameBuild+ "_StrelkaFilter.log"
+    shell:
+        "{java} {useq}/StrelkaVCFParser -v {input} -t {minTumorAF} "
+        "-n {maxNormalAF} -u {minTumorAlignmentDepth} -o {minNormalAlignmentDepth} "
+        "-d {minTNDiff} -r {minTNRatio} &> {log} && "
+        "mv -f {nameBuild}_Strelka.regionFilt_Filtered.vcf.gz {output} &>> {log} && "
+        "echo [`date`] rule StrelkaFilter: COMPLETE && echo "
+
+# Requires python 2.7
+rule Lofreq:
+    input:
+        ignore = nameBuild+ "_Strelka",
+        tumorBam = "Bam/"+ nameBuild+ "_final.bam",
+        lofreq = config["lofreq"],
+        regions = config["regionsForAnalysis"]
+    output:
+        dir= nameBuild+ "_Lofreq",
+        indels= nameBuild+ "_Lofreq/"+nameBuild+"_somatic_final.indels.vcf.gz",
+        snvs= nameBuild+ "_Lofreq/"+nameBuild+"_somatic_final.snvs.vcf.gz"
+    log:
+        "Log/"+ nameBuild+ "_lofreq.log"
+    threads: 
+        allThreads
+    shell:
+        "rm -rf {output.dir} && mkdir -p {output.dir} &> {log} && "
+        "{input.lofreq} somatic --tumor-mtc-alpha 10.0 --indel-tumor-mtc-alpha 0.5 --call-indels "
+        "-f {indexFasta} -o {nameBuild}_Lofreq/{nameBuild}_ -l {input.regions} -n {controlBam} "
+        "-t {input.tumorBam} --threads {threads} &>> {log} && "
+        "rm -rf {nameBuild}_Lofreq/*_relaxed.* {nameBuild}_Lofreq/*_raw.* {nameBuild}_Lofreq/*stringent.*  &>> {log} && "
+        "echo [`date`] rule Lofreq: COMPLETE && echo "
+
+rule LofreqMerge:
+    input:
+        indels= nameBuild+ "_Lofreq/"+nameBuild+"_somatic_final.indels.vcf.gz",
+        snvs= nameBuild+ "_Lofreq/"+nameBuild+"_somatic_final.snvs.vcf.gz"
+    output:
+        "Vcf/"+ nameBuild+"_Lofreq.raw.vcf.gz"
+    log:
+        "Log/"+ nameBuild+ "_LofreqMerge.log"
+    shell:
+        "{java} {useq}/VCFMerger -v {nameBuild}_Lofreq -o {output} &> {log} && "
+        "echo [`date`] rule LofreqMerge: COMPLETE && echo "
+
+rule LofreqFilter:
+    input:
+        "Vcf/"+ nameBuild+ "_Lofreq.raw.vcf.gz"
+    output:
+        nameBuild+"_Lofreq.filt.vcf.gz"
+    log:
+        "Log/"+ nameBuild+ "_LofreqFilter.log"
+    shell:
+        "{java} {useq}/LofreqVCFParser -d {minTumorAlignmentDepth} -t {minTumorAF} "
+        "-a -v {input} &> {log} && "
+        "mv -f Vcf/{nameBuild}_Lofreq.raw_Filtered.vcf.gz {output} &>> {log} && "
+        "echo [`date`] rule LofreqFilter: COMPLETE && echo "
+        
+rule Mutect:
+    input:
+        ignore = nameBuild+ "_Lofreq",
+        tumorBam = "Bam/"+ nameBuild+ "_final.bam",
+        gatk8 = config["gatk8"],
+        cosmic = config["cosmic"],
+        j = config["java"],
+        regions = config["regionsForAnalysis"],
+        dbsnp = config["dbsnp"]
+    output:
+        dir= nameBuild+ "_Mutect",
+        vcf= "Vcf/"+ nameBuild+ "_Mutect.raw.vcf.gz",
+        bam= nameBuild+ "_Mutect/mutect.realigned.bam"
+    log:
+        "Log/"+ nameBuild+ "_Mutect.log"
+    threads: 
+        allThreads
+    shell:
+        "java -jar -Xmx5G {useq}/GatkRunner  -s {output.dir} -r {input.regions} -t 10 "
+        "-b -c '{input.j} -Xmx5G -jar -Djava.io.tmpdir=. {input.gatk8} -T MuTect2 -I:tumor {input.tumorBam} "
+        "-I:normal {controlBam} -mbq 20 -R {indexFasta} --dbsnp {input.dbsnp} --cosmic {input.cosmic} -dt NONE "
+        "--max_alt_allele_in_normal_fraction {maxNormalAF} ' &> {log} && "
+        "cat {output.dir}/gatk.raw.vcf | gzip > {output.vcf} && "
+        "echo [`date`] rule Mutect: COMPLETE && echo "
+
+rule SplitMutectBam:
+    input:
+        nameBuild+ "_Mutect/mutect.realigned.bam"
+    output:
+        "Bam/"+ nameBuild+ "_MutectBams"
+    log:
+        "Log/"+ nameBuild+ "_SplitMutectBam.log"
+    threads: 
+        halfThreads
+    shell:
+        "mkdir -p {output} && "
+        "{java} {picard} SplitSamByLibrary CREATE_INDEX=true "
+        "MAX_RECORDS_IN_RAM=5000000 TMP_DIR=. VALIDATION_STRINGENCY=SILENT I={input} "
+        "O={output} &> {log} && "
+        "echo [`date`] rule SplitMutectBam: COMPLETE "
+
+rule MutectFilter:
+    input:
+        "Vcf/"+ nameBuild+"_Mutect.raw.vcf.gz",
+    output:
+        vcf = nameBuild+"_Mutect.filt.vcf.gz",
+    log:
+        "Log/"+ nameBuild+ "_MutectFilter.log"
+    shell:
+        "{java} {useq}/MutectVCFParser -v {input} -t {minTumorAF} "
+        "-n {maxNormalAF} -u {minTumorAlignmentDepth} -o {minNormalAlignmentDepth} "
+        "-d {minTNDiff} -r {minTNRatio} &> {log} && "
+        "mv -f Vcf/{nameBuild}_Mutect.raw_Filtered.vcf.gz {output.vcf} && "
+        "echo [`date`] rule MutectFilter: COMPLETE && echo "
+
+rule VCFConsensus:
+    input:
+        mu= nameBuild+"_Mutect.filt.vcf.gz",
+        sc= nameBuild+"_Lofreq.filt.vcf.gz",
+        st= nameBuild+"_Strelka.filt.vcf.gz"
+    output:
+        "Vcf/"+ nameBuild+"_LoMuStConsensus.vcf.gz"
+    log:
+        "Log/"+ nameBuild+"_VCFConsensus.log"
+    threads:
+        halfThreads
+    shell:
+        "{java} {useq}/VCFConsensus -p {input.mu} -s {input.st} -o {nameBuild}_tempCon.vcf.gz &> {log} && "
+        "{java} {useq}/VCFConsensus -p {nameBuild}_tempCon.vcf.gz -s {input.sc} -o {output} &>> {log} && "
+        "rm -f {nameBuild}_tempCon.vcf.gz && "
+        "echo [`date`] rule VCFConsensus: COMPLETE && echo "
+
+# Compare the Foundation vcf with the recalled vcf, this generates a merged vcf too
+rule FoundationVcfComparator:
+    input:
+        fVcf = "Vcf/"+ nameBuild+ "_Foundation.vcf.gz",
+        rVcf = "Vcf/"+ nameBuild+ "_LoMuStConsensus.vcf.gz"
+    output:
+        "Vcf/"+ nameBuild+ "_Merged.vcf.gz"
+    log:
+        "Log/"+ nameBuild+ "_FoundationVcfComparator.log"
+    threads:
+        halfThreads
+    shell:
+        "{java} {useq}/FoundationVcfComparator -f {input.fVcf} "
+        "-r {input.rVcf} -m {output} &> {log} && "
+        "echo [`date`] rule FoundationVcfComparator: COMPLETE; echo "
+
+# Use panel of prior tumor bams to z-score the vcf records, better to use panel of normals
+rule VCFBackgroundChecker:
+    input:
+        vcf = "Vcf/"+ nameBuild+ "_Merged.vcf.gz",
+        mpileup = config["mpileup"]
+    output:
+        dir = nameBuild+ "_VCFBackgroundChecker",
+        vcf = "Vcf/"+ nameBuild+ "_VBC.vcf.gz"
+    log:
+        "Log/"+ nameBuild+ "_VCFBackgroundChecker.log"
+    threads:
+        allThreads
+    shell:
+        "{java} {useq}/VCFBackgroundChecker -v {input.vcf} -m {input.mpileup} -c {minNormalAlignmentDepth} "
+        "-s {output.dir} -t {threads} -b 1 -u  &> {log} && "
+        "mv -f {output.dir}/{nameBuild}_Merged.vcf.gz {output.vcf} && "
+        "echo [`date`] rule VCFBackgroundChecker: COMPLETE && echo "
+
+# Scan variants for those effecting splicing
+rule VCFSpliceScanner:
+    input:
+        vcf = "Vcf/"+ nameBuild+ "_VBC.vcf.gz",
+        trans = config["ucscTrans"],
+        splice = config["spliceDir"]
+    output:
+        "Vcf/"+ nameBuild+ "_Final.vcf.gz"
+    log:
+        "Log/"+ nameBuild+ "_VCFSpliceScanner.log"
+    threads:
+        allThreads
+    shell:
+        "{java} {useq}/VCFSpliceScanner -v {input.vcf} -r {output} -f {indexFasta} "
+        "-u {input.trans} -m {input.splice}  &> {log} && "
+        "echo [`date`] rule VCFSpliceScanner: COMPLETE && echo "
+
+# Annotate variants
+rule SnpEff:
+    input:
+        vcf = "Vcf/"+ nameBuild+ "_Final.vcf.gz",
+        clinvar = config["clinvar"],
+        dbNSFP = config["dbNSFP"],
+        snpEff = config["snpEff"]
+    output:
+        vcf = "Vcf/"+ nameBuild+ "_Final.AnnoSnpEff.vcf.gz",
+        txt = "Vcf/"+ nameBuild+ "_Final.AnnoSnpEff.txt.gz"
+    log:
+        "Log/"+ nameBuild+ "_SnpEff.log"
+    threads:
+        allThreads
+    shell:
+        "mkdir -p {nameBuild}_SnpEffTemp &> {log} && "
+
+        # annotate basic
+        "{java} {input.snpEff}/snpEff.jar -v -no-intergenic GRCh37.75 "
+        "{input.vcf} > {nameBuild}_SnpEffTemp/anno.vcf 2>> {log} && " 
+        "mv -f snpEff_* {nameBuild}_SnpEffTemp/ &>> {log} && "
+
+        # add clinvar
+        "{java} {input.snpEff}/SnpSift.jar annotate -v {input.clinvar} "
+        "{nameBuild}_SnpEffTemp/anno.vcf > {nameBuild}_SnpEffTemp/annoClinvar.vcf "
+        "2>> {log} && "
+
+        # add dbNSFP and save
+        "{java} {input.snpEff}/SnpSift.jar dbnsfp -db {input.dbNSFP} -v -a -m -collapse "
+        "{nameBuild}_SnpEffTemp/annoClinvar.vcf 2>> {log} | gzip > {output.vcf} && "
+
+        # write out as txt removing empty dbNSFP entries
+        "gunzip -c {output.vcf} | {input.snpEff}/scripts/vcfInfoOnePerLine.pl | egrep -v "
+        "-e '.+dbNSFP.+\.$' | gzip > {output.txt} && "
+
+        "rm -rf {nameBuild}_SnpEffTemp && "
+        "echo [`date`] rule SnpEff: COMPLETE; echo "
+
+
+# Tabix index all the vcfs in the folder
+rule VcfTabix:
+    input:
+        vcf = "Vcf/"+ nameBuild+ "_Final.AnnoSnpEff.vcf.gz",
+        htsLib = config["htsLib"]
+    output:
+        vcf = "Vcf/"+ nameBuild+ "_Final.AnnoSnpEff.vcf.gz.tbi"
+    threads:
+        halfThreads
+    log:
+        "Log/"+ nameBuild+ "_VcfTabix.log"
+    shell:
+        "{java} {useq}/VCFTabix -t {input.htsLib} -v Vcf/ &> {log} && "
+        "echo [`date`] rule VcfTabix: COMPLETE; echo "
+
+############################# QC ###############################
+
+# QC, Merge paired alignments for unique observation QC
+rule MergePairedAlignments:
+    input:
+        bam = "Bam/"+ nameBuild+ "_final.bam"
+    output:
+        dir = nameBuild+ "_MPA",
+        json = "Json/"+ nameBuild+ "_MergePairedAlignments.json.gz"   
+    threads: 
+        halfThreads
+    log:
+        "Log/"+ nameBuild+ "_MergePairedAlignments.log"
+    shell:
+        "{java} {useq}/MergePairedAlignments -b {input.bam} -d {output.dir} "
+        "-j {output.json} -t {threads} &> {log} && "
+        "echo [`date`] rule MergePairedAlignments: COMPLETE; echo "
+
+# QC, Generate read coverage QC metrics and bed pass fail files with Sam2USeq
+rule Sam2USeq:
+    input:
+        mpa = nameBuild+ "_MPA",
+        bed = config["regionsForReadCoverage"]
+    output:
+        useq = nameBuild+ "_uniObReadCov.useq",
+        cs = "QC/"+ nameBuild+ "_PerRegionCoverageStats.txt.gz",
+        json = "Json/"+ nameBuild+ "_Sam2USeq.json.gz",
+        bed = "QC/"+nameBuild+ "_Pass.bed.gz"
+    threads:
+        halfThreads
+    params:
+        config["useqSam2USeq"] 
+    log:
+        "Log/"+ nameBuild+ "_Sam2USeq.log"
+    shell:
+        "{java} {useq}/Sam2USeq {params} -f {input.mpa} "
+        "-b {input.bed} -p {output.cs} -j {output.json} -n {nameBuild} &> {log} && "
+        "cp {input.mpa}/*useq {output.useq} &>> {log} && "
+        "mv -f {nameBuild}_Pass.bed.gz QC/ && "
+        "mv -f {nameBuild}_Fail.bed.gz QC/ && "
+        "echo [`date`] rule Sam2USeq: COMPLETE; echo "
+        
+# QC, Convert the uniOb read coverage track to something that will play nicely with IGV and the UCSC genome browsers
+rule USeq2UCSCBig:
+    input:
+        rc= nameBuild+ "_uniObReadCov.useq",
+        ucsc= config["ucsc"]
+    output:
+        "QC/"+ nameBuild+ "_uniObReadCov.bw"     
+    log:
+        "Log/"+ nameBuild+ "_Useq2UCSCBig.log"
+    shell:
+        "{java} {useq}/USeq2UCSCBig -u {input.rc} -f "
+        "-d {input.ucsc} &> {log} && "
+        "mv -f {nameBuild}_uniObReadCov.bw {output} && " 
+        "echo [`date`] rule USeq2UCSCBig: COMPLETE; echo "
+ 
+# Pulls info from the json files into xls and html reports
+rule AggregateQCStats:
+    input:
+        f= "Json/"+nameBuild+ "_FastqCount.json.gz",
+        s= "Json/"+nameBuild+ "_SamAlignmentExtractor.json.gz",
+        m= "Json/"+nameBuild+ "_MergePairedAlignments.json.gz",
+        u= "Json/"+nameBuild+ "_Sam2USeq.json.gz"
+    output:
+        "QC/"+ nameBuild+ "_AggQC"
+    log:
+        "Log/"+ nameBuild+ "_AggregateQCStats.log",
+    shell:
+        "{java} {useq}/AggregateQCStats -j . -r {output} -p {nameBuild}_ &> {log} && "
+        "echo [`date`] rule AggregateQCStats: COMPLETE; echo "
+
+
+############# Messaging ##############
+email = config["email"]
+onerror:
+    shell( "dir=`pwd`; mail -s \"Failed: {nameBuild} ($dir)\" {email} < {log}; sleep 4s")
