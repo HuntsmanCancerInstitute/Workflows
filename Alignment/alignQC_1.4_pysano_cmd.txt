@@ -1,0 +1,39 @@
+#e your.name@hci.utah.edu
+#c redwood
+
+
+start=$(date +'%s')
+echo -e "---------- Starting -------- $((($(date +'%s') - $start)/60)) min"
+
+
+
+### Job params
+# use sed or otherwise to put in custom names and IDs below
+jobName=MYNAME
+coreID=MYID
+firstReadFastq=`ls *_1.txt.gz`
+secondReadFastq=`ls *_2.txt.gz`
+memory=$(expr `free -g | grep -oP '\d+' | head -n 1` - 8)G
+
+# Bed
+readCoverageBed=panel_merged.bed
+onTargetBed=panel_merged_ext25.bed
+
+
+# Print out a workflow
+/tomato/dev/app/modulesoftware/snakemake \
+--dag --snakefile alignQC_1.4.sm  \
+--config fR=$firstReadFastq sR=$secondReadFastq \
+rcBed=$readCoverageBed otBed=$onTargetBed \
+name=$jobName id=$coreID threads=$NCPU memory=$memory \
+| dot -Tsvg > ${jobName}_dag.svg
+
+# Launch the actual job
+/tomato/dev/app/modulesoftware/snakemake \
+-p -T --cores $NCPU --snakefile alignQC_1.4.sm \
+--config fR=$firstReadFastq sR=$secondReadFastq \
+rcBed=$readCoverageBed otBed=$onTargetBed \
+name=$jobName id=$coreID threads=$NCPU memory=$memory 
+
+echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min total"
+
