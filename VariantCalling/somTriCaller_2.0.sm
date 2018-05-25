@@ -1,0 +1,265 @@
+# Tumor - Normal Somatic Variant Calling Workflow 
+# 24 May 2018
+# David.Nix@Hci.Utah.Edu
+
+# Base name to prepend on all files
+nameBuild = str(config["name"]) + "_" + config["genomeBuild"]
+
+# Threads and memory
+allThreads = int(config["allThreads"])
+halfThreads = int(round(allThreads/2,0))
+allRam = int(round(float(config["allRam"])))
+
+# Resources
+tumorBam = config["tumorBam"]
+normalBam = config["normalBam"]
+indexFasta = config["indexFasta"]
+dbsnp = config["dbsnp"]
+regions = config["regionsForAnalysis"]
+mpileup = config["mpileup"]
+
+# Apps
+useq = config["useq"]
+picard = config["picard"]
+gatk = config["gatk"]
+strelka = config["strelka"]
+manta = config["manta"]
+lofreq = config["lofreq"]
+htsLib = config["htsLib"]
+java = config["java"] + " -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
+
+# VCF variant filtering params
+minTumorAlignmentDepth = config["minTumorAlignmentDepth"]
+minNormalAlignmentDepth = config["minNormalAlignmentDepth"]
+minTumorAF = config["minTumorAF"]
+maxNormalAF = config["maxNormalAF"]
+minTNRatio = config["minTNRatio"]
+minTNDiff = config["minTNDiff"]
+
+# Workflow trigger
+rule OrganizeResults:
+    input:
+        "WorkingVcfs/"+ nameBuild+ "_filtered.vcf.gz.tbi",
+        "Bams/"+ nameBuild+ "_MutectBams"
+    output:
+        nameBuild+ "_SomTriCaller_COMPLETE"
+    shell:
+        "rm -rf {nameBuild} && mkdir {nameBuild} && "
+        "zip -rq {nameBuild}/Logs.zip Logs && "
+        "zip -rqn .bam {nameBuild}/Bams.zip Bams && "
+        "mv WorkingVcfs/*filtered.vcf.gz* {nameBuild}/ && "
+        "zip -rqn .gz {nameBuild}/WorkingVcfs.zip WorkingVcfs && "
+        "rm -rf Logs Bams WorkingVcfs *_Strelka* *_Manta *_Lofreq* *_Mutect* *_VCFBackgroundChecker "
+        "*_LoMuStConsensus.vcf.gz snappy* && "
+        "touch {output}"
+
+#        "cp somTri* Logs/ && "
+
+############################# Manta and Strelka ###############################        
+
+# Calls Manta for candidate INDELS
+rule Manta:
+    output:
+        dir = nameBuild+ "_Manta",
+        vcf = nameBuild+ "_Manta/results/variants/candidateSmallIndels.vcf.gz"
+    log:
+        "Logs/"+ nameBuild+ "_Manta.log"
+    threads: 
+        allThreads
+    shell:
+        "rm -rf {output.dir} &>> {log} && "
+        "source /BioApps/Miniconda3/bin/activate python2 &>> {log} && "
+        "{manta}/bin/configManta.py --exome "
+        "--normalBam={normalBam} --tumorBam={tumorBam} --referenceFasta={indexFasta} "
+        "--runDir={output.dir} &>> {log} && "
+        "{output.dir}/runWorkflow.py -m local -g {allRam} -j {threads} "
+        "--quiet &>> {log} && source /BioApps/Miniconda3/bin/deactivate &>> {log}"
+
+# Calls Strelka for tumor vs matched control normal analysis
+rule Strelka:
+    input:
+        nameBuild+ "_Manta/results/variants/candidateSmallIndels.vcf.gz"
+    output:
+        dir = nameBuild+ "_Strelka",
+        vcf1 = nameBuild+ "_Strelka/results/variants/somatic.snvs.vcf.gz",
+        vcf2 = nameBuild+ "_Strelka/results/variants/somatic.indels.vcf.gz"
+    log:
+        "Logs/"+ nameBuild+ "_Strelka.log"
+    threads: 
+        allThreads
+    shell:
+        "rm -rf {output.dir} && source /BioApps/Miniconda3/bin/activate python2 &&"
+        "{strelka}/bin/configureStrelkaSomaticWorkflow.py --exome "
+        "--normalBam={normalBam} --tumorBam={tumorBam} --referenceFasta={indexFasta} "
+        "--indelCandidates={input} --callRegions={regions} --runDir={output.dir} &> {log} && "
+        "{output.dir}/runWorkflow.py -m local -g {allRam} -j {threads} "
+        "--quiet &>> {log} && source /BioApps/Miniconda3/bin/deactivate"
+
+rule StrelkaMerge:
+    input:
+        dir = nameBuild+ "_Strelka",
+        vcf1 = nameBuild+ "_Strelka/results/variants/somatic.snvs.vcf.gz",
+        vcf2 = nameBuild+ "_Strelka/results/variants/somatic.indels.vcf.gz"
+    output:
+        "WorkingVcfs/" + nameBuild+"_Strelka.raw.vcf.gz"
+    log:
+        "Logs/"+ nameBuild+ "_StrelkaMerge.log"
+    shell:
+        "{java} {useq}/VCFMerger -o {output} -v {input.dir}/results/variants/ &> {log}"
+
+rule StrelkaFilter:
+    input:
+        "WorkingVcfs/" + nameBuild+"_Strelka.raw.vcf.gz"
+    output:
+        nameBuild+ "_Strelka.filt.vcf.gz"
+    log:
+        "Logs/"+ nameBuild+ "_StrelkaFilter.log"
+    shell:
+        "{java} {useq}/StrelkaVCFParser -v {input} -t {minTumorAF} "
+        "-n {maxNormalAF} -u {minTumorAlignmentDepth} -o {minNormalAlignmentDepth} "
+        "-d {minTNDiff} -r {minTNRatio} &> {log} && "
+        "mv -f WorkingVcfs/{nameBuild}_Strelka.raw_Filtered.vcf.gz {output} &>> {log}"
+
+
+############################# Lofreq ###############################
+
+rule Lofreq:
+    input:
+        ignore = nameBuild+ "_Strelka"
+    output:
+        dir= nameBuild+ "_Lofreq",
+        indels= nameBuild+ "_Lofreq/"+nameBuild+"_somatic_final.indels.vcf.gz",
+        snvs= nameBuild+ "_Lofreq/"+nameBuild+"_somatic_final.snvs.vcf.gz"
+    log:
+        "Logs/"+ nameBuild+ "_Lofreq.log"
+    threads: 
+        allThreads
+    shell:
+        "mkdir -p {output.dir} &> {log} && source /BioApps/Miniconda3/bin/activate && "
+        "gunzip -c {regions} > {output.dir}/regionsToAnalyze.bed && "
+        "{lofreq} somatic --tumor-mtc-alpha 10.0 --indel-tumor-mtc-alpha 0.5 --call-indels "
+        "-f {indexFasta} -o {nameBuild}_Lofreq/{nameBuild}_ -l {output.dir}/regionsToAnalyze.bed "
+        "-n {normalBam} -t {tumorBam} -d {dbsnp} --threads {threads} &>> {log} && "
+        "source /BioApps/Miniconda3/bin/deactivate && "
+        "rm -rf {nameBuild}_Lofreq/*_relaxed.* {nameBuild}_Lofreq/*_raw.* {nameBuild}_Lofreq/*dbsnp* "
+        "{nameBuild}_Lofreq/*stringent.*  &>> {log}"
+
+rule LofreqMerge:
+    input:
+        indels= nameBuild+ "_Lofreq/"+nameBuild+"_somatic_final.indels.vcf.gz",
+        snvs= nameBuild+ "_Lofreq/"+nameBuild+"_somatic_final.snvs.vcf.gz"
+    output:
+        "WorkingVcfs/"+ nameBuild+"_Lofreq.raw.vcf.gz"
+    log:
+        "Logs/"+ nameBuild+ "_LofreqMerge.log"
+    shell:
+        "{java} {useq}/VCFMerger -v {nameBuild}_Lofreq -o {output} &> {log}"
+
+rule LofreqFilter:
+    input:
+        "WorkingVcfs/"+ nameBuild+ "_Lofreq.raw.vcf.gz"
+    output:
+        nameBuild+"_Lofreq.filt.vcf.gz"
+    log:
+        "Logs/"+ nameBuild+ "_LofreqFilter.log"
+    shell:
+        "{java} {useq}/LofreqVCFParser -d {minTumorAlignmentDepth} -t {minTumorAF} "
+        "-a -v {input} &> {log} && "
+        "mv -f WorkingVcfs/{nameBuild}_Lofreq.raw_Filtered.vcf.gz {output} &>> {log}"
+
+
+############################# Mutect2 ###############################
+
+rule Mutect:
+    input:
+        ignore = nameBuild+ "_Lofreq"
+    output:
+        dir= nameBuild+ "_Mutect",
+        vcf= "WorkingVcfs/"+ nameBuild+ "_Mutect.raw.vcf.gz",
+        bam= nameBuild+ "_Mutect/mutect.realigned.bam"
+    log:
+        "Logs/"+ nameBuild+ "_Mutect.log"
+    threads: 
+        allThreads
+    shell:
+        "java -jar -Xmx5G {useq}/GatkRunner  -s {output.dir} -r {regions} -t 10 "
+        "-b -c 'java -Xmx5G -jar -Djava.io.tmpdir=. {gatk} -T MuTect2 -I:tumor {tumorBam} "
+        "-I:normal {normalBam} -mbq 20 -R {indexFasta} --dbsnp {dbsnp} -dt NONE "
+        "--max_alt_allele_in_normal_fraction {maxNormalAF} ' &> {log} && "
+        "cat {output.dir}/gatk.raw.vcf | gzip > {output.vcf}"
+
+rule SplitMutectBam:
+    input:
+        nameBuild+ "_Mutect/mutect.realigned.bam"
+    output:
+        "Bams/"+ nameBuild+ "_MutectBams"
+    log:
+        "Logs/"+ nameBuild+ "_SplitMutectBam.log"
+    threads: 
+        halfThreads
+    shell:
+        "mkdir -p {output} && "
+        "{java} {picard} SplitSamByLibrary CREATE_INDEX=true "
+        "MAX_RECORDS_IN_RAM=5000000 TMP_DIR=. VALIDATION_STRINGENCY=SILENT I={input} "
+        "O={output} &> {log}"
+
+rule MutectFilter:
+    input:
+        "WorkingVcfs/"+ nameBuild+"_Mutect.raw.vcf.gz",
+    output:
+        vcf = nameBuild+"_Mutect.filt.vcf.gz",
+    log:
+        "Logs/"+ nameBuild+ "_MutectFilter.log"
+    shell:
+        "{java} {useq}/MutectVCFParser -v {input} -t {minTumorAF} "
+        "-n {maxNormalAF} -u {minTumorAlignmentDepth} -o {minNormalAlignmentDepth} "
+        "-d {minTNDiff} -r {minTNRatio} &> {log} && "
+        "mv -f WorkingVcfs/{nameBuild}_Mutect.raw_Filtered.vcf.gz {output.vcf}"
+
+
+############################# VCF Consensus and BKZ ###############################
+
+rule VCFConsensus:
+    input:
+        mu= nameBuild+"_Mutect.filt.vcf.gz",
+        lf= nameBuild+"_Lofreq.filt.vcf.gz",
+        st= nameBuild+"_Strelka.filt.vcf.gz"
+    output:
+        nameBuild+"_LoMuStConsensus.vcf.gz"
+    log:
+        "Logs/"+ nameBuild+"_VCFConsensus.log"
+    threads:
+        halfThreads
+    shell:
+        "{java} {useq}/VCFConsensus -p {input.mu} -s {input.st} -o {nameBuild}_tempCon.vcf.gz &> {log} && "
+        "{java} {useq}/VCFConsensus -p {nameBuild}_tempCon.vcf.gz -s {input.lf} -o {output} &>> {log} && "
+        "rm -f {nameBuild}_tempCon.vcf.gz"
+
+# Use panel of prior tumor bams to z-score the vcf records, better to use panel of normals
+rule VCFBackgroundChecker:
+    input:
+        nameBuild+"_LoMuStConsensus.vcf.gz"
+    output:
+        dir = nameBuild+ "_VCFBackgroundChecker",
+        vcf = "WorkingVcfs/"+ nameBuild+ "_filtered.vcf.gz"
+    log:
+        "Logs/"+ nameBuild+ "_VCFBackgroundChecker.log"
+    threads:
+        allThreads
+    shell:
+        "{java} {useq}/VCFBackgroundChecker -v {input} -m {mpileup} -c {minNormalAlignmentDepth} "
+        "-s {output.dir} -t {threads} -u  &> {log} && "
+        "mv -f {output.dir}/{nameBuild}_LoMuStConsensus.vcf.gz {output.vcf}"
+
+# Tabix index all the vcfs in the WorkingVcfs/ folder
+rule VcfTabix:
+    input:
+        "WorkingVcfs/"+ nameBuild+ "_filtered.vcf.gz"
+    output:
+        "WorkingVcfs/"+ nameBuild+ "_filtered.vcf.gz.tbi"
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_VcfTabix.log"
+    shell:
+        "{java} {useq}/VCFTabix -t {htsLib} -v WorkingVcfs/ &> {log}"

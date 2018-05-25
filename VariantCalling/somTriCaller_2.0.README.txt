@@ -1,0 +1,11 @@
+25 May 2018
+
+David.Nix@Hci.Utah.Edu
+Huntsman Cancer Institute
+Salt Lake City, UT
+
+This workflow utilizes a public docker image to execute a snakemake somatic variant workflow.  Specifically, three tumor normal somatic short variant analyis applications (GATK-Mutect2, Illumina-Manta/Strelk2, and Lofreq) are launched, lightly filtered, and combine into a composite vcf file.  The vcf record's ID column lists the callers that reported each variant.  To create a universal variant QUAL score independent of a particular callers algorithm, each variant's allele frequency is converted into a z-score by comparing it to the  non-reference allele frequencies in a panel of normals at that position.  This bkz score also effectively down weights variants in error prone regions of the genome controling for localized platform specific artifacts.
+
+See the somTriCaller_*.udocker.sh for detailed usage instructions.  
+
+Download the workflow files from : https://github.com/HuntsmanCancerInstitute/Workflows/tree/master/VariantCalling
