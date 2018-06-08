@@ -62,8 +62,8 @@ rule Cleanup:
         name+ ".insertSizeMetrics.txt",
         name+ ".insertSizeMetrics.pdf",
         name+ ".hsMetrics.txt",
-        name+ "_final.bam",
-        name+ "_final.bai"
+        name+ ".final.bam",
+        name+ ".final.bai"
     shell:
         "mkdir Log Metrics && "
         "gzip *.log && "
@@ -198,8 +198,8 @@ rule RemoveDuplicates:
         bam = name+ ".bam",
         bai = name+ ".bai"
     output:
-        bam = temp(name+ "_filtered.bam"),
-        bai = temp(name+ "_filtered.bai"),
+        bam = temp(name+ ".filtered.bam"),
+        bai = temp(name+ ".filtered.bai"),
         metrics = name+ "_RemoveDuplicatesMetrics.txt"
     threads:
         allThreads
@@ -219,8 +219,8 @@ rule RemoveDuplicates:
 # GATK, but we still do it here for benefit of other callers and visualization
 rule CreateTargetsForIndelRealignment:
     input:
-        bam = name+ "_filtered.bam",
-        bai = name+ "_filtered.bai"
+        bam = name+ ".filtered.bam",
+        bai = name+ ".filtered.bai"
     output:
         temp( name+ "_indelRealign.intervals")
     threads:
@@ -237,12 +237,12 @@ rule CreateTargetsForIndelRealignment:
 # Realign Indels with GATK, perform realignments
 rule RealignIndels:
     input:
-        bam = name+ "_filtered.bam",
-        bai = name+ "_filtered.bai",
+        bam = name+ ".filtered.bam",
+        bai = name+ ".filtered.bai",
         targets = name+ "_indelRealign.intervals"
     output:
-        bam = temp(name+ "_realign.bam"),
-        bai = temp(name+ "_realign.bai")
+        bam = temp(name+ ".realign.bam"),
+        bai = temp(name+ ".realign.bai")
     threads:
         allThreads
     log:
@@ -258,8 +258,8 @@ rule RealignIndels:
 # Base recalibration with GATK, target creator
 rule RecalibrateBases:
     input:
-        bam = name+ "_realign.bam",
-        bai = name+ "_realign.bai"
+        bam = name+ ".realign.bam",
+        bai = name+ ".realign.bai"
     output:
         temp( name+ "_recalibration.grp")
     threads:
@@ -276,11 +276,11 @@ rule RecalibrateBases:
 rule PrintRecalibratedBam:
     input:
         grp = name+ "_recalibration.grp",
-        bam = name+ "_realign.bam",
-        bai = name+ "_realign.bai"
+        bam = name+ ".realign.bam",
+        bai = name+ ".realign.bai"
     output:
-        bam = name+ "_final.bam",
-        bai = name+ "_final.bai"
+        bam = name+ ".final.bam",
+        bai = name+ ".final.bai"
     threads:
         allThreads
     log:
@@ -297,8 +297,8 @@ rule PrintRecalibratedBam:
 # collect raw alignment metrics from the raw bam file before filtering
 rule PicardCollectAlignmentSummaryMetrics:
     input:
-        bam = name+ ".bam",
-        bai = name+ ".bai"
+        bam = name+ ".final.bam",
+        bai = name+ ".final.bai"
     output:
         name+ ".alignmentSummaryMetrics.txt"
     log:
@@ -312,8 +312,8 @@ rule PicardCollectAlignmentSummaryMetrics:
 # collect insertion size metrics from raw bam file before filtering
 rule PicardCollectInsertSizeMetrics:
     input:
-        bam = name+ ".bam",
-        bai = name+ ".bai"
+        bam = name+ ".final.bam",
+        bai = name+ ".final.bai"
     output:
         text = name+ ".insertSizeMetrics.txt",
         hist = name+ ".insertSizeMetrics.pdf"
@@ -329,8 +329,8 @@ rule PicardCollectInsertSizeMetrics:
 # also clip overlapping reads
 rule PicardCollectHsMetrics:
     input:
-        bam = name+ ".bam",
-        bai = name+ ".bai",
+        bam = name+ ".final.bam",
+        bai = name+ ".final.bai",
         rc = regionsForRC + ".intervalList",
         ot = regionsForOnTarget + ".intervalList"
     output:
