@@ -338,8 +338,8 @@ rule PrintRecalibratedBam:
 # collect raw alignment metrics from the raw bam file before filtering
 rule PicardCollectAlignmentSummaryMetrics:
     input:
-        bam = name+ ".final.bam",
-        bai = name+ ".final.bai"
+        bam = name+ ".bam",
+        bai = name+ ".bai"
     output:
         name+ ".alignmentSummaryMetrics.txt"
     log:
@@ -350,7 +350,7 @@ rule PicardCollectAlignmentSummaryMetrics:
         "VALIDATION_STRINGENCY=SILENT VERBOSITY=WARNING &> {log} && "
         "echo [`date`] rule PicardCollectAlignmentSummaryMetrics: COMPLETE; echo" 
 
-# collect insertion size metrics from raw bam file before filtering
+# collect insertion size metrics from final bam file
 rule PicardCollectInsertSizeMetrics:
     input:
         bam = name+ ".final.bam",
@@ -366,7 +366,7 @@ rule PicardCollectInsertSizeMetrics:
         "VALIDATION_STRINGENCY=SILENT VERBOSITY=WARNING &> {log} && "
         "echo [`date`] rule PicardCollectInsertSizeMetrics: COMPLETE; echo" 
 
-# collect hybrid selection metrics from raw bam file before filtering
+# collect hybrid selection metrics from final bam file
 # set quality same as filtering in SamAlignmentExtractor
 # also clip overlapping reads
 rule PicardCollectHsMetrics:
