@@ -40,6 +40,10 @@ Click on the `.svg` files to view the diagram of the workflow.
     Picard AlignmentSummaryMetrics, InsertSizeMetrics, and CollectHsMetrics.
     *NOTE:* This is compatible with the `redwood` cluster only.
 
+- `alignQCgvcf_1.4`
+
+    Same as `alignQC_1.4` but with addition of GATK HaplotypeCaller in GVCF mode.
+
 - `alignQC_1.4a`
 
     Slightly streamlined version of 1.4 without USeq metrics.
@@ -47,6 +51,7 @@ Click on the `.svg` files to view the diagram of the workflow.
 - `alignQCgvcf_1.4a`
 
     Same as `alignQC_1.4a` but with addition of GATK HaplotypeCaller in GVCF mode.
+
 
 ## MolBarcodes
 
