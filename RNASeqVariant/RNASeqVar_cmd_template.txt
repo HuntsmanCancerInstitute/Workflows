@@ -1,7 +1,7 @@
 #e your.name@hci.utah.edu -ab
 #c redwood
 
-# version 4
+# version 5
 
 # custom stuff, replace as necessary
 NAME=MYNAME
@@ -245,6 +245,7 @@ $JAVA_PATH -Xmx4G -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/local \
 -mmq 1 \
 --min_base_quality_score 20 \
 -L {} \
+--interval_padding 20 \
 -o {.}.raw.vcf \
 ':::' ${NAME}_call.*.bed
 
@@ -295,7 +296,6 @@ parallel -k --delay 10 \
 $JAVA_PATH -Xmx4G -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/local \
 -jar $GATK_PATH -T HaplotypeCaller \
 -jdk_deflater -jdk_inflater \
--drf DuplicateRead \
 -R $REF \
 -I $NAME.final.bam \
 -dontUseSoftClippedBases \
@@ -305,6 +305,7 @@ $JAVA_PATH -Xmx4G -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/local \
 -mmq 1 \
 --min_base_quality_score 20 \
 -L {} \
+--interval_padding 20 \
 -o {.}.g.vcf \
 ':::' exon_call.*.bed
 
