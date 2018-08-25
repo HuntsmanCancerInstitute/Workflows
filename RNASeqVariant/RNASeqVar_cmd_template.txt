@@ -1,0 +1,234 @@
+#e your.name@hci.utah.edu -ab
+#c kingspeak_20
+
+# version 1
+
+
+# custom stuff, replace as necessary
+NAME=MYNAME
+
+
+# Java
+module load jdk parallel
+JAVA_PATH=`which java`
+
+
+## paths
+STAR=/tomato/dev/app/STAR/2.5.2b/STAR
+FEATCOUNT=/tomato/dev/app/Subread/1.5.1/bin/featureCounts
+SAMTOOL=/tomato/dev/app/samtools/1.5/samtools
+PICARD=/tomato/dev/app/picard/2.9.0/picard.jar
+GATK_PATH=/tomato/dev/app/gatk/3.8/GenomeAnalysisTK.jar
+TAB_PATH=/tomato/dev/app/tabix/0.2.6
+
+INDEX=/tomato/dev/data/Human/GRCh38/release90/star125
+GTF=/tomato/dev/data/Human/GRCh38/release90/Homo_sapiens.GRCh38.90.gtf
+REFFLAT=/tomato/dev/data/Human/GRCh38/release90/Homo_sapiens.GRCh38.refflat
+RIBOINT=/tomato/dev/data/Human/GRCh38/release90/Homo_sapiens.GRCh38.rRNA.interval
+REF=/tomato/dev/data/Human/GRCh38/Homo_sapiens.GRCh38.dna.primary_assembly.fa
+DATA_PATH=/tomato/dev/data/Human/GRCh38/GATK
+
+
+#  STAR alignment
+# set maximum intron 100 kb, mean intron for hg38 is 8kb, SD 25 kb
+echo "==== aligning $NAME with STAR ===="
+$STAR --runMode alignReads \
+--genomeDir $INDEX \
+--twopassMode Basic \
+--readFilesIn *.gz \
+--readFilesCommand zcat \
+--runThreadN $NCPU \
+--alignIntronMax 100000 \
+--outSAMtype BAM SortedByCoordinate \
+--outSAMmapqUnique 60 \
+--outWigType None \
+--clip3pAdapterSeq AGATCGGAAGAGCACACGTCTGAACTCCAGTCA AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT
+
+# rename 
+mv Aligned.sortedByCoord.out.bam $NAME.bam
+mv Log.final.out $NAME.Log.final.out
+
+# cleanup star stuff
+rm -r _STARpass1
+rm -r _STARgenome
+
+# Samtools index
+echo; echo "==== samtools stats ===="
+$SAMTOOL index -b -@ 4 $NAME.bam
+$SAMTOOL idxstats $NAME.bam | sort -V > $NAME.idxstats
+
+# Run featureCounts for paired-end alignments
+echo; echo "==== FeatureCounts ===="
+$FEATCOUNT -T 16 -p -C -s 2 --largestOverlap -a $GTF -o $NAME.counts $NAME.bam
+
+## RnaSeq metrics
+echo; echo "==== RNASeq Metrics ===="
+$JAVA_PATH -Xmx${SMGB}G -jar $PICARD CollectRnaSeqMetrics REF_FLAT=$REFFLAT \
+STRAND=SECOND_READ_TRANSCRIPTION_STRAND RIBOSOMAL_INTERVALS=$RIBOINT \
+I=$NAME.bam  O=$NAME.rna_metrics
+
+# filter out unwanted reads
+# UNMAP,SECONDARY,QCFAIL,SUPPLEMENTARY = 2820 = 0xb04
+echo; echo "==== samtools filter ===="
+$SAMTOOL view -F 2820 -@ 4 -b -o $NAME.filter.bam $NAME.bam
+$SAMTOOL index -b -@ 4 $NAME.filter.bam $NAME.filter.bai
+
+
+# reorder to match fasta file
+echo; echo "==== Picard ReorderSam ===="
+$JAVA_PATH -Xmx${SMGB}g -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/local \
+-jar $PICARD ReorderSam \
+I=$NAME.filter.bam \
+O=$NAME.reorder.bam \
+REFERENCE=$REF \
+CREATE_INDEX=true \
+&& rm -f $NAME.filter.ba*
+
+
+# add read group information
+# example BWA -R "@RG\tID:MYID\tPL:ILLUMINA\tLB:MYID\tSM:MYSAMPLE\tCN:HCI\tPU:MYID" 
+echo; echo "==== Picard AddOrReplaceReadGroups ===="
+$JAVA_PATH -Xmx${SMGB}g -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/local \
+-jar $PICARD AddOrReplaceReadGroups \
+I=$NAME.reorder.bam \
+O=$NAME.rg.bam \
+RGID=MYID \
+RGLB=MYID \
+RGPL=Illumina \
+RGPU=MYID \
+RGSM=MYSAMPLE \
+RGCN=HCI \
+CREATE_INDEX=true \
+&& rm -f $NAME.reorder.ba*
+
+
+
+# Mark duplicates  
+echo; echo "==== Picard MarkDuplicates ===="
+$JAVA_PATH -Xmx${SMGB}g -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/local \
+-jar $PICARD MarkDuplicates \
+I=$NAME.rg.bam \
+O=$NAME.dedup.bam \
+M=$NAME.markduplicates.txt \
+REMOVE_DUPLICATES=true \
+CREATE_INDEX=true \
+&& rm -f $NAME.rg.ba*
+
+
+# split and trim intron junctions
+# reassign mapping qualities since STAR only assigns unknown value 255
+echo; echo "==== GATK SplitNCigarReads ===="
+$JAVA_PATH -Xmx${SMGB}g -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/local \
+-jar $GATK_PATH -T SplitNCigarReads \
+-jdk_deflater -jdk_inflater \
+-R $REF \
+-I $NAME.dedup.bam \
+-o $NAME.split.bam \
+-rf ReassignOneMappingQuality -RMQF 0 -RMQT 10 \
+-U ALLOW_N_CIGAR_READS \
+&& rm -f $NAME.dedup.ba*
+
+
+# Indel realigner - probably not necessary, but we can do it
+echo; echo "==== GATK RealignerTargetCreator ===="
+$JAVA_PATH -Xmx${SMGB}g -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/local \
+-jar $GATK_PATH -T RealignerTargetCreator \
+-jdk_deflater -jdk_inflater \
+-R $REF \
+-I $NAME.split.bam \
+-o $NAME.intervals \
+--known $DATA_PATH/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz \
+-nt $NCPU
+
+echo; echo "==== GATK IndelRealigner ===="
+$JAVA_PATH -Xmx${SMGB}g -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/local \
+-jar $GATK_PATH -T IndelRealigner \
+-jdk_deflater -jdk_inflater \
+-R $REF \
+-targetIntervals $NAME.intervals \
+-I $NAME.split.bam \
+-o $NAME.realign.bam \
+-known $DATA_PATH/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz 
+
+rm -f $NAME.split.ba* $NAME.intervals
+
+
+# Base recalibration
+echo; echo "==== GATK BaseRecalibrator ===="
+$JAVA_PATH -Xmx${SMGB}g -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/local \
+-jar $GATK_PATH -T BaseRecalibrator \
+-jdk_deflater -jdk_inflater \
+-R $REF \
+-knownSites $DATA_PATH/1000G_phase1.snps.high_confidence.hg38.vcf.gz \
+-knownSites $DATA_PATH/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz \
+-I $NAME.realign.bam \
+-o $NAME.realign.grp \
+-nct $NCPU
+
+echo; echo "==== GATK PrintReads ===="
+$JAVA_PATH -Xmx${SMGB}g -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/local \
+-jar $GATK_PATH -T PrintReads \
+-jdk_deflater -jdk_inflater \
+-R $REF \
+-I $NAME.realign.bam \
+-BQSR $NAME.realign.grp \
+-o $NAME.final.bam \
+-nct $NCPU
+
+rm -f $NAME.realign.*
+
+# haplotype variant call
+echo; echo "==== GATK HaplotypeCaller ===="
+parallel -k --delay 10 \
+$JAVA_PATH -Xmx4G -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/local \
+-jar $GATK_PATH -T HaplotypeCaller \
+-jdk_deflater -jdk_inflater \
+-R $REF \
+--dbsnp $DATA_PATH/dbsnp_144.hg38.vcf.gz \
+-I $NAME.final.bam \
+-dontUseSoftClippedBases \
+-stand_call_conf 20.0 \
+-mmq 0 \
+--min_base_quality_score 20 \
+-L {} \
+-o {.}.raw.vcf \
+':::' GRCh38.90.gencodeBasic.mergeExon.*.bed
+
+# variant filtering
+echo; echo "==== GATK Filter variants ===="
+parallel -k --delay 10 \
+$JAVA_PATH -Xmx4G -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/local \
+-jar $GATK_PATH -T VariantFiltration \
+-R $REF \
+-V {.}.raw.vcf \
+-window 35 \
+-cluster 3 \
+-filterName FS \
+-filter "'FS > 30.0'" \
+-filterName QD \
+-filter "'QD < 2.0'" \
+-o {.}.vcf \
+':::' GRCh38.90.gencodeBasic.mergeExon.*.bed
+
+# merge raw variants
+echo; echo "======= Concatenate final variants"
+$JAVA_PATH -Xmx20G -jar $PICARD SortVcf \
+SD=${REF%fa}dict \
+O=$NAME.vcf \
+I=GRCh38.90.gencodeBasic.mergeExon.aa.vcf \
+I=GRCh38.90.gencodeBasic.mergeExon.ab.vcf \
+I=GRCh38.90.gencodeBasic.mergeExon.ac.vcf \
+I=GRCh38.90.gencodeBasic.mergeExon.ad.vcf \
+I=GRCh38.90.gencodeBasic.mergeExon.ae.vcf \
+I=GRCh38.90.gencodeBasic.mergeExon.af.vcf \
+I=GRCh38.90.gencodeBasic.mergeExon.ag.vcf \
+I=GRCh38.90.gencodeBasic.mergeExon.ah.vcf \
+I=GRCh38.90.gencodeBasic.mergeExon.ai.vcf \
+I=GRCh38.90.gencodeBasic.mergeExon.aj.vcf \
+&& rm GRCh38.90.gencodeBasic.mergeExon.*vcf*
+
+### Clean up
+parallel $TAB_PATH/bgzip {} ':::' *.vcf
+parallel $TAB_PATH/tabix -p vcf {} ':::' *.vcf.gz
+rm -f *.idx
+
