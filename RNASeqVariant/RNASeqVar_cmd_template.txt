@@ -1,20 +1,23 @@
 #e your.name@hci.utah.edu -ab
 #c kingspeak_24
 
-# version 2
+# version 3
 
 # custom stuff, replace as necessary
 NAME=MYNAME
 
 
-# Java
-module load jdk parallel
+# Load environment and modules 
+module use /uufs/chpc.utah.edu/common/HIPAA/hci-bioinformatics1/Modules/modulefiles
+module load jdk parallel python/3.5.2 cutadapt/1.16
 JAVA_PATH=`which java`
+CUTADAPT=`which cutadapt`
 
 
 ## paths
 STAR=/tomato/dev/app/STAR/2.5.4a/STAR
 FEATCOUNT=/tomato/dev/app/Subread/1.5.1/bin/featureCounts
+RSEM=/tomato/dev/app/rsem/1.3.0/
 SAMTOOL=/tomato/dev/app/samtools/1.5/samtools
 PICARD=/tomato/dev/app/picard/2.9.0/picard.jar
 STU=/tomato/dev/app/useq/9.1.3/Apps/Sam2USeq
@@ -25,6 +28,7 @@ GATK_PATH=/tomato/dev/app/gatk/3.8/GenomeAnalysisTK.jar
 TAB_PATH=/tomato/dev/app/tabix/0.2.6
 
 INDEX=/tomato/dev/data/Human/GRCh38/release90/star125
+RSEMINDEX=/tomato/dev/data/Human/GRCh38/release90/rsem/GRCh38
 GTF=/tomato/dev/data/Human/GRCh38/release90/Homo_sapiens.GRCh38.90.gtf
 REFFLAT=/tomato/dev/data/Human/GRCh38/release90/Homo_sapiens.GRCh38.refflat
 RIBOINT=/tomato/dev/data/Human/GRCh38/release90/Homo_sapiens.GRCh38.rRNA.interval
@@ -34,39 +38,71 @@ DATA_PATH=/tomato/dev/data/Human/GRCh38/GATK
 EXONS=/tomato/dev/data/Human/GRCh38/release90/Homo_sapiens.GRCh38.90.mergedExons.bed
 
 
+echo "==== Trimming with cutadapt ===="
+$CUTADAPT \
+-a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA \
+-A AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT \
+-o trimmed_1.fastq.gz \
+-p trimmed_2.fastq.gz \
+-j $NCPU \
+*.gz > $NAME.cutadapt.txt
+
 #  STAR alignment
 # set maximum intron 100 kb, mean intron for hg38 is 8kb, SD 25 kb
 echo "==== aligning $NAME with STAR ===="
 $STAR --runMode alignReads \
 --genomeDir $INDEX \
 --twopassMode Basic \
---readFilesIn *.gz \
+--readFilesIn trimmed_*.fastq.gz \
 --readFilesCommand zcat \
 --runThreadN $NCPU \
 --alignIntronMax 100000 \
+--alignIntronMin 20 \
+--alignMatesGapMax 100000 \
+--outFilterMismatchNmax 20 \
+--outFilterMismatchNoverLmax 0.3 \
 --outSAMtype BAM SortedByCoordinate \
+--limitBAMsortRAM 10000000000 \
 --outSAMmapqUnique 60 \
 --outSAMattrRGline ID:MYID LB:MYID PL:Illumina PU:MYID SM:MYSAMPLE CN:HCI \
---outWigType None \
---clip3pAdapterSeq AGATCGGAAGAGCACACGTCTGAACTCCAGTCA AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT
+--quantMode TranscriptomeSAM \
+--quantTranscriptomeBan IndelSoftclipSingleend \
+--outWigType None 
+
 
 # rename 
 mv Aligned.sortedByCoord.out.bam $NAME.bam
+mv Aligned.toTranscriptome.out.bam $NAME.transcriptome.bam
 mv Log.final.out $NAME.Log.final.out
 
 # cleanup star stuff
-rm -r _STARpass1
-rm -r _STARgenome
+rm -rf _STARpass1
+rm -rf _STARgenome
+rm -f Log.out Log.progress.out
+rm -f trimmed_*.fastq.gz
 
 # Samtools index
 echo; echo "==== samtools stats ===="
 $SAMTOOL index -b -@ 4 $NAME.bam
 $SAMTOOL idxstats $NAME.bam | sort -V > $NAME.idxstats
 
+
 # Run featureCounts for paired-end alignments
 echo; echo "==== FeatureCounts ===="
-$FEATCOUNT -T 16 -p -C -s 2 --largestOverlap -a $GTF -o $NAME.counts $NAME.bam
+$FEATCOUNT -T $NCPU -p -C -s 2 --largestOverlap -a $GTF -o $NAME.counts $NAME.bam
 gzip $NAME.counts
+
+
+# Run RSEM
+echo; echo "==== RSEM calculate expression ===="
+$RSEM/rsem-calculate-expression \
+--alignments --paired-end --num-threads $NCPU \
+--no-bam-output --quiet \
+$NAME.transcriptome.bam \
+$RSEMINDEX \
+$NAME \
+&& rm -f $NAME.transcriptome.bam
+
 
 ## RnaSeq metrics
 echo; echo "==== RNASeq Metrics ===="
@@ -77,33 +113,20 @@ I=$NAME.bam  O=$NAME.rna_metrics
 # filter out unwanted reads
 # UNMAP,SECONDARY,QCFAIL,SUPPLEMENTARY = 2820 = 0xb04
 echo; echo "==== samtools filter ===="
-$SAMTOOL view -F 2820 -@ 4 -b -o $NAME.filter.bam $NAME.bam
-$SAMTOOL index -b -@ 4 $NAME.filter.bam $NAME.filter.bai
-
-
-# reorder to match fasta file
-echo; echo "==== Picard ReorderSam ===="
-$JAVA_PATH -Xmx${SMGB}g -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/local \
--jar $PICARD ReorderSam \
-I=$NAME.filter.bam \
-O=$NAME.reorder.bam \
-REFERENCE=$REF \
-CREATE_INDEX=true \
-&& rm -f $NAME.filter.ba*
-
-
+$SAMTOOL view -F 2820 -@ 8 -b -o $NAME.filter.bam $NAME.bam
+$SAMTOOL index -b -@ 8 $NAME.filter.bam $NAME.filter.bai
 
 
 # Mark duplicates  
 echo; echo "==== Picard MarkDuplicates ===="
 $JAVA_PATH -Xmx${SMGB}g -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/local \
 -jar $PICARD MarkDuplicates \
-I=$NAME.reorder.bam \
+I=$NAME.filter.bam \
 O=$NAME.mkdup.bam \
 M=$NAME.markduplicates.txt \
 REMOVE_DUPLICATES=false \
 CREATE_INDEX=true \
-&& rm -f $NAME.reorder.ba*
+&& rm -f $NAME.filter.ba*
 
 
 
@@ -161,9 +184,8 @@ $JAVA_PATH -Xmx${SMGB}g -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/l
 -I $NAME.split.bam \
 -o $NAME.realign.bam \
 -drf DuplicateRead \
--known $DATA_PATH/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz 
-
-rm -f $NAME.split.ba* $NAME.intervals
+-known $DATA_PATH/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz \
+&& rm -f $NAME.split.ba* $NAME.intervals
 
 
 # Base recalibration
@@ -187,9 +209,8 @@ $JAVA_PATH -Xmx${SMGB}g -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/l
 -BQSR $NAME.realign.grp \
 -o $NAME.final.bam \
 -drf DuplicateRead \
--nct $NCPU
-
-rm -f $NAME.realign.*
+-nct $NCPU \
+&& rm -f $NAME.realign.*
 
 
 ### Prepare bed file of passing coverage intervals for variant calling
@@ -273,7 +294,7 @@ $JAVA_PATH -Xmx4G -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/local \
 -R $REF \
 -I $NAME.final.bam \
 -dontUseSoftClippedBases \
---genotyping_mode DISCOVERY \ 
+--genotyping_mode DISCOVERY \
 --emitRefConfidence GVCF \
 -stand_call_conf 20.0 \
 -mmq 1 \
@@ -306,5 +327,5 @@ I=exon_call.l.g.vcf \
 ### Clean up
 parallel $TAB_PATH/bgzip {} ':::' *.vcf
 parallel $TAB_PATH/tabix -p vcf {} ':::' *.vcf.gz
-rm -f *.idx 
+rm -f *.idx $NAME.ba*
 
