@@ -13,6 +13,7 @@ system from the HCI local linux servers, use the `pysano_cmd_template.txt`.
 For direct slurm execution on the CHPC clusters, use the `slurm_template.sh` and edit 
 as appropriate.
 
+Click on the `.svg` files to view the diagram of the workflow.
 
 ## Pipeline Versions
 
