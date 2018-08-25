@@ -1,15 +1,19 @@
 #e your.name@hci.utah.edu -ab
-#c kingspeak_24
+#c redwood
 
-# version 3
+# version 4
 
 # custom stuff, replace as necessary
 NAME=MYNAME
-
+ID=MYID
+SAMPLE=MYNAME
 
 # Load environment and modules 
 module use /uufs/chpc.utah.edu/common/HIPAA/hci-bioinformatics1/Modules/modulefiles
-module load jdk parallel python/3.5.2 cutadapt/1.16
+module load jdk 
+module load parallel 
+module load python/3.5.2
+module load cutadapt/1.16
 JAVA_PATH=`which java`
 CUTADAPT=`which cutadapt`
 
@@ -26,7 +30,6 @@ UCSC=/tomato/dev/app/UCSC/
 BEDTOOL=/tomato/dev/app/bedtools/2.22.1/bedtools
 GATK_PATH=/tomato/dev/app/gatk/3.8/GenomeAnalysisTK.jar
 TAB_PATH=/tomato/dev/app/tabix/0.2.6
-
 INDEX=/tomato/dev/data/Human/GRCh38/release90/star125
 RSEMINDEX=/tomato/dev/data/Human/GRCh38/release90/rsem/GRCh38
 GTF=/tomato/dev/data/Human/GRCh38/release90/Homo_sapiens.GRCh38.90.gtf
@@ -34,7 +37,9 @@ REFFLAT=/tomato/dev/data/Human/GRCh38/release90/Homo_sapiens.GRCh38.refflat
 RIBOINT=/tomato/dev/data/Human/GRCh38/release90/Homo_sapiens.GRCh38.rRNA.interval
 CHROMSIZE=/tomato/dev/data/Human/GRCh38/chrom.sizes
 REF=/tomato/dev/data/Human/GRCh38/Homo_sapiens.GRCh38.dna.primary_assembly.fa
-DATA_PATH=/tomato/dev/data/Human/GRCh38/GATK
+GOLDINDELS=/tomato/dev/data/Human/GRCh38/GATK/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz
+HICONFSNPS=/tomato/dev/data/Human/GRCh38/GATK/1000G_phase1.snps.high_confidence.hg38.vcf.gz
+DBSNP=/tomato/dev/data/Human/GRCh38/GATK/dbsnp_144.hg38.vcf.gz
 EXONS=/tomato/dev/data/Human/GRCh38/release90/Homo_sapiens.GRCh38.90.mergedExons.bed
 
 
@@ -45,7 +50,7 @@ $CUTADAPT \
 -o trimmed_1.fastq.gz \
 -p trimmed_2.fastq.gz \
 -j $NCPU \
-*.gz > $NAME.cutadapt.txt
+*.gz > $NAME.cutadapt.out.txt
 
 #  STAR alignment
 # set maximum intron 100 kb, mean intron for hg38 is 8kb, SD 25 kb
@@ -64,7 +69,7 @@ $STAR --runMode alignReads \
 --outSAMtype BAM SortedByCoordinate \
 --limitBAMsortRAM 10000000000 \
 --outSAMmapqUnique 60 \
---outSAMattrRGline ID:MYID LB:MYID PL:Illumina PU:MYID SM:MYSAMPLE CN:HCI \
+--outSAMattrRGline ID:$ID LB:$ID PL:Illumina PU:$ID SM:$SAMPLE CN:HCI \
 --quantMode TranscriptomeSAM \
 --quantTranscriptomeBan IndelSoftclipSingleend \
 --outWigType None 
@@ -108,7 +113,7 @@ $NAME \
 echo; echo "==== RNASeq Metrics ===="
 $JAVA_PATH -Xmx${SMGB}G -jar $PICARD CollectRnaSeqMetrics REF_FLAT=$REFFLAT \
 STRAND=SECOND_READ_TRANSCRIPTION_STRAND RIBOSOMAL_INTERVALS=$RIBOINT \
-I=$NAME.bam  O=$NAME.rna_metrics
+I=$NAME.bam O=$NAME.rna_metrics
 
 # filter out unwanted reads
 # UNMAP,SECONDARY,QCFAIL,SUPPLEMENTARY = 2820 = 0xb04
@@ -172,7 +177,7 @@ $JAVA_PATH -Xmx${SMGB}g -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/l
 -R $REF \
 -I $NAME.split.bam \
 -o $NAME.intervals \
---known $DATA_PATH/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz \
+--known $GOLDINDELS \
 -nt $NCPU
 
 echo; echo "==== GATK IndelRealigner ===="
@@ -184,7 +189,7 @@ $JAVA_PATH -Xmx${SMGB}g -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/l
 -I $NAME.split.bam \
 -o $NAME.realign.bam \
 -drf DuplicateRead \
--known $DATA_PATH/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz \
+-known $GOLDINDELS \
 && rm -f $NAME.split.ba* $NAME.intervals
 
 
@@ -194,8 +199,8 @@ $JAVA_PATH -Xmx${SMGB}g -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/l
 -jar $GATK_PATH -T BaseRecalibrator \
 -jdk_deflater -jdk_inflater \
 -R $REF \
--knownSites $DATA_PATH/1000G_phase1.snps.high_confidence.hg38.vcf.gz \
--knownSites $DATA_PATH/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz \
+-knownSites $HICONFSNPS \
+-knownSites $GOLDINDELS \
 -I $NAME.realign.bam \
 -o $NAME.realign.grp \
 -nct $NCPU
@@ -233,7 +238,7 @@ $JAVA_PATH -Xmx4G -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/local \
 -jar $GATK_PATH -T HaplotypeCaller \
 -jdk_deflater -jdk_inflater \
 -R $REF \
---dbsnp $DATA_PATH/dbsnp_144.hg38.vcf.gz \
+--dbsnp $DBSNP \
 -I $NAME.final.bam \
 -dontUseSoftClippedBases \
 -stand_call_conf 20.0 \
