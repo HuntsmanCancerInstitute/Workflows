@@ -245,7 +245,6 @@ $JAVA_PATH -Xmx4G -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/local \
 -mmq 1 \
 --min_base_quality_score 20 \
 -L {} \
---interval_padding 20 \
 -o {.}.raw.vcf \
 ':::' ${NAME}_call.*.bed
 
