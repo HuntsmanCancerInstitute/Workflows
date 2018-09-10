@@ -1,0 +1,270 @@
+# Hg38 Exome Alignment and QC Workflow 
+# 10 September 2018
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+############ No need to modify anything in this document #############
+
+# Base name to prepend on all files
+nameBuild = str(config["name"]) + "_Hg38" 
+
+# Threads and memory
+allThreads = int(config["allThreads"])
+halfThreads = int(round(allThreads/2,0))
+allRam = int(round(float(config["allRam"])))
+
+# Gzipped Fastq files
+fastqReadOne = config["fastqReadOne"]
+fastqReadTwo = config["fastqReadTwo"]
+
+# Resources
+regionsForReadCoverage = config["regionsForReadCoverage"]
+regionsForOnTarget = config["regionsForOnTarget"]
+indexFasta = config["indexFasta"]
+gSnp = config["gSnp"]
+gIndel = config["gIndel"]
+dbsnp = config["dbsnp"]
+
+# Filtering params
+useqSamAlignmentExtractor = config["useqSamAlignmentExtractor"]
+useqSam2USeq = config["useqSam2USeq"]
+
+# Apps in the docker container
+bwa = "/BioApps/bwakit-0.7.15/run-bwamem"
+gatk = "/BioApps/GATK_3.8/GenomeAnalysisTK.jar"
+htslib = "/BioApps/HTSlib_1.3"
+java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
+picard = "/BioApps/Picard_2.17.2/picard.jar"
+useq = "/BioApps/USeq_9.1.8/Apps"
+ucsc = "/BioApps/UCSC_6Aug2018"
+
+
+############# Rules ##############
+
+# Workflow trigger, pulls info from the json files into xls and html reports
+rule AggregateQCStats:
+    input:
+        f= "Json/"+nameBuild+ "_FastqCount.json.gz",
+        s= "Json/"+nameBuild+ "_SamAlignmentExtractor.json.gz",
+        m= "Json/"+nameBuild+ "_MergePairedAlignments.json.gz",
+        u= "Json/"+nameBuild+ "_Sam2USeq.json.gz",
+        w= "QC/"+ nameBuild+ "_uniObReadCov.bw",
+        v= "Vcfs/"+ nameBuild+ "_Haplo.g.vcf.gz.tbi"
+    output:
+        "QC/"+ nameBuild+ "_AggQC"
+    log:
+        "Logs/"+ nameBuild+ "_AggregateQCStats.log",
+    shell:
+        "{java} {useq}/AggregateQCStats -j . -r {output} -p {nameBuild}_ &> {log} && "
+        "rm -rf *_dupFree.ba* *_sae.ba* *_unfiltered.ba* *_raw.bam *_MPA *_uniObReadCov.useq "    	 
+        
+############# Fastq and resources check ##############
+
+# Uses gunzip -t to check the integrity of the xxx.gz files in the working directory
+rule CheckGzipFiles:
+    output:
+        temp( nameBuild+ "_checkGzipFiles.complete")
+    log:
+        "Logs/"+ nameBuild+ "_CheckGzipFiles.log"
+    shell:
+        "gunzip -tv {fastqReadOne} {fastqReadTwo} &> {log} && touch {output}" 
+        
+# Count the number of fastq records
+rule CountFastq:
+    input:
+        fastqReadOne
+    output:
+        "Json/" + nameBuild + "_FastqCount.json.gz"
+    shell:
+        "x=$(gunzip -c {input} | wc -l | tr -d \" \") && "
+        "y=$(($x/2)) && "
+        "echo \{{ > Json/{nameBuild}_FastqCount.json && "
+        "echo \\\"numberFastqReads\\\": $y >> Json/{nameBuild}_FastqCount.json && "
+        "echo \}} >> Json/{nameBuild}_FastqCount.json && "
+        "gzip Json/{nameBuild}_FastqCount.json"
+        
+        
+############# Alignment B38 ###############
+
+# Align to Hg38 with bwa mem, trim adapters, mark dups, sort                                                                                                  
+rule AlignHg38:
+    output:
+        nameBuild+ "_raw.bam"
+    log:
+        "Logs/"+ nameBuild+ "_AlignHg38.log"
+    params:
+        rg ="\"@RG\\tID:"+nameBuild+"\\tPL:ILLUMINA\\tLB:"+nameBuild+"\\tSM:"+nameBuild+ "\\tCN:HCI\\tPU:"+nameBuild+"\""
+    threads:
+        allThreads
+    shell:
+        # Align with run-bwamem this trims adapters, marks dups, and sorts
+        "mkdir -p Logs && "
+        "{bwa} -o {nameBuild}_AlignHg38 -R {params.rg} -t {threads} -a -d "
+        "{indexFasta} {fastqReadOne} {fastqReadTwo} > {nameBuild}_AlignHg38.sh 2> {log} && "
+        "chmod 750 {nameBuild}_AlignHg38.sh 2>> {log} && "
+        "cat {nameBuild}_AlignHg38.sh >> {log} && "
+        "./{nameBuild}_AlignHg38.sh && "
+        "cat {nameBuild}_AlignHg38.log.bwamem >> {log} && "
+        "cat {nameBuild}_AlignHg38.log.dedup >> {log} && "
+        "cat {nameBuild}_AlignHg38.log.trim >> {log} && "
+        "rm -f {nameBuild}_AlignHg38.log.* {nameBuild}_AlignHg38.sh {nameBuild}_AlignHg38.hla.* && "
+        "mv {nameBuild}_AlignHg38.aln.bam {output}"
+
+# Sort alignments
+rule SortSam:
+    input:
+        nameBuild+ "_raw.bam"
+    output:
+        bam = nameBuild+ "_unfiltered.bam",
+        bai = nameBuild+ "_unfiltered.bai"
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_SortSam.log"
+    shell:
+        "{java} {picard} SortSam CREATE_INDEX=true SO=coordinate "
+        "MAX_RECORDS_IN_RAM=5000000 TMP_DIR=. VALIDATION_STRINGENCY=SILENT INPUT={input} "
+        "OUTPUT={output.bam} USE_JDK_DEFLATER=true USE_JDK_INFLATER=true &> {log}"
+        
+# Use the SamAlignmentExtractor to remove poor quality alignments 
+rule SamAlignmentExtractor:
+    input:
+        bam = nameBuild+ "_unfiltered.bam",
+        bai = nameBuild+ "_unfiltered.bai"
+    output:
+        bam = nameBuild+ "_sae.bam",
+        bai = nameBuild+ "_sae.bai",
+        json = "Json/"+ nameBuild+ "_SamAlignmentExtractor.json.gz"
+    log:
+        "Logs/"+ nameBuild+ "_SamAlignmentExtractor.log",
+    shell:
+        "{java} {useq}/SamAlignmentExtractor {useqSamAlignmentExtractor} "
+        "-s {nameBuild}_SAE -b {input.bam} "
+        "-r {regionsForOnTarget} -j {output.json} &> {log} && "
+        "mv {nameBuild}_SAE/*_passSAE.bam {output.bam} &>> {log} && "
+        "mv {nameBuild}_SAE/*_passSAE.bai {output.bai} &>> {log} && "
+        "rm -rf {nameBuild}_SAE"
+        
+# Remove duplicates
+rule RemoveDuplicates:
+    input:
+        bam = nameBuild+ "_sae.bam",
+        bai = nameBuild+ "_sae.bai"
+    output:
+        bam = nameBuild+ "_dupFree.bam",
+        bai = nameBuild+ "_dupFree.bai",
+        metrics = "Logs/"+ nameBuild+ "_RemoveDuplicates.metrics"
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_RemoveDuplicates.log"
+    shell:
+        "{java} {picard} MarkDuplicates REMOVE_DUPLICATES=true TMP_DIR=. VERBOSITY=ERROR "
+        "VALIDATION_STRINGENCY=SILENT MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=true "
+        "USE_JDK_INFLATER=true USE_JDK_DEFLATER=true CLEAR_DT=true OPTICAL_DUPLICATE_PIXEL_DISTANCE=2500 "
+        "METRICS_FILE={output.metrics} INPUT={input.bam} OUTPUT={output.bam} &> {log}"
+
+# Base recalibration with GATK, target creator, not needed for Strelka but recommended for GATK
+rule RecalibrateBases:
+    input:
+        bam = nameBuild+ "_dupFree.bam",
+        bai = nameBuild+ "_dupFree.bai"
+    output:
+        temp( nameBuild+ "_recalibration.grp")
+    threads:
+        allThreads    
+    log:
+        "Logs/"+ nameBuild+ "_RecalibrateBases.log"
+    shell:
+        "{java} {gatk} -nct {threads} -T BaseRecalibrator -R {indexFasta} "
+        "-knownSites {dbsnp} -knownSites {gSnp} -knownSites {gIndel} "
+        "-I {input.bam} -o {output} &> {log}"
+        
+# Write out recalibrated bam with GATK
+rule PrintRecalibratedBam:
+    input:
+        grp = nameBuild+ "_recalibration.grp",
+        bam = nameBuild+ "_dupFree.bam",
+        bai = nameBuild+ "_dupFree.bai"
+    output:
+        bam = "Bam/"+ nameBuild+ "_final.bam",
+        bai = "Bam/"+ nameBuild+ "_final.bai"
+    threads:
+        allThreads
+    log:
+        "Logs/"+ nameBuild+ "_PrintRecalibratedBam.log"
+    shell:
+        "{java} {gatk} -nct {threads} -T PrintReads --use_jdk_deflater --use_jdk_inflater "
+        "-R {indexFasta} -I {input.bam} -BQSR {input.grp} -o {output.bam} &> {log}" 
+
+# Run the Haplotype caller, needed for germline, not so much for somatic, use the GATKRunner since the -nct arg doesn't work        
+rule HaplotypeCaller:
+    input:
+        "Bam/"+ nameBuild+ "_final.bam"
+    output:
+        "Vcfs/"+ nameBuild+ "_Haplo.g.vcf.gz.tbi"
+    log:
+        "Logs/"+ nameBuild+ "_HaplotypeCaller.log"
+    threads: 
+        allThreads
+    shell:
+        "{java} {useq}/GatkRunner -r {regionsForOnTarget} -s GATKRunner -c 'java -jar -Xmx4G {gatk} "
+        "-T HaplotypeCaller -I {input} --emitRefConfidence GVCF -R {indexFasta} --dbsnp {dbsnp} "
+        "-variant_index_type LINEAR -variant_index_parameter 128000' &> {log} && "
+        "mv -f GATKRunner/gatk.raw.vcf Vcfs/{nameBuild}_Haplo.g.vcf &>> {log} && "
+        "{htslib}/bgzip Vcfs/{nameBuild}_Haplo.g.vcf &>> {log} && "
+        "{htslib}/tabix -p vcf Vcfs/{nameBuild}_Haplo.g.vcf.gz &>> {log} && "
+	"rm -rf GATKRunner &>> {log}"
+        
+############################# QC ###############################
+
+# QC, Merge paired alignments for unique observation QC
+rule MergePairedAlignments:
+    input:
+        bam = "Bam/"+ nameBuild+ "_final.bam"
+    output:
+        dir = nameBuild+ "_MPA",
+        json = "Json/"+ nameBuild+ "_MergePairedAlignments.json.gz"   
+    threads: 
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_MergePairedAlignments.log"
+    shell:
+        "{java} {useq}/MergePairedAlignments -b {input.bam} -d {output.dir} "
+        "-j {output.json} -t {threads} &> {log}"
+
+# QC, Generate read coverage QC metrics and bed pass fail files with Sam2USeq
+rule Sam2USeq:
+    input:
+        mpa = nameBuild+ "_MPA"
+    output:
+        useq = nameBuild+ "_uniObReadCov.useq",
+        cs = "QC/"+ nameBuild+ "_PerRegionCoverageStats.txt.gz",
+        json = "Json/"+ nameBuild+ "_Sam2USeq.json.gz",
+        bed = "QC/"+nameBuild+ "_Pass.bed.gz"
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_Sam2USeq.log"
+    shell:
+        "{java} {useq}/Sam2USeq {useqSam2USeq} -f {input.mpa} "
+        "-b {regionsForReadCoverage} -p {output.cs} -j {output.json} -n {nameBuild} &> {log} && "
+        "cp {input.mpa}/*useq {output.useq} &>> {log} && "
+        "mv -f {nameBuild}_Pass.bed.gz QC/ && "
+        "mv -f {nameBuild}_Fail.bed.gz QC/"
+        
+# QC, Convert the uniOb read coverage track to something that will play nicely with IGV and the UCSC genome browsers
+rule USeq2UCSCBig:
+    input:
+        rc= nameBuild+ "_uniObReadCov.useq"
+    output:
+        "QC/"+ nameBuild+ "_uniObReadCov.bw"     
+    log:
+        "Logs/"+ nameBuild+ "_Useq2UCSCBig.log"
+    shell:
+        "{java} {useq}/USeq2UCSCBig -u {input.rc} -f "
+        "-d {ucsc} &> {log} && "
+        "mv -f {nameBuild}_uniObReadCov.bw {output} " 
+
+onerror:
+    shell( "rm -f STARTED COMPLETE; touch FAILED")
