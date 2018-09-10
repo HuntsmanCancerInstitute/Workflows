@@ -1,0 +1,324 @@
+#Define the resources from the config file
+
+## Base name to prepend on all files
+name = config["name"]
+coreid = config["id"]
+
+## Gzipped Fastq files
+fastqReadOne = config["fR"]
+fastqReadTwo = config["sR"]
+
+# For ReadCov calc, smallest, for calc fraction with X coverage
+regionsForRC= config["rcBed"]
+
+# For OnTarget calc, largest
+regionsForOnTarget= config["otBed"]
+
+## Params
+allThreads = int(config["threads"])
+halfThreads = int(round(allThreads/2,0))
+allMemory = config["memory"]
+
+## Apps
+useq = "/uufs/chpc.utah.edu/common/home/hcibcore/atlatl/app/useq/9.0.8/Apps"
+cutadapt="/uufs/chpc.utah.edu/common/home/hcibcore/atlatl/app/modulesoftware/cutadapt"
+bwa = "/uufs/chpc.utah.edu/common/home/hcibcore/atlatl/app/bwa/0.7.15/bwa"
+picard= "/uufs/chpc.utah.edu/common/home/hcibcore/atlatl/app/picard/2.9.0/picard.jar"
+ucsc= "/uufs/chpc.utah.edu/common/home/hcibcore/atlatl/app/UCSC"
+samtools= "/uufs/chpc.utah.edu/common/home/hcibcore/atlatl/app/samtools/1.3/samtools"
+samblaster="/uufs/chpc.utah.edu/common/home/hcibcore/atlatl/app/samblaster/0.1.22/samblaster"
+gatk = "/uufs/chpc.utah.edu/common/home/hcibcore/atlatl/app/gatk/3.7/GenomeAnalysisTK.jar"
+
+## Resources
+goldIndels = "/uufs/chpc.utah.edu/common/home/hcibcore/atlatl/data/Human/B37/2.8/Mills_and_1000G_gold_standard.indels.b37.vcf"
+oneKIndels = "/uufs/chpc.utah.edu/common/home/hcibcore/atlatl/data/Human/B37/2.8/1000G_phase1.indels.b37.vcf"
+dbsnp = "/uufs/chpc.utah.edu/common/home/hcibcore/atlatl/data/Human/B37/2.8/dbsnp_138.b37.vcf"
+indexFasta= "/uufs/chpc.utah.edu/common/home/hcibcore/atlatl/data/Human/B37/human_g1k_v37_decoy_phiXAdaptr.fasta"
+
+## Languages
+java7= "/uufs/chpc.utah.edu/common/home/hcibcore/atlatl/app/java/jre1.7.0_40/bin/java -Djava.io.tmpdir=. "
+java8= "/usr/bin/java -Djava.io.tmpdir=. "
+
+requiredFiles = [fastqReadOne, fastqReadTwo, regionsForRC, regionsForOnTarget, useq, cutadapt, bwa, picard, ucsc, samtools, samblaster, gatk, goldIndels, oneKIndels, dbsnp, indexFasta, java7, java8]
+
+
+############# Messaging ##############
+onerror:
+    shell( "echo \"There were errors! see logs\"")
+onsuccess:
+    shell( "echo \"Mission complete!\"")
+
+############# Rules ##############
+
+# One rule to rule them all
+rule Cleanup:
+    input:
+        name+ "_uniObReadCov.bw",
+        name+ "_checkGzipFiles.complete",
+        name+ "_FastqCount.json.gz"
+    shell:
+    	"mkdir Log Json ReadCov && "
+    	"gzip *log && "
+    	"mv *log.gz Log/ && "
+    	"mv *json.gz Json/ && "
+    	"mv *bed.gz ReadCov/ && "
+    	"mv *bw ReadCov/ && "
+    	"mv *perRegionCoverageStats.txt.gz ReadCov/ && "
+	"rm -rf *_MPA *_SAE snappy*
+    	"echo [`date`] rule Cleanup: COMPLETE; echo" 
+        
+############# Fastq and resources check ##############
+
+# Uses ls to check if all the required resources are present 
+rule CheckResources:
+    output:
+        temp(name+ "_CheckResources.complete")
+    log:
+        name+ "_CheckResources.log"
+    shell:
+        "ls {requiredFiles} &> {log} && touch {output} && "
+        "echo [`date`] rule CheckResources: COMPLETE ; echo"
+
+# Uses gunzip -t to check the integrity of the xxx.gz files in the working directory
+rule CheckGzipFiles:
+    output:
+        temp( name+ "_checkGzipFiles.complete")
+    log:
+        name+ "_CheckGzipFiles.log"
+    shell:
+        "gunzip -tv *.gz &> {log} && touch {output} && "
+        "echo [`date`] rule CheckGzipFiles: COMPLETE; echo" 
+        
+# Count the number of fastq records, used in QC
+rule FastqCount:
+    output:
+        name+ "_FastqCount.json.gz"
+    shell:
+        "x=$(gunzip -c {fastqReadOne} | wc -l | tr -d \" \") && "
+        "y=$(($x/2)) && "
+        "echo \{{ > {name}_FastqCount.json && "
+        "echo \\\"numberFastqReads\\\": $y >> {name}_FastqCount.json && "
+        "echo \}} >> {name}_FastqCount.json && "
+        "gzip {name}_FastqCount.json && "
+        "echo [`date`] rule FastqCount: COMPLETE; echo "
+
+############# Alignment ###############
+
+# The BIG pipe for trimming and aligning standard paired fastq
+# The input isn't needed but triggers the resource check before the big pipe kicks off
+rule AlignWithAdapterTrimming:
+    input:
+        name+ "_CheckResources.complete"
+    output:
+        temp( name+ "_raw.bam")
+    log:
+        name+ "_AlignWithAdapterTrimming.log"
+    params: 
+        "\"@RG\\tID:" +coreid+ "\\tPL:ILLUMINA\\tLB:" +coreid+ "\\tSM:" +name+ "\\tCN:HCI\\tPU:" +coreid+ "\""
+    threads:    
+        allThreads
+    shell:
+        # Remove prior log
+        "rm -f {log} && "
+
+        # Interlace the fastq
+        "{java7} -jar -Xmx2G {useq}/FastqInterlacer -f {fastqReadOne} -s {fastqReadTwo} 2>> {log} | "
+
+        # N adapter sequences, minimum >=3bp identity req
+        "{cutadapt} --interleaved -a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA "
+        "-A AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT --mask-adapter - 2>> {log} | "
+
+        # Align with bwa mem
+        "{bwa} mem -v 1 -t {threads} -R {params} -p {indexFasta} - 2>> {log} | "
+
+        # Mark duplicates
+        "{samblaster} 2>> {log} | "
+
+        # Write as bam
+        "{samtools} view -b - 2>> {log} > {output} && "
+        "echo [`date`] rule AlignWithAdapterTrimming: COMPLETE; echo" 
+
+# Fix mate info and sort, not always necessary but doesn't hurt
+rule FixMateInformation:
+    input:
+        name+ "_raw.bam"
+    output:
+        bam = temp( name+ "_unfiltered.bam"),
+	bai = temp( name+ "_unfiltered.bai")
+    threads:
+        allThreads
+    log:
+        name+ "_FixMateInformation.log"
+    shell:
+        "{java8} -Xmx{allMemory} -jar {picard} FixMateInformation CREATE_INDEX=true SO=coordinate "
+        "MAX_RECORDS_IN_RAM=5000000 TMP_DIR=. VALIDATION_STRINGENCY=SILENT INPUT={input} "
+        "OUTPUT={output.bam} &> {log} && "
+        "echo [`date`] rule FixMateInformation: COMPLETE; echo" 
+
+
+############# Bam Filtering ##############
+
+# Use the SamAlignmentExtractor to remove poor quality alignments but keep off target in pass output for SV calling
+rule SamAlignmentExtractor:
+    input:
+        name+ "_unfiltered.bam"
+    output:
+        dir = temp(name+ "_SAE"),
+        bam = temp(name+ "_sae.bam"),
+        bai = temp(name+ "_sae.bai"),
+        json = name+ "_samAlignmentExtractor.json.gz"
+    params:
+       "-q 13 -d -f",
+    threads:
+        allThreads
+    log:
+        name+ "_SamAlignmentExtractor.log",
+    shell:
+        "{java7} -Xmx{allMemory} -jar {useq}/SamAlignmentExtractor {params} -s {output.dir} -b {input} "
+        "-r {regionsForOnTarget} -j {output.json} &> {log} && "
+        "mv {output.dir}/*_passSAE.bam {output.bam} &>> {log} && "
+        "mv {output.dir}/*_passSAE.bai {output.bai} &>> {log} && "
+        "echo [`date`] rule SamAlignmentExtractor: COMPLETE; echo" 
+
+# Remove duplicates
+rule RemoveDuplicates:
+    input:
+        name+ "_sae.bam"
+    output:
+        bam = temp(name+ "_filtered.bam"),
+        bai = temp(name+ "_filtered.bai"),
+        metrics = temp(name+ "_RemoveDuplicates.metrics")
+    threads:
+        allThreads
+    log:
+        name+ "_RemoveDuplicates.log"
+    shell:
+        "{java8} -Xmx{allMemory} -jar {picard} MarkDuplicates REMOVE_DUPLICATES=true TMP_DIR=. VERBOSITY=ERROR "
+        "VALIDATION_STRINGENCY=SILENT MAX_RECORDS_IN_RAM=5000000 CREATE_INDEX=true "
+        "METRICS_FILE={output.metrics} INPUT={input} OUTPUT={output.bam} &> {log} && "
+        "echo [`date`] rule RemoveDuplicates: COMPLETE; echo" 
+        
+############# Indel Realignment and Recalibration ##############
+
+# Realign Indels with GATK, target creator
+rule CreateTargetsForIndelRealignment:
+    input:
+        bam = name+ "_filtered.bam",
+        bai = name+ "_filtered.bai"
+    output:
+        temp( name+ "_indelRealign.intervals")
+    threads:
+        allThreads
+    log:
+        name+ "_CreateTargetsForIndelRealignment.log"
+    shell:
+        "{java8} -Xmx{allMemory} -jar {gatk} -T RealignerTargetCreator -R {indexFasta} -I {input.bam} "
+        "-o {output} --known {goldIndels} "
+        "--known {oneKIndels} &> {log} && "
+        "echo [`date`] rule CreateTargetsForIndelRealignment: COMPLETE; echo" 
+
+# Realign Indels with GATK, perform realignments
+rule RealignIndels:
+    input:
+        bam = name+ "_filtered.bam",
+        bai = name+ "_filtered.bai",
+        targets = name+ "_indelRealign.intervals"
+    output:
+        bam= temp(name+ "_realign.bam"),
+        bai= temp(name+ "_realign.bai")
+    threads:
+        allThreads
+    log:
+        name+ "_IndelRealign.log"
+    shell:
+        "{java8} -Xmx{allMemory} -jar {gatk} -T IndelRealigner -R {indexFasta} "
+        "-targetIntervals {input.targets} -I {input.bam} -o {output.bam} "
+        "-known {goldIndels} --maxReadsForRealignment 100000 --maxReadsForConsensuses 500 "
+        "-known {oneKIndels} &> {log} && "
+        "echo [`date`] rule RealignIndels: COMPLETE; echo" 
+        
+# Base recalibration with GATK, target creator
+rule RecalibrateBases:
+    input:
+        bam= name+ "_realign.bam",
+        bai= name+ "_realign.bai"
+    output:
+        temp( name+ "_recalibration.grp")
+    threads:
+        allThreads    
+    log:
+        name+ "_RecalibrateBases.log"
+    shell:
+        "{java8} -Xmx{allMemory} -jar {gatk} -nct {threads} -T BaseRecalibrator -R {indexFasta} "
+        "-knownSites {dbsnp} -I {input.bam} -o {output} &> {log} && "
+        "echo [`date`] rule RecalibrateBases: COMPLETE; echo" 
+
+# Write out recalibrated bam with GATK
+rule PrintRecalibratedBam:
+    input:
+        grp = name+ "_recalibration.grp",
+        bam = name+ "_realign.bam",
+        bai= name+ "_realign.bai"
+    output:
+        name+ "_final.bam"
+    threads:
+        allThreads
+    log:
+        name+ "_PrintRecalibratedBam.log"
+    shell:
+        "{java8} -Xmx{allMemory} -jar {gatk} -nct {threads} -T PrintReads -R {indexFasta} "
+        "-I {input.bam} -BQSR {input.grp} -o {output} &> {log} && "
+        "echo [`date`] rule PrintRecalibratedBam: COMPLETE; echo" 
+        
+        
+############# Alignment QC ##############
+
+# QC, Merge paired alignments for unique observation QC
+rule MergePairedAlignments:
+    input:
+        name+ "_final.bam"
+    output:
+        dir = temp(name+ "_MPA"),
+        json = name+ "_mergePairedAlignments.json.gz"   
+    threads:
+        allThreads
+    log:
+        name+ "_MergePairedAlignments.log"
+    shell:
+        "{java7} -Xmx{allMemory} -jar {useq}/MergePairedAlignments -b {input} -d {output.dir} "
+        "-j {output.json} -t {threads} &> {log} && "
+        "echo [`date`] rule MergePairedAlignments: COMPLETE; echo" 
+
+# QC, Generate read coverage QC metrics and bed pass fail files with Sam2USeq
+rule Sam2USeq:
+    input:
+        name+ "_MPA"
+    output:
+        useq = temp(name+ "_uniObReadCov.useq"),
+        cs = name+ "_perRegionCoverageStats.txt.gz",
+        json = name+ "_sam2USeq.json.gz"
+    params:
+        "-v H_sapiens_Feb_2009 -x 1500 -r -c 13"    
+    threads:
+        allThreads    
+    log:
+        name+ "_Sam2USeq.log"
+    shell:
+        "{java7} -Xmx{allMemory} -jar {useq}/Sam2USeq {params} -f {input} "
+        "-b {regionsForRC} -p {output.cs} -j {output.json} -n {name} &> {log} && "
+        "cp {input}/*useq {output.useq} &>> {log} && "
+        "echo [`date`] rule Sam2USeq: COMPLETE; echo" 
+        
+# QC, Convert the uniOb read coverage track to something that will play nicely with IGV and the UCSC genome browsers
+rule USeq2UCSCBig:
+    input:
+        name+ "_uniObReadCov.useq"
+    output:
+        name+ "_uniObReadCov.bw"
+    threads:
+        allThreads    
+    log:
+        name+ "_USeq2UCSCBig.log"
+    shell:
+        "{java7} -Xmx{allMemory} -jar {useq}/USeq2UCSCBig -u {input} -f -d {ucsc} &> {log} && "
+        "echo [`date`] rule Useq2UCSCBig: COMPLETE; echo" 
