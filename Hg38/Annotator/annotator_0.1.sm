@@ -1,5 +1,5 @@
 # Joint Genotyping of Haplotype called gVCFs
-# 10 September 2018
+# 14 September 2018
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -23,7 +23,7 @@ dataDir = config["dataDir"]
 
 # Apps in the docker container
 java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
-useq = "/BioApps/USeq_9.1.8/Apps"
+useq = "/BioApps/USeq_9.2.0/Apps"
 htslib = "/BioApps/HTSlib_1.3"
 snpEff = "/BioApps/SnpEff_4.3t_2017-11-24"
 

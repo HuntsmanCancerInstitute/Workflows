@@ -1,0 +1,257 @@
+
+
+############# Rules ##############
+
+# Workflow trigger
+rule Results:
+    input:
+        "QC/"+ nameBuild+ "_AggQC",
+        nameBuild+ "_checkGzipFiles.complete",
+        "Json/"+ nameBuild+ "_FastqCount.json.gz",
+        "QC/"+ nameBuild+ "_uniObReadCov.bw"
+    output:
+        nameBuild+"_UniAlignQCB38_COMPLETE"
+    shell:
+        "touch {nameBuild}_B38ExomeAlign_COMPLETE"
+    	 
+        
+############# Fastq and resources check ##############
+
+# Uses gunzip -t to check the integrity of the xxx.gz files in the working directory
+rule CheckGzipFiles:
+    output:
+        temp( nameBuild+ "_checkGzipFiles.complete")
+    log:
+        "Log/"+ nameBuild+ "_CheckGzipFiles.log"
+    shell:
+        "gunzip -tv {fastqReadOne} {fastqReadTwo} &> {log} && touch {output}" 
+        
+# Count the number of fastq records
+rule CountFastq:
+    input:
+        fastqReadOne
+    output:
+        "Json/" + nameBuild + "_FastqCount.json.gz"
+    shell:
+        "x=$(gunzip -c {input} | wc -l | tr -d \" \") && "
+        "y=$(($x/2)) && "
+        "echo \{{ > Json/{nameBuild}_FastqCount.json && "
+        "echo \\\"numberFastqReads\\\": $y >> Json/{nameBuild}_FastqCount.json && "
+        "echo \}} >> Json/{nameBuild}_FastqCount.json && "
+        "gzip Json/{nameBuild}_FastqCount.json"
+        
+        
+############# Alignment B38 ###############
+
+# Align to b38 with bwa mem, trim adapters, mark dups, sort                                                                                                  
+rule AlignB38:
+    output:
+        nameBuild+ "_raw.bam"
+    log:
+        "Log/"+ nameBuild+ "_AlignB38.log"
+    params:
+        rg ="\"@RG\\tID:"+nameBuild+"\\tPL:ILLUMINA\\tLB:"+nameBuild+"\\tSM:"+nameBuild+ "\\tCN:HCI\\tPU:"+nameBuild+"\""
+    threads:
+        allThreads
+    shell:
+        # Align with run-bwamem this trims adapters, marks dups, and sorts                                                                                   
+        "{bwa} -o {nameBuild}_AlignB38 -R {params.rg} -t {threads} -a -d "
+        "{indexFasta} {fastqReadOne} {fastqReadTwo} > {nameBuild}_AlignB38.sh 2> {log} && "
+        "chmod 750 {nameBuild}_AlignB38.sh 2>> {log} && "
+        "cat {nameBuild}_AlignB38.sh >> {log} && "
+        "./{nameBuild}_AlignB38.sh && "
+        "cat {nameBuild}_AlignB38.log.bwamem >> {log} && "
+        "cat {nameBuild}_AlignB38.log.dedup >> {log} && "
+        "cat {nameBuild}_AlignB38.log.trim >> {log} && "
+        "rm -f {nameBuild}_AlignB38.log.* {nameBuild}_AlignB38.sh {nameBuild}_AlignB38.hla.* && "
+        "mv {nameBuild}_AlignB38.aln.bam {output}"
+
+# Sort alignments
+rule SortSam:
+    input:
+        nameBuild+ "_raw.bam"
+    output:
+        bam = nameBuild+ "_unfiltered.bam",
+        bai = nameBuild+ "_unfiltered.bai"
+    threads:
+        halfThreads
+    log:
+        "Log/"+ nameBuild+ "_SortSam.log"
+    shell:
+        "{java} {picard} SortSam CREATE_INDEX=true SO=coordinate "
+        "MAX_RECORDS_IN_RAM=5000000 TMP_DIR=. VALIDATION_STRINGENCY=SILENT INPUT={input} "
+        "OUTPUT={output.bam} &> {log}"
+        
+# Use the SamAlignmentExtractor to remove poor quality alignments 
+rule SamAlignmentExtractor:
+    input:
+        bam = nameBuild+ "_unfiltered.bam",
+        bai = nameBuild+ "_unfiltered.bai"
+    output:
+        bam = nameBuild+ "_sae.bam",
+        bai = nameBuild+ "_sae.bai",
+        json = "Json/"+ nameBuild+ "_SamAlignmentExtractor.json.gz"
+    log:
+        "Log/"+ nameBuild+ "_SamAlignmentExtractor.log",
+    shell:
+        "{java} {useq}/SamAlignmentExtractor {sae} "
+        "-s {nameBuild}_SAE -b {input.bam} "
+        "-r {regionsForOnTarget} -j {output.json} &> {log} && "
+        "mv {nameBuild}_SAE/*_passSAE.bam {output.bam} &>> {log} && "
+        "mv {nameBuild}_SAE/*_passSAE.bai {output.bai} &>> {log} && "
+        "rm -rf {nameBuild}_SAE"
+        
+# Remove duplicates
+rule RemoveDuplicates:
+    input:
+        bam = nameBuild+ "_sae.bam",
+        bai = nameBuild+ "_sae.bai"
+    output:
+        bam = nameBuild+ "_dupFree.bam",
+        bai = nameBuild+ "_dupFree.bai",
+        metrics = nameBuild+ "_RemoveDuplicates.metrics"
+    threads:
+        halfThreads
+    log:
+        "Log/"+ nameBuild+ "_RemoveDuplicates.log"
+    shell:
+        "{java} {picard} MarkDuplicates REMOVE_DUPLICATES=true TMP_DIR=. VERBOSITY=ERROR "
+        "VALIDATION_STRINGENCY=SILENT MAX_RECORDS_IN_RAM=5000000 CREATE_INDEX=true "
+        "METRICS_FILE={output.metrics} INPUT={input.bam} OUTPUT={output.bam} &> {log}"
+
+        
+############# Indel Realignment and Recalibration ##############
+
+# Realign Indels with GATK, target creator
+rule CreateTargetsForIndelRealignment:
+    input:
+        bam = nameBuild+ "_dupFree.bam",
+        bai = nameBuild+ "_dupFree.bai"
+    output:
+        temp( nameBuild+ "_indelRealign.intervals")
+    threads:
+        allThreads
+    log:
+        "Log/"+ nameBuild+ "_CreateTargetsForIndelRealignment.log"
+    shell:
+        "{java} {gatk} -T RealignerTargetCreator -R {indexFasta} "
+        "-I {input.bam} -o {output} --known {goldIndels} &> {log}"
+
+# Realign Indels with GATK, perform realignments
+rule RealignIndels:
+    input:
+        bam = nameBuild+ "_dupFree.bam",
+        bai = nameBuild+ "_dupFree.bai",
+        targets = nameBuild+ "_indelRealign.intervals"
+    output:
+        bam= temp(nameBuild+ "_realign.bam"),
+        bai= temp(nameBuild+ "_realign.bai")
+    threads:
+        allThreads
+    log:
+        "Log/"+ nameBuild+ "_IndelRealign.log"
+    shell:
+        "{java} {gatk} -T IndelRealigner -R {indexFasta} "
+        "-targetIntervals {input.targets} -I {input.bam} -o {output.bam} "
+        "-known {goldIndels} --maxReadsForRealignment 100000 --maxReadsForConsensuses 500 "
+        "&> {log} "
+
+# Base recalibration with GATK, target creator
+rule RecalibrateBases:
+    input:
+        bam= nameBuild+ "_realign.bam",
+        bai= nameBuild+ "_realign.bai"
+    output:
+        temp( nameBuild+ "_recalibration.grp")
+    threads:
+        allThreads    
+    log:
+        "Log/"+ nameBuild+ "_RecalibrateBases.log"
+    shell:
+        "{java} {gatk} -nct {threads} -T BaseRecalibrator "
+        "-R {indexFasta} -knownSites {dbsnp} -I {input.bam} -o {output} &> {log}"
+        
+# Write out recalibrated bam with GATK
+rule PrintRecalibratedBam:
+    input:
+        grp = nameBuild+ "_recalibration.grp",
+        bam = nameBuild+ "_realign.bam",
+        bai= nameBuild+ "_realign.bai"
+    output:
+        bam = "Bam/"+ nameBuild+ "_final.bam",
+        bai = "Bam/"+ nameBuild+ "_final.bai"
+    threads:
+        allThreads
+    log:
+        "Log/"+ nameBuild+ "_PrintRecalibratedBam.log"
+    shell:
+        "{java} {gatk} -nct {threads} -T PrintReads "
+        "-R {indexFasta} -I {input.bam} -BQSR {input.grp} -o {output.bam} &> {log}" 
+        
+        
+############################# QC ###############################
+
+# QC, Merge paired alignments for unique observation QC
+rule MergePairedAlignments:
+    input:
+        bam = "Bam/"+ nameBuild+ "_final.bam"
+    output:
+        dir = nameBuild+ "_MPA",
+        json = "Json/"+ nameBuild+ "_MergePairedAlignments.json.gz"   
+    threads: 
+        halfThreads
+    log:
+        "Log/"+ nameBuild+ "_MergePairedAlignments.log"
+    shell:
+        "{java} {useq}/MergePairedAlignments -b {input.bam} -d {output.dir} "
+        "-j {output.json} -t {threads} &> {log}"
+
+# QC, Generate read coverage QC metrics and bed pass fail files with Sam2USeq
+rule Sam2USeq:
+    input:
+        mpa = nameBuild+ "_MPA"
+    output:
+        useq = nameBuild+ "_uniObReadCov.useq",
+        cs = "QC/"+ nameBuild+ "_PerRegionCoverageStats.txt.gz",
+        json = "Json/"+ nameBuild+ "_Sam2USeq.json.gz",
+        bed = "QC/"+nameBuild+ "_Pass.bed.gz"
+    threads:
+        halfThreads
+    log:
+        "Log/"+ nameBuild+ "_Sam2USeq.log"
+    shell:
+        "{java} {useq}/Sam2USeq {useqSam2USeq} -f {input.mpa} "
+        "-b {regionsForReadCoverage} -p {output.cs} -j {output.json} -n {nameBuild} &> {log} && "
+        "cp {input.mpa}/*useq {output.useq} &>> {log} && "
+        "mv -f {nameBuild}_Pass.bed.gz QC/ && "
+        "mv -f {nameBuild}_Fail.bed.gz QC/"
+        
+# QC, Convert the uniOb read coverage track to something that will play nicely with IGV and the UCSC genome browsers
+rule USeq2UCSCBig:
+    input:
+        rc= nameBuild+ "_uniObReadCov.useq"
+    output:
+        "QC/"+ nameBuild+ "_uniObReadCov.bw"     
+    log:
+        "Log/"+ nameBuild+ "_Useq2UCSCBig.log"
+    shell:
+        "{java} {useq}/USeq2UCSCBig -u {input.rc} -f "
+        "-d {ucsc} &> {log} && "
+        "mv -f {nameBuild}_uniObReadCov.bw {output} " 
+ 
+# Pulls info from the json files into xls and html reports
+rule AggregateQCStats:
+    input:
+        f= "Json/"+nameBuild+ "_FastqCount.json.gz",
+        s= "Json/"+nameBuild+ "_SamAlignmentExtractor.json.gz",
+        m= "Json/"+nameBuild+ "_MergePairedAlignments.json.gz",
+        u= "Json/"+nameBuild+ "_Sam2USeq.json.gz"
+    output:
+        "QC/"+ nameBuild+ "_AggQC"
+    log:
+        "Log/"+ nameBuild+ "_AggregateQCStats.log",
+    shell:
+        "{java} {useq}/AggregateQCStats -j . -r {output} -p {nameBuild}_ &> {log}"
+
+
+

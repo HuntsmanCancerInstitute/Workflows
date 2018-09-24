@@ -21,7 +21,7 @@ regions = config["regionsForAnalysis"]
 mpileup = config["mpileup"]
 
 # Apps in docker image
-useq = "/BioApps/USeq_9.1.8/Apps"
+useq = "/BioApps/USeq_9.2.0/Apps"
 strelka = "/BioApps/Strelka_2.9.3"
 manta = "/BioApps/Manta_1.4.0"
 htsLib = "/BioApps/HTSlib_1.3"

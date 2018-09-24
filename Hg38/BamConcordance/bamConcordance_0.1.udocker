@@ -17,16 +17,16 @@ echo "Threads: "$ALL_THREADS"  Memory: "$ALL_RAM"  Host: "`hostname`; echo
 cd $jobDir
 
 # Modify the params below to fit your analysis
-s=/scratch/mammoth/serial/u0028003
+s=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner
 
 /BioApps/Miniconda3/bin/snakemake -p -T \
 --cores $ALL_THREADS \
 --snakefile bamConcordance_*.sm \
 --stat $name"_BamConcordanceRunStats.log" \
 --config \
-regionsForAnalysis=$s/SnakeMakeDevResources/Bed/SeqCapEZ_Hg38_GRCh38_Hg19/mergedSeqCap_EZ_Exome_v3_hg38_capture_primary_targets_pad150bp.bed.gz \
-indexFasta=$s/SnakeMakeDevResources/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
-dbsnp=$s/SnakeMakeDevResources/Bed/dbsnp_146.hg38Pad0bp.bed.gz \
+regionsForAnalysis=$s/Bed/SeqCapEZ_Hg38_GRCh38_Hg19/mergedSeqCap_EZ_Exome_v3_hg38_capture_primary_targets_pad150bp.bed.gz \
+indexFasta=$s/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
+dbsnp=$s/Bed/dbsnp_146.hg38Pad0bp.bed.gz \
 name=$name \
 allThreads=$ALL_THREADS \
 allRam=$ALL_RAM &> $name"_BamConcordanceRun.log"

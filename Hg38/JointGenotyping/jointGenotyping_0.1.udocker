@@ -1,5 +1,5 @@
 # Bash script run inside the docker container
-# 10 September 2018
+# 14 September 2018
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -17,8 +17,7 @@ echo "Threads: "$ALL_THREADS"  Memory: "$ALL_RAM"  Host: "`hostname` "  Name: "$
 cd $jobDir
 
 # Modify the params below to fit your analysis
-s=/scratch/mammoth/serial/u0028003
-#s=/Repository/AnalysisData/Nix
+s=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner
 genomeBuild=Hg38
 
 /BioApps/Miniconda3/bin/snakemake -p -T \
@@ -27,13 +26,17 @@ genomeBuild=Hg38
 --stat $name"_"$genomeBuild"_SnakemakeRunStats.log" \
 --config \
 genomeBuild=$genomeBuild \
-regionsForAnalysis=$s/SnakeMakeDevResources/Bed/SeqCapEZ_Hg38_GRCh38_Hg19/mergedSeqCap_EZ_Exome_v3_hg38_capture_primary_targets_pad150bp.bed.gz \
-indexFasta=$s/SnakeMakeDevResources/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
+regionsForAnalysis=$s/Bed/SeqCapEZ_Hg38_GRCh38_Hg19/mergedSeqCap_EZ_Exome_v3_hg38_capture_primary_targets_pad150bp.bed.gz \
+indexFasta=$s/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
 useqJointGenotypeVCFParser="-q 20 -d 10 -a 0.2 -g 20" \
 name=$name \
 allThreads=$ALL_THREADS \
 allRam=$ALL_RAM &> $name"_"$genomeBuild"_SnakemakeRun.log"
 
+# Notes
+## regionsForAnalysis - bgzipped bed file of regions to use in calling genotypes, use chrXXXX naming for Hg38. See bgzip and tabix from https://github.com/samtools/htslib .
+## indexFasta - the indexed fasta file used for alignment including xxx.fa.fai and xxx.dict files, see https://github.com/lh3/bwa/tree/master/bwakit
+## useq - launch the JointGenotypeVCFParser USeq app to see cmd line options
 
 #Replace first and last lines above with the following to get dag svg graph
 #/BioApps/Miniconda3/bin/snakemake --dag \

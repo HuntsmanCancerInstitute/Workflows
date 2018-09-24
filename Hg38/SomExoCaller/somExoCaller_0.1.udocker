@@ -1,5 +1,5 @@
 # Bash script run inside the docker container
-# 10 September 2018
+# 14 September 2018
 # David.Nix@Hci.Utah.Edu
 
 # Print params
@@ -20,7 +20,7 @@ echo "Threads: "$ALL_THREADS"  Memory: "$ALL_RAM"  Host: "`hostname`; echo
 cd $jobDir
 
 # Modify the params below to fit your analysis
-s=/scratch/mammoth/serial/u0028003
+s=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner
 genomeBuild=Hg38
 
 /BioApps/Miniconda3/bin/snakemake -p -T \
@@ -29,9 +29,9 @@ genomeBuild=Hg38
 --config \
 allThreads=$ALL_THREADS \
 allRam=$ALL_RAM \
-regionsForAnalysis=$s/SnakeMakeDevResources/Bed/SeqCapEZ_Hg38_GRCh38_Hg19/mergedSeqCap_EZ_Exome_v3_hg38_capture_primary_targets_pad150bp.bed.gz \
-indexFasta=$s/SnakeMakeDevResources/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
-mpileup=$s/SnakeMakeDevResources/MpileupBkg/BkGrdMouseHumanMixes/b38Mm10AvatarBkg.mpileup.gz \
+regionsForAnalysis=$s/Bed/SeqCapEZ_Hg38_GRCh38_Hg19/mergedSeqCap_EZ_Exome_v3_hg38_capture_primary_targets_pad150bp.bed.gz \
+indexFasta=$s/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
+mpileup=$s/MpileupBkg/Hg38AvatarBkgnd/bkg.mpileup_DP20MS3.txt.gz \
 tumorBam=$tumorBam \
 normalBam=$normalBam \
 tumorBed=$tumorBed \
@@ -47,6 +47,12 @@ minTNRatio=2 \
 minTNDiff=0.03 \
 fdrTier=1 \
 minBKZ=3 &> $name"_"$genomeBuild"_SnakemakeRun.log"
+
+# Notes
+## regionsForAnalysis - a sorted, bgzipped, and tabix indexed bed file of regions to report variants. See https://github.com/samtools/htslib
+## indexFasta - the same fasta file used in sample alignment. Also needed are the index xxx.fa.fai and xxx.dict files.
+## mpileup - a multi sample background mpileup file of 10-25 normal bam files. See http://bioserver.hci.utah.edu/USeq/Documentation/cmdLnMenus.html#VCFBackgroundChecker
+## useq - launch each app to see cmd line options
 
 #Replace first and last lines above with the following to get dag svg graph
 #/BioApps/Miniconda3/bin/snakemake --dag \

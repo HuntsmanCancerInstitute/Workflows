@@ -23,7 +23,7 @@ useqJointGenotypeVCFParser = config["useqJointGenotypeVCFParser"]
 # Apps in the docker container
 gatk = "/BioApps/GATK_3.8/GenomeAnalysisTK.jar"
 java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
-useq = "/BioApps/USeq_9.1.8/Apps"
+useq = "/BioApps/USeq_9.2.0/Apps"
 vt = "/BioApps/vt_2June2015/vt"
 htslib = "/BioApps/HTSlib_1.3"
 

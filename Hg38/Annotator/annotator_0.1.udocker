@@ -1,5 +1,5 @@
 # Bash script run inside the docker container
-# 10 September 2018
+# 14 September 2018
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -18,7 +18,7 @@ echo "Threads: "$ALL_THREADS"  Memory: "$ALL_RAM"  Host: "`hostname`
 cd $jobDir
 
 # Modify the params below to fit your analysis
-s=/scratch/mammoth/serial/u0028003
+s=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner
 
 /BioApps/Miniconda3/bin/snakemake -p -T \
 --cores $ALL_THREADS \
@@ -26,11 +26,11 @@ s=/scratch/mammoth/serial/u0028003
 --stat $name"_Hg38_AnnotatorRunStats.log" \
 --config \
 genomeBuild=Hg38 \
-regionsForAnalysis=$s/SnakeMakeDevResources/Bed/SeqCapEZ_Hg38_GRCh38_Hg19/mergedSeqCap_EZ_Exome_v3_hg38_capture_primary_targets_pad150bp.bed.gz \
-indexFasta=$s/SnakeMakeDevResources/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
-dataDir=$s/SnakeMakeDevResources/AnnotatorData \
+regionsForAnalysis=$s/Bed/SeqCapEZ_Hg38_GRCh38_Hg19/mergedSeqCap_EZ_Exome_v3_hg38_capture_primary_targets_pad150bp.bed.gz \
+indexFasta=$s/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
+dataDir=$s/AnnotatorData \
 annoVcfParser="-m 0.05 -y annotatedVcfParser.config.txt" \
-regionsOfInterest=$s/SnakeMakeDevResources/Indexes/Star/Hg38/Gencode/gencode.v28.acmgExonsPad150bp.bed.gz \
+regionsOfInterest=$s/Indexes/Star/Hg38/Gencode/gencode.v28.acmgExonsPad150bp.bed.gz \
 name=$name \
 vcf=$(ls *vcf.gz) \
 allThreads=$ALL_THREADS \

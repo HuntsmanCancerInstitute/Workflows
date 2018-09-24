@@ -12,6 +12,7 @@ nameBuild = str(config["name"]) + "_Hg38"
 allThreads = int(config["allThreads"])
 halfThreads = int(round(allThreads/2,0))
 allRam = int(round(float(config["allRam"])))
+partRam = int(round(float(config["allRam"])*0.75))
 
 # Gzipped Fastq files
 fastqReadOne = config["fastqReadOne"]
@@ -34,8 +35,9 @@ bwa = "/BioApps/bwakit-0.7.15/run-bwamem"
 gatk = "/BioApps/GATK_3.8/GenomeAnalysisTK.jar"
 htslib = "/BioApps/HTSlib_1.3"
 java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
+javaPart = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(partRam) + "G"
 picard = "/BioApps/Picard_2.17.2/picard.jar"
-useq = "/BioApps/USeq_9.1.8/Apps"
+useq = "/BioApps/USeq_9.2.0/Apps"
 ucsc = "/BioApps/UCSC_6Aug2018"
 
 
@@ -159,7 +161,7 @@ rule RemoveDuplicates:
     log:
         "Logs/"+ nameBuild+ "_RemoveDuplicates.log"
     shell:
-        "{java} {picard} MarkDuplicates REMOVE_DUPLICATES=true TMP_DIR=. VERBOSITY=ERROR "
+        "{javaPart} {picard} MarkDuplicates REMOVE_DUPLICATES=true TMP_DIR=. VERBOSITY=ERROR "
         "VALIDATION_STRINGENCY=SILENT MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=true "
         "USE_JDK_INFLATER=true USE_JDK_DEFLATER=true CLEAR_DT=true OPTICAL_DUPLICATE_PIXEL_DISTANCE=2500 "
         "METRICS_FILE={output.metrics} INPUT={input.bam} OUTPUT={output.bam} &> {log}"

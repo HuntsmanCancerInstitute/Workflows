@@ -10,7 +10,7 @@ name = str(config["name"])
 
 # Threads and memory
 allThreads = int(config["allThreads"])
-allRam = int(round(float(config["allRam"])))
+partRam = int(round(  float(config["allRam"])*0.8 ))
 
 # Resources
 regionsForAnalysis = config["regionsForAnalysis"]
@@ -18,8 +18,8 @@ indexFasta = config["indexFasta"]
 dbsnp = config["dbsnp"]
 
 # Apps in the docker container
-java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
-useq = "/BioApps/USeq_9.1.8/Apps"
+java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(partRam) + "G"
+useq = "/BioApps/USeq_9.2.0/Apps"
 samtools = "/BioApps/Samtools_1.9/samtools"
 
 rule BamConcordance:

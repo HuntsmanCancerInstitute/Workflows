@@ -1,5 +1,5 @@
 # Bash script run inside the docker container
-# 10 September 2018
+# 14 September 2018
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -19,19 +19,19 @@ echo "Threads: "$ALL_THREADS"  Memory: "$ALL_RAM"  Host: "`hostname`; echo
 cd $jobDir
 
 # Modify the params below to fit your analysis
-s=/scratch/mammoth/serial/u0028003
+s=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner
 
 /BioApps/Miniconda3/bin/snakemake -p -T \
 --cores $ALL_THREADS \
 --snakefile exomeAlignQC_*.sm \
 --stat $name"_Hg38_ExomeAlignRunStats.log" \
 --config \
-regionsForReadCoverage=$s/SnakeMakeDevResources/Bed/SeqCapEZ_Hg38_GRCh38_Hg19/sharedSeqCap_EZ_Exome_v3_hg38_capture_primary_targets.bed.gz \
-regionsForOnTarget=$s/SnakeMakeDevResources/Bed/SeqCapEZ_Hg38_GRCh38_Hg19/mergedSeqCap_EZ_Exome_v3_hg38_capture_primary_targets_pad150bp.bed.gz \
-indexFasta=$s/SnakeMakeDevResources/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
-dbsnp=$s/SnakeMakeDevResources/Vcfs/dbsnp_146.hg38.vcf.gz \
-gSnp=$s/SnakeMakeDevResources/Vcfs/1000G_phase1.snps.high_confidence.hg38.vcf.gz \
-gIndel=$s/SnakeMakeDevResources/Vcfs/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz \
+regionsForReadCoverage=$s/Bed/SeqCapEZ_Hg38_GRCh38_Hg19/sharedSeqCap_EZ_Exome_v3_hg38_capture_primary_targets.bed.gz \
+regionsForOnTarget=$s/Bed/SeqCapEZ_Hg38_GRCh38_Hg19/mergedSeqCap_EZ_Exome_v3_hg38_capture_primary_targets_pad150bp.bed.gz \
+indexFasta=$s/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
+dbsnp=$s/Vcfs/dbsnp_146.hg38.vcf.gz \
+gSnp=$s/Vcfs/1000G_phase1.snps.high_confidence.hg38.vcf.gz \
+gIndel=$s/Vcfs/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz \
 useqSamAlignmentExtractor="-q 20 -a 0.65 -d -f" \
 useqSam2USeq="-v Hg38 -x 500 -r -w sam2USeq.config.txt" \
 name=$name \
@@ -40,7 +40,15 @@ fastqReadTwo=$fastqReadTwo \
 allThreads=$ALL_THREADS \
 allRam=$ALL_RAM &> $name"_Hg38_ExomeAlignQCRun.log"
 
+# Notes
+## regionsForOnTarget - bgzipped bed file of regions to use in calculating on target capture rates, use chrXXXX naming. See bgzip and tabix from https://github.com/samtools/htslib .
+## regionsForReadCoverage - bgzipped bed file of regions to use in calculating unique observation read coverage uniformity metrics, ditto.
+## indexFasta - the BWA mem fasta file with all the associated index files including xxx.fa.fai and xxx.dict files, see https://github.com/lh3/bwa/tree/master/bwakit
+## gIndels - a bgzipped and tabix indexed vcf file of trusted indels from the 1000 Genomes project Hg38GATKBundle, see https://software.broadinstitute.org/gatk/download/bundle
+## gSnps - ditto, 1000G high confidence snps from the Hg38 GATKBundle
+## dbsnp - ditto, dbSNP variants from the Hg38 GATKBundle
+## useq - launch each app to see cmd line options
 
-#Replace first and last lines above with the following to get dag svg graph
+# Replace first and last lines above with the following to get dag svg graph
 #/BioApps/Miniconda3/bin/snakemake --dag \
 #allRam=$ALL_RAM | dot -Tsvg > $name"_Hg38_dag.svg"

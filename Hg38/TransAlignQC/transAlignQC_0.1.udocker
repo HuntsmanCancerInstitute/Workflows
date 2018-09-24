@@ -1,5 +1,5 @@
 # Bash script run inside the docker container
-# 10 September 2018
+# 14 September 2018
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -19,7 +19,7 @@ echo "Threads: "$ALL_THREADS"  Memory: "$ALL_RAM"  Host: "`hostname`; echo
 cd $jobDir
 
 # Modify the params below to fit your analysis
-s=/scratch/mammoth/serial/u0028003
+s=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner
 
 /BioApps/Miniconda3/bin/snakemake -p -T \
 --cores $ALL_THREADS \
@@ -28,10 +28,10 @@ s=/scratch/mammoth/serial/u0028003
 --config \
 fastqReadOne=$fastqReadOne \
 fastqReadTwo=$fastqReadTwo \
-starIndex=$s/SnakeMakeDevResources/Indexes/Star/Hg38/Hg38StarIndex75bp \
-hg38ChromSizes=$s/SnakeMakeDevResources/Indexes/Star/Hg38/hg38ChromSize.txt \
-refFlatGenes=$s/SnakeMakeDevResources/Indexes/Star/Hg38/Gencode/gencode.v28.genes.ucsc \
-rRNAIntervals=$s/SnakeMakeDevResources/Indexes/Star/Hg38/Gencode/gencode.v28.rRNA.interval_list \
+starIndex=$s/Indexes/Star/Hg38/Hg38StarIndex75bp \
+hg38ChromSizes=$s/Indexes/Star/Hg38/hg38ChromSize.txt \
+refFlatGenes=$s/Indexes/Star/Hg38/Gencode/gencode.v28.genes.ucsc \
+rRNAIntervals=$s/Indexes/Star/Hg38/Gencode/gencode.v28.rRNA.interval_list \
 name=$name \
 allThreads=$ALL_THREADS \
 allRam=$ALL_RAM &> $name"_Hg38_TransAlignQCRun.log"
