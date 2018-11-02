@@ -30,7 +30,7 @@ echo "Threads: "$threads "  Memory: " $memory "  Host: " `hostname`; echo
 
 # Print out a workflow
 ~/BioApps/SnakeMake/3.13.3/snakemake  --dag --snakefile *.sm  \
---config fR=$firstReadFastq sR=$secondReadFastq\
+--config fR=$firstReadFastq sR=$secondReadFastq \
 rCB=$readCoverageBed oTB=$onTargetBed \
 name=$jobName threads=$threads memory=$memory email=$email \
 | dot -Tsvg > $jobName"_dag.svg"

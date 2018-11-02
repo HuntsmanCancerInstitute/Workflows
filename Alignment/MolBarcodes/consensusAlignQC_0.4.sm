@@ -195,7 +195,7 @@ rule FixMateInformation:
     shell:
         "{java8} -Xmx{allMemory} -jar {picard} FixMateInformation CREATE_INDEX=true SO=coordinate "
         "MAX_RECORDS_IN_RAM=5000000 TMP_DIR=. VALIDATION_STRINGENCY=SILENT INPUT={input} "
-        "OUTPUT={output.bam} &> {log} && "
+        "OUTPUT={output.bam} USE_JDK_DEFLATER=true USE_JDK_INFLATER=true &> {log} && "
         "echo [`date`] rule fixMateInformation: COMPLETE "
 
 
