@@ -1,0 +1,42 @@
+#e your.name@hci.utah.edu -ab
+
+# VERSION 1 TP
+
+
+
+### Sample information
+# substitute as appropriate
+NAME=MYNAME
+ID=MYID
+
+
+# Applications
+$APP=/tomato/dev/app
+$NOVOALIGN=$APP/novoalign/3.08.02/novoalign
+$SAMTOOL=$APP/samtools/1.8/samtools
+
+# data
+$DATA=/tomato/dev/data
+$INDEX=$DATA/Mouse/Mm10/mm10NormChrLambdaPhiXAdapt.nov.bisulphite.nix
+
+# align with updated version of novoalign, 3.7
+# still using the 2.8 version of the index, that shouldn't matter too much
+# increasing highest alignment threshold to 360, roughly 12 mismatches
+# original core standard was 240 for 101PE sequence
+# default is probably >1000, recommended is 690 based on formulas in PDF docs....
+# increase to 600
+
+$NOVOALIGN --NonC \
+-d $DATA \
+-o SAM "@RG\tID:$ID\tPL:Illumina\tLB:$ID\tSM:$NAME\tCN:HCI" \
+-r Random -t 600 -h 120 -b 2 \
+-a GATCGGAAGAGCTCGTATGCCGTCTTCTGCTTG ACACTCTTTCCCTACACGACGCTCTTCCGATCT \
+-f *.gz | \
+$SAMTOOL view -b -o PART_${NAME}.raw.bam -
+
+# sort and index
+$SAMTOOL sort -m 4G -@ 8 -o PART_${NAME}.bam PART_${NAME}.raw.bam \
+&& $SAMTOOL index -@ 8 PART_${NAME}.bam \
+&& rm -f PART_${NAME}.raw.bam
+
+

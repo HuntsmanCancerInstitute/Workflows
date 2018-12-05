@@ -1,0 +1,49 @@
+#e your.name@hci.utah.edu -b
+
+# VERSION 2 TP
+
+
+ORG=/tomato/dev/data/Mouse/GRCm38
+
+# Paths
+APP=/tomato/dev/app
+FASTQC=$APP/FastQC/0.11.5/fastqc
+module load cutadapt/1.16
+CUTADAPT=$APP/modulesoftware/cutadapt
+BISMARK=/tomato/dev/app/Bismark/0.20.0/
+
+# bismark uses essentially 3-4 threads per 1 specified 
+USECPU=expr `$NCPU / 4`
+
+# GET sample prefix from Fastq file name
+GZ=`echo *.gz`
+OUT=`echo ${GZ%%_*}`
+
+
+# CUTADAPT v 1.16
+$CUTADAPT -j $NCPU -m 20 -a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA \
+ -A AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT \
+ -o ${OUT}_1.fq.gz -p ${OUT}_2.fq.gz $GZ
+
+
+# FASTQ
+$FASTQC -f fastq ${OUT}_1.fq.gz
+
+$BISMARK/bismark --bowtie2 -N 1 --path_to_bowtie $APP/bowtie2/2.3.4/  \
+ --samtools_path $APP/samtools/1.5/samtools \
+ --parallel $USECPU --genome $ORG -1 ${OUT}_1.fq.gz -2 ${OUT}_2.fq.gz
+
+$BISMARK/deduplicate_bismark --paired --bam \
+ --samtools_path $APP/samtools/1.5/samtools ${OUT}_1_bismark_bt2_pe.bam 
+
+$BISMARK/bismark_methylation_extractor --bedGraph --paired-end --parallel $USECPU \
+ --cytosine_report --buffer_size 20G --ignore_r2 2 --genome_folder $ORG --gzip \
+ --samtools_path $APP/samtools/1.5/samtools ${OUT}_1_bismark_bt2_pe.deduplicated.bam
+
+$BISMARK/bismark2report
+
+rm ${OUT}_1_bismark_bt2_pe.bam
+rm ${OUT}_1.fq.gz
+rm ${OUT}_2.fq.gz
+
+
