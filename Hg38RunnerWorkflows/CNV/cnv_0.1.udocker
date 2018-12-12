@@ -1,0 +1,50 @@
+# Bash script run inside the docker container
+# 11 Dec 2018
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+# Print params
+set -e
+echo -n jobDir"           : "; echo $jobDir
+echo -n name"             : "; echo $name
+echo -n tumorBam"         : "; echo $tumorBam
+echo -n normalBam"        : "; echo $normalBam
+echo -n germlineVcf"      : "; echo $vcf
+echo -n genderMatchedBkg" : "; echo $bkg; echo
+
+# Set vars, sourcing /root/.bashrc doesn't work in udocker?
+export ALL_THREADS=$(nproc)
+export ALL_RAM=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+echo "Threads: "$ALL_THREADS"  Memory: "$ALL_RAM"  Host: "`hostname`
+
+# Change into job dir 
+cd $jobDir
+
+# Modify the params below to fit your analysis
+s=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner
+
+snakemake --printshellcmds \
+--cores $ALL_THREADS \
+--snakefile *.sm \
+--stat $name"_SnakemakeRunStats.log" \
+--config \
+genomeBuild=Hg38 \
+intervals=$s/CNV/Intervals/mergedSeqCap_EZ_Exome_v3_hg38_capture_primary_targets_pad150bp.preprocessed.interval_list \
+indexFasta=$s/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
+dictFasta=$s/Indexes/B38IndexForBwa-0.7.17/hs38DH.dict \
+name=$name \
+vcf=$vcf \
+tumorBam=$tumorBam \
+normalBam=$normalBam \
+bkg=$bkg \
+geneTable=$s/AnnotatorData/UCSC/8Aug2018/hg38RefSeq8Aug2018_Merged.ucsc.gz \
+minTumorCopyRatio=0.15 \
+maxNormalCopyRatio=0.5 \
+minTNCRRatio=0.15 \
+allThreads=$ALL_THREADS \
+allRam=$ALL_RAM &> $name"_SnakemakeRun.log"
+
+# See GATK's tutorials on copy ratio analysis and USeq's GatkCalledSegmentAnnotator app for a description of the arguments
+# https://gatkforums.broadinstitute.org/dsde/discussion/11682 
+# https://gatkforums.broadinstitute.org/dsde/discussion/11683
+

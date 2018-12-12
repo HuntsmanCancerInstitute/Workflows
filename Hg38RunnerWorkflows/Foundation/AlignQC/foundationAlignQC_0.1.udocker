@@ -1,0 +1,52 @@
+# Bash script run inside the docker container
+# 29 October 2018
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+# Print params
+set -e
+echo -n inputBam"  : "; echo $Bam
+echo -n jobDir" : "; echo $jobDir
+echo -n name"   : "; echo $name; echo
+
+# Set vars, sourcing /root/.bashrc doesn't work in udocker
+export PATH="/BioApps/Miniconda3/bin:$PATH"
+export ALL_THREADS=$(nproc)
+export ALL_RAM=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+echo "Threads: "$ALL_THREADS"  Memory: "$ALL_RAM"  Host: "`hostname`; echo
+
+cd $jobDir
+
+# Modify the params below to fit your analysis
+s=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner
+
+/BioApps/Miniconda3/bin/snakemake -p -T \
+--cores $ALL_THREADS \
+--snakefile foundationAlignQC_*.sm \
+--stat $name"_SnakemakeRunStats.log" \
+--config \
+regionsForReadCoverage=$s/Bed/Foundation/hg38FoundationMergedCdxHemeOnePad50bp.bed.gz \
+regionsForOnTarget=$s/Bed/Foundation/hg38FoundationMergedCdxHemeOnePad50bp.bed.gz \
+indexFasta=$s/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
+dbsnp=$s/Vcfs/dbsnp_146.hg38.vcf.gz \
+gSnp=$s/Vcfs/1000G_phase1.snps.high_confidence.hg38.vcf.gz \
+gIndel=$s/Vcfs/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz \
+useqSamAlignmentExtractor="-q 20 -a 0.65 -d -f" \
+useqSam2USeq="-v Hg38 -x 3000 -r -c 50" \
+name=$name \
+bam=$bam \
+allThreads=$ALL_THREADS \
+allRam=$ALL_RAM &> $name"_SnakemakeRun.log"
+
+# Notes
+## regionsForOnTarget - bgzipped bed file of regions to use in calculating on target capture rates, use chrXXXX naming. See bgzip and tabix from https://github.com/samtools/htslib .
+## regionsForReadCoverage - bgzipped bed file of regions to use in calculating unique observation read coverage uniformity metrics, ditto.
+## indexFasta - the BWA mem fasta file with all the associated index files including xxx.fa.fai and xxx.dict files, see https://github.com/lh3/bwa/tree/master/bwakit
+## gIndels - a bgzipped and tabix indexed vcf file of trusted indels from the 1000 Genomes project Hg38GATKBundle, see https://software.broadinstitute.org/gatk/download/bundle
+## gSnps - ditto, 1000G high confidence snps from the Hg38 GATKBundle
+## dbsnp - ditto, dbSNP variants from the Hg38 GATKBundle
+## useq - launch each app to see cmd line options
+
+# Replace first and last lines above with the following to get dag svg graph
+#/BioApps/Miniconda3/bin/snakemake --dag \
+#allRam=$ALL_RAM | dot -Tsvg > $name"_Hg38_dag.svg"

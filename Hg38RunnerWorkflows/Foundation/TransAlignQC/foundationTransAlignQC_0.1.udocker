@@ -1,0 +1,40 @@
+# Bash script run inside the docker container
+# 6 November 2018
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+# Print params
+set -e
+echo -n input Bam"  : "; echo $bam
+echo -n jobDir" : "; echo $jobDir
+echo -n name"   : "; echo $name; echo
+
+# Set vars, sourcing /root/.bashrc doesn't work in udocker
+export PATH="/BioApps/Miniconda3/bin:$PATH"
+export ALL_THREADS=$(nproc)
+export ALL_RAM=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+echo "Threads: "$ALL_THREADS"  Memory: "$ALL_RAM"  Host: "`hostname`; echo
+
+cd $jobDir
+
+# Modify the params below to fit your analysis
+s=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner
+
+/BioApps/Miniconda3/bin/snakemake -p -T \
+--cores $ALL_THREADS \
+--snakefile *.sm \
+--stat $name"_SnakemakeRunStats.log" \
+--config \
+bam=$bam \
+starIndex=$s/Indexes/Star/Hg38/Hg38StarIndex75bp \
+hg38ChromSizes=$s/Indexes/Star/Hg38/hg38ChromSize.txt \
+refFlatGenes=$s/Indexes/Star/Hg38/Gencode/gencode.v28.genes.ucsc \
+rRNAIntervals=$s/Indexes/Star/Hg38/Gencode/gencode.v28.rRNA.interval_list \
+name=$name \
+allThreads=$ALL_THREADS \
+allRam=$ALL_RAM &> $name"_SnakemakeRun.log"
+
+
+#Replace first and last lines above with the following to get dag svg graph
+#/BioApps/Miniconda3/bin/snakemake --dag \
+#allRam=$ALL_RAM | dot -Tsvg > $name"_FoundationTransAlignQC_dag.svg"

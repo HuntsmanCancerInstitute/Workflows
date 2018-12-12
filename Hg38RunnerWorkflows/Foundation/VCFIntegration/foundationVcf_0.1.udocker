@@ -1,0 +1,46 @@
+# Bash script run inside the docker container
+# 29 October 2018
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+# Print params
+set -e
+echo -n foundationXml" : "; echo $xml
+echo -n recallVcf"     : "; echo $vcf
+echo -n jobDir"        : "; echo $jobDir
+echo -n name"          : "; echo $name; echo
+
+# Set vars, sourcing /root/.bashrc doesn't work in udocker
+export PATH="/BioApps/Miniconda3/bin:$PATH"
+export ALL_THREADS=$(nproc)
+export ALL_RAM=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+echo "Threads: "$ALL_THREADS"  Memory: "$ALL_RAM"  Host: "`hostname`; echo
+
+cd $jobDir
+
+# Modify the params below to fit your analysis
+s=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner
+
+/BioApps/Miniconda3/bin/snakemake -p -T \
+--cores $ALL_THREADS \
+--snakefile foundationVcf_*.sm \
+--stat $name"_SnakemakeRunStats.log" \
+--config \
+hg38Index=$s/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
+b37Index=$s/Indexes/B37/human_g1k_v37.fasta \
+chain=$s/Indexes/GRCh37_to_GRCh38.chain.gz \
+xml=$xml \
+vcf=$vcf \
+name=$name \
+allThreads=$ALL_THREADS \
+allRam=$ALL_RAM &> $name"_SnakemakeRun.log"
+
+# Notes
+## indexFastas - the b37 and hg38 fasta files with all their associated xxx.fa.fai indexs 
+## chain - CrossMap chain file for converting coordinates
+## xml - xml formatted Foundaion report
+## vcf - recalled variants from the 
+
+# Replace first and last lines above with the following to get dag svg graph
+#/BioApps/Miniconda3/bin/snakemake --dag \
+#allRam=$ALL_RAM | dot -Tsvg > $name"_Hg38_dag.svg"

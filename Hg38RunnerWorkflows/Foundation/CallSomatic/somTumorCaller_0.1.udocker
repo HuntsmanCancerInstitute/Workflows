@@ -1,0 +1,62 @@
+# Bash script run inside the docker container
+# 2 Nov 2018
+# David.Nix@Hci.Utah.Edu
+
+# Print params
+set -e
+echo -n tumorBam"  : "; echo $tumorBam
+echo -n jobDir" : "; echo $jobDir
+echo -n name"   : "; echo $name; echo
+
+# Set vars, sourcing /root/.bashrc doesn't work in udocker
+export PATH="/BioApps/Miniconda3/bin:$PATH"
+export ALL_THREADS=$(nproc)
+export ALL_RAM=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+echo "Threads: "$ALL_THREADS"  Memory: "$ALL_RAM"  Host: "`hostname`; echo
+
+cd $jobDir
+
+# Modify the params below to fit your analysis
+s=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner
+
+/BioApps/Miniconda3/bin/snakemake -p -T \
+--cores $ALL_THREADS \
+--snakefile *.sm \
+--stat $name"_SnakemakeRunStats.log" \
+--config \
+allThreads=$ALL_THREADS \
+allRam=$ALL_RAM \
+regionsForAnalysis=$s/Bed/Foundation/hg38FoundationMergedCdxHemeOnePad50bp.bed.gz \
+indexFasta=$s/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
+mpileup=$s/MpileupBkg/Hg38AvatarBkgnd/bkg.mpileup_DP20MS3.txt.gz \
+dbsnp=$s/Vcfs/dbsnp_146.hg38.vcf.gz \
+queryDataDir=$s/QueryAPI/Data \
+queryIndexDir=$s/QueryAPI/Index \
+queryFileFilter=Hg38/Somatic/Foundation \
+tumorBam=$tumorBam \
+normalBam=$s/Bam/Hg38_300xNA12878/na12878_300X_FoundationMergedCdxHemeOnePad50bp.bam \
+genomeBuild=Hg38 \
+name=$name \
+minTumorAlignmentDepth=50 \
+minNormalAlignmentDepth=20 \
+minTumorAltCount=3 \
+minTumorAF=0.01 \
+maxNormalAF=0.6 \
+minTNRatio=2 \
+minTNDiff=0.01 \
+fdrTier=1 \
+minBKZ=3 &> $name"_SnakemakeRun.log"
+
+# Notes
+## regionsForAnalysis - a sorted, bgzipped, and tabix indexed bed file of regions to report variants. See https://github.com/samtools/htslib
+## indexFasta - the same fasta file used in sample alignment. Also needed are the index xxx.fa.fai and xxx.dict files.
+## mpileup - a multi sample background mpileup file of 10-25 normal bam files. See http://bioserver.hci.utah.edu/USeq/Documentation/cmdLnMenus.html#VCFBackgroundChecker
+## query Data and Index dirs - are those created by the QueryIndexer App for use by the VCFCallFrequency USeq tool.
+## queryFileFilter - relative file path in the QueryData dir that determines what vcf and bed files to use in calculating each vcfCallFrequency.
+## USeq - launch each app to see cmd line options
+
+#Replace first and last lines above with the following to get dag svg graph
+#/BioApps/Miniconda3/bin/snakemake --dag \
+#minBKZ=3 | dot -Tsvg > $name"_dag.svg"
+
+

@@ -1,0 +1,42 @@
+# Bash script run inside the docker container
+# 14 September 2018
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+# Print params
+set -e
+echo -n jobDir" : "; echo $jobDir
+echo -n name"   : "; echo $name; echo
+
+# Set vars, sourcing /root/.bashrc doesn't work in udocker
+export PATH="/BioApps/Miniconda3/bin:$PATH"
+export ALL_THREADS=$(nproc)
+export ALL_RAM=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+echo "Threads: "$ALL_THREADS"  Memory: "$ALL_RAM"  Host: "`hostname`
+
+# Change into job dir 
+cd $jobDir
+
+# Modify the params below to fit your analysis
+s=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner
+
+/BioApps/Miniconda3/bin/snakemake -p -T \
+--cores $ALL_THREADS \
+--snakefile annotator_*.sm \
+--stat $name"_SnakemakeRunStats.log" \
+--config \
+genomeBuild=Hg38 \
+regionsForAnalysis=$s/Bed/SeqCapEZ_Hg38_GRCh38_Hg19/mergedSeqCap_EZ_Exome_v3_hg38_capture_primary_targets_pad150bp.bed.gz \
+indexFasta=$s/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
+dataDir=$s/AnnotatorData \
+annoVcfParser="-m 0.05 -y annotatedVcfParser.config.txt" \
+regionsOfInterest=$s/Indexes/Star/Hg38/Gencode/gencode.v28.acmgExonsPad150bp.bed.gz \
+name=$name \
+vcf=$(ls *vcf.gz) \
+allThreads=$ALL_THREADS \
+allRam=$ALL_RAM &> $name"_SnakemakeRun.log"
+
+
+#Replace first and last lines above with the following to get dag svg graph
+#/BioApps/Miniconda3/bin/snakemake --dag \
+#allRam=$ALL_RAM | dot -Tsvg > annotator_0.1.svg
