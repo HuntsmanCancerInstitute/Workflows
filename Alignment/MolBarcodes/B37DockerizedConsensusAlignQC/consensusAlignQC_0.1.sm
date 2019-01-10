@@ -1,0 +1,356 @@
+# Consensus Alignment and QC Workflow 
+# 7 January 2019
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+############ No need to modify anything in this document #############
+
+# Base name to prepend on all files
+nameBuild = str(config["name"]) + "_B37" 
+
+# Threads and memory
+allThreads = int(config["allThreads"])
+halfThreads = int(round(allThreads/2,0))
+allRam = int(round(float(config["allRam"])))
+
+# Gzipped Fastq files
+fastqReadOne = config["fastqReadOne"]
+fastqReadTwo = config["fastqReadTwo"]
+
+# Resources
+regionsForReadCoverage = config["regionsForReadCoverage"]
+regionsForOnTarget = config["regionsForOnTarget"]
+indexFasta = config["indexFasta"]
+gSnp = config["gSnp"]
+gIndel = config["gIndel"]
+oIndel = config["oIndel"]
+dbsnp = config["dbsnp"]
+
+# Filtering params
+useqSamAlignmentExtractor = config["useqSamAlignmentExtractor"]
+useqSam2USeq = config["useqSam2USeq"]
+useqConsensus = config["useqConsensus"]
+
+# Apps in the docker container
+bwa = "/BioApps/bwakit-0.7.15/bwa"
+gatk = "/BioApps/GATK_3.8/GenomeAnalysisTK.jar"
+htslib = "/BioApps/HTSlib_1.3"
+java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
+picard = "/BioApps/Picard_2.17.2/picard.jar"
+useq = "/BioApps/USeq_9.2.0/Apps"
+ucsc = "/BioApps/UCSC_6Aug2018"
+cutadapt = "/BioApps/Cutadapt_1.18/cutadapt"
+samblaster= "/BioApps/Samblaster_0.1.24/samblaster"
+
+
+############# Rules ##############
+
+# Workflow trigger, pulls info from the json files into xls and html reports
+rule AggregateQCStats:
+    input:
+        f= "Json/"+nameBuild+ "_FastqCount.json.gz",
+        s= "Json/"+nameBuild+ "_SamAlignmentExtractor.json.gz",
+        m= "Json/"+nameBuild+ "_MergePairedAlignments.json.gz",
+        u= "Json/"+nameBuild+ "_Sam2USeq.json.gz",
+        w= "QC/"+ nameBuild+ "_uniObReadCov.bw",
+        g= nameBuild+ "_checkGzipFiles.complete"
+    output:
+        "QC/"+ nameBuild+ "_AggQC"
+    log:
+        "Logs/"+ nameBuild+ "_AggregateQCStats.log",
+    shell:
+        "{java} {useq}/AggregateQCStats -j . -r {output} -p {nameBuild}_ &> {log} && "
+        "rm -rf *_Consensus *_MatchMates *_dupFree.ba* *_sae.ba* *_unfiltered.ba* "
+        "*_raw.bam *_MPA *_uniObReadCov.useq "    	 
+        
+############# Fastq and resources check ##############
+
+# Uses gunzip -t to check the integrity of the xxx.gz files in the working directory
+rule CheckGzipFiles:
+    output:
+        temp( nameBuild+ "_checkGzipFiles.complete")
+    log:
+        "Logs/"+ nameBuild+ "_CheckGzipFiles.log"
+    shell:
+        "gunzip -tv {fastqReadOne} {fastqReadTwo} &> {log} && touch {output}" 
+        
+# Count the number of fastq records
+rule CountFastq:
+    input:
+        fastqReadOne
+    output:
+        "Json/" + nameBuild + "_FastqCount.json.gz"
+    shell:
+        "x=$(gunzip -c {input} | wc -l | tr -d \" \") && "
+        "y=$(($x/2)) && "
+        "echo \{{ > Json/{nameBuild}_FastqCount.json && "
+        "echo \\\"numberFastqReads\\\": $y >> Json/{nameBuild}_FastqCount.json && "
+        "echo \}} >> Json/{nameBuild}_FastqCount.json && "
+        "gzip Json/{nameBuild}_FastqCount.json"
+        
+        
+############# USeq Consensus Barcode Consolodation & Alignment ###############
+
+# The BIG pipe for aligning molecular barcoded fastq files, configured to work with IDTs inline dual 3Mers
+rule AlignBarcodedFastqWithConsensus:
+    output:
+        temp (nameBuild+ "_MatchMates")
+    log:
+        "Logs/"+ nameBuild+ "_AlignBarcodedFastqWithConsensus.log"
+    params: 
+        rg = "\"@RG\\tID:" +nameBuild+ "\\tPL:ILLUMINA\\tLB:" +nameBuild+ "\\tSM:" +nameBuild+ "\\tCN:UU\\tPU:" +nameBuild+ "\""
+    threads:    
+        allThreads
+    shell:
+        # Remove prior log
+        "rm -f {log} && "
+        
+        # Start the pipe! Append the barcode read onto the two fastq file headers
+        "java -jar -Xmx4G {useq}/FastqBarcodeTagger -f {fastqReadOne} -s {fastqReadTwo} "
+        "-e -i 2>> {log} | "
+
+        # N adapter sequences, minimum >=3bp identity req
+        "{cutadapt} --interleaved -a NNNNNAGATCGGAAGAGCACACGTCTGAACTCCAGTCAC "
+        "-A NNNNNAGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGTAGATCTCGGTGGTCGCCGTATCATT --mask-adapter - 2>> {log} | "
+
+        # Align with bwa mem
+        "{bwa} mem -v 1 -t {halfThreads} -R {params.rg} -p {indexFasta} - 2>> {log} | "
+
+        # Mark duplicates, this is conterintuitively helpful
+        "{samblaster} 2>> {log} | "
+
+        # Attach secondOfPair mates as attribute in firstOfPair sam records
+        "java -jar -Xmx4G {useq}/MatchMates -s {output} &>> {log} "
+
+  
+# Call Consensus on the barcoded bam, assuming 6mer from the IDT dual index plus UMIs.
+rule CallConsensusOnBarcodedBam:
+    input:
+        nameBuild+ "_MatchMates"
+    output:
+        nameBuild+ "_Consensus",
+        nameBuild+ "_Consensus/paired_1.fastq.gz",
+        nameBuild+ "_Consensus/paired_2.fastq.gz",
+        nameBuild+ "_Consensus/unpaired.fastq.gz",
+        nameBuild+ "_Consensus/passing.sam.gz"
+    threads:
+        allThreads    
+    log:
+        "Logs/"+ nameBuild+ "_CallConsensusOnBarcodedBam.log"
+    shell:
+        "{java} {useq}/Consensus {useqConsensus} -t {halfThreads} -b {input}/passingMM.sorted.bam "
+        "-s {output[0]} &> {log} "
+
+# Align unpaired consensus fastq, might be no alignments
+rule AlignUnpairedConsensusFastq:
+    input:
+        nameBuild+ "_Consensus/unpaired.fastq.gz"
+    output:
+        nameBuild+ "_Consensus/unpaired.sam.gz"
+    params:
+        rg = "\"@RG\\tID:" +nameBuild+ "\\tPL:ILLUMINA\\tLB:" +nameBuild+ "\\tSM:" +nameBuild+ "\\tCN:UU\\tPU:" +nameBuild+ "\""
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_AlignPairedConsensusFastq.log"
+    shell:
+        #trapping the grep exit code with || : sometimes there are no unpaired alignments
+        "{bwa} mem -v 1 -t {threads} -R {params.rg} {indexFasta} {input} 2> {log} | "
+        "grep -v ^@ || : gzip > {output} "
+
+# Align paired consensus fastq
+rule AlignPairedConsensusFastq:
+    input:
+        nameBuild+ "_Consensus/paired_1.fastq.gz",
+        nameBuild+ "_Consensus/paired_2.fastq.gz"
+    output:
+        nameBuild+ "_Consensus/paired.sam.gz"
+    params:
+        rg = "\"@RG\\tID:" +nameBuild+ "\\tPL:ILLUMINA\\tLB:" +nameBuild+ "\\tSM:" +nameBuild+ "\\tCN:UU\\tPU:" +nameBuild+ "\""   
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_AlignPairedConsensusFastq.log"
+    shell:
+        "{bwa} mem -v 1 -t {threads} -R {params.rg} {indexFasta} {input} 2> {log} | "
+        "grep -v ^@ | gzip > {output} "
+
+# Concatinate alignments
+rule ConcatinateAlignments:
+    input:
+        nameBuild+ "_Consensus/passing.sam.gz",
+        nameBuild+ "_Consensus/unpaired.sam.gz",
+        nameBuild+ "_Consensus/paired.sam.gz"
+    output:
+        nameBuild+ "_Consensus/concatinated.sam.gz"
+    log:
+        "Logs/"+ nameBuild+ "_ConcatinateAlignments.log"
+    shell:
+        "cat {input} 2> {log} > {output} "
+
+# Fix mate info and sort, not always necessary but doesn't hurt
+rule FixMateInformation:
+    input:
+        nameBuild+ "_Consensus/concatinated.sam.gz"
+    output:
+        bam = temp (nameBuild+ "_unfiltered.bam"),
+        bai = temp (nameBuild+ "_unfiltered.bai")
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_fixMateInformation.log"
+    shell:
+        "{java} {picard} FixMateInformation CREATE_INDEX=true SO=coordinate "
+        "MAX_RECORDS_IN_RAM=5000000 TMP_DIR=. VALIDATION_STRINGENCY=SILENT INPUT={input} "
+        "OUTPUT={output.bam} USE_JDK_DEFLATER=true USE_JDK_INFLATER=true &> {log} "
+
+############# Bam Filtering ##############
+
+# Use the SamAlignmentExtractor to remove poor quality alignments 
+rule SamAlignmentExtractor:
+    input:
+        bam = nameBuild+ "_unfiltered.bam",
+        bai = nameBuild+ "_unfiltered.bai"
+    output:
+        bam = temp (nameBuild+ "_sae.bam"),
+        bai = temp (nameBuild+ "_sae.bai"),
+        json = "Json/"+ nameBuild+ "_SamAlignmentExtractor.json.gz"
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_SamAlignmentExtractor.log",
+    shell:
+        "{java} {useq}/SamAlignmentExtractor {useqSamAlignmentExtractor} "
+        "-s {nameBuild}_SAE -b {input.bam} "
+        "-r {regionsForOnTarget} -j {output.json} &> {log} && "
+        "mv {nameBuild}_SAE/*_passSAE.bam {output.bam} &>> {log} && "
+        "mv {nameBuild}_SAE/*_passSAE.bai {output.bai} &>> {log} && "
+        "rm -rf {nameBuild}_SAE"
+   
+
+############# GATK Bam Indel Realignment and Recalibration ##############
+
+# Realign Indels with GATK, target creator
+rule CreateTargetsForIndelRealignment:
+    input:
+        bam = nameBuild+ "_sae.bam",
+        bai = nameBuild+ "_sae.bai"
+    output:
+        temp( nameBuild+ "_indelRealign.intervals")
+    threads:
+        allThreads
+    log:
+        "Logs/"+ nameBuild+ "_CreateTargetsForIndelRealignment.log"
+    shell:
+        "{java} {gatk} -T RealignerTargetCreator -R {indexFasta} -I {input.bam} "
+        "-o {output} --known {gIndel} --known {oIndel} &> {log} "
+
+# Realign Indels with GATK, perform realignments
+rule RealignIndels:
+    input:
+        bam = nameBuild+ "_sae.bam",
+        bai = nameBuild+ "_sae.bai",
+        targets = nameBuild+ "_indelRealign.intervals"
+    output:
+        bam= temp( nameBuild+ "_realign.bam"),
+        bai= temp( nameBuild+ "_realign.bai")
+    threads:
+        allThreads
+    log:
+        "Logs/"+ nameBuild+ "_IndelRealign.log"
+    shell:
+        "{java} {gatk} -T IndelRealigner -R {indexFasta} "
+        "-targetIntervals {input.targets} -I {input.bam} -o {output.bam} "
+        "-known {gIndel} --maxReadsForRealignment 100000 --maxReadsForConsensuses 500 "
+        "-known {oIndel} --use_jdk_deflater --use_jdk_inflater &> {log} "
+        
+# Base recalibration with GATK, target creator, not needed for Strelka but recommended for GATK
+rule RecalibrateBases:
+    input:
+        bam = nameBuild+ "_realign.bam",
+        bai = nameBuild+ "_realign.bai"
+    output:
+        temp( nameBuild+ "_recalibration.grp")
+    threads:
+        allThreads    
+    log:
+        "Logs/"+ nameBuild+ "_RecalibrateBases.log"
+    shell:
+        "{java} {gatk} -nct {threads} -T BaseRecalibrator -R {indexFasta} "
+        "-knownSites {gSnp} -knownSites {gIndel} -knownSites {oIndel} "
+        "-knownSites {dbsnp} -I {input.bam} -o {output} &> {log}"
+        
+# Write out recalibrated bam with GATK
+rule PrintRecalibratedBam:
+    input:
+        grp = nameBuild+ "_recalibration.grp",
+        bam = nameBuild+ "_realign.bam",
+        bai = nameBuild+ "_realign.bai"
+    output:
+        bam = "Bam/"+ nameBuild+ "_final.bam",
+        bai = "Bam/"+ nameBuild+ "_final.bai"
+    threads:
+        allThreads
+    log:
+        "Logs/"+ nameBuild+ "_PrintRecalibratedBam.log"
+    shell:
+        "{java} {gatk} -nct {threads} -T PrintReads --use_jdk_deflater --use_jdk_inflater "
+        "-R {indexFasta} -I {input.bam} -BQSR {input.grp} -o {output.bam} &> {log}" 
+
+      
+############################# QC ###############################
+
+# QC, Merge paired alignments for unique observation QC
+rule MergePairedAlignments:
+    input:
+        bam = "Bam/"+ nameBuild+ "_final.bam"
+    output:
+        dir = nameBuild+ "_MPA",
+        json = "Json/"+ nameBuild+ "_MergePairedAlignments.json.gz"   
+    threads: 
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_MergePairedAlignments.log"
+    shell:
+        "{java} {useq}/MergePairedAlignments -b {input.bam} -d {output.dir} "
+        "-j {output.json} -t {threads} &> {log}"
+
+# QC, Generate read coverage QC metrics and bed pass fail files with Sam2USeq
+rule Sam2USeq:
+    input:
+        mpa = nameBuild+ "_MPA"
+    output:
+        useq = nameBuild+ "_uniObReadCov.useq",
+        cs = "QC/"+ nameBuild+ "_PerRegionCoverageStats.txt.gz",
+        json = "Json/"+ nameBuild+ "_Sam2USeq.json.gz",
+        bed = "QC/"+nameBuild+ "_Pass.bed.gz"
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_Sam2USeq.log"
+    shell:
+        "{java} {useq}/Sam2USeq {useqSam2USeq} -f {input.mpa} "
+        "-b {regionsForReadCoverage} -p {output.cs} -j {output.json} -n {nameBuild} &> {log} && "
+        "cp {input.mpa}/*useq {output.useq} &>> {log} && "
+        "mv -f {nameBuild}_Pass.bed.gz QC/ && "
+        "mv -f {nameBuild}_Fail.bed.gz QC/"
+        
+# QC, Convert the uniOb read coverage track to something that will play nicely with IGV and the UCSC genome browsers
+rule USeq2UCSCBig:
+    input:
+        rc= nameBuild+ "_uniObReadCov.useq"
+    output:
+        "QC/"+ nameBuild+ "_uniObReadCov.bw" 
+    threads:
+        halfThreads            
+    log:
+        "Logs/"+ nameBuild+ "_Useq2UCSCBig.log"
+    shell:
+        "{java} {useq}/USeq2UCSCBig -u {input.rc} -f "
+        "-d {ucsc} &> {log} && "
+        "mv -f {nameBuild}_uniObReadCov.bw {output} " 
+
+onerror:
+    shell( "rm -f STARTED COMPLETE; touch FAILED")
+
+

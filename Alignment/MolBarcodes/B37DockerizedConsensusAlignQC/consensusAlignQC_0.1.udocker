@@ -1,0 +1,57 @@
+#!/bin/bash
+# Bash script run inside the docker container
+# 7 January 2019
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+# Print params
+set -e
+echo -n fastqReadOne"  : "; echo $fastqReadOne
+echo -n fastqReadTwo" : "; echo $fastqReadTwo
+echo -n jobDir" : "; echo $jobDir
+echo -n name"   : "; echo $name; echo
+
+# Set vars, sourcing /root/.bashrc doesn't work in udocker
+export PATH="/BioApps/Miniconda3/bin:$PATH"
+export ALL_THREADS=$(nproc)
+export ALL_RAM=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+echo "Threads: "$ALL_THREADS"  Memory: "$ALL_RAM"  Host: "`hostname`; echo
+
+cd $jobDir
+
+# Modify the params below to fit your analysis
+s=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner
+
+/BioApps/Miniconda3/bin/snakemake -p -T \
+--cores $ALL_THREADS \
+--snakefile *.sm \
+--stat $name"_SnakemakeRunStats.log" \
+--config \
+regionsForReadCoverage=$s/Bed/Underhill/HSV1_GBM_IDT_Probes_B37.bed \
+regionsForOnTarget=$s/Bed/Underhill/HSV1_GBM_IDT_Probes_B37Pad25bps.bed \
+indexFasta=$s/Indexes/B37/human_g1k_v37_decoy_phiXAdaptr.fasta \
+dbsnp=$s/Vcfs/dbsnp_132_b37.leftAligned.vcf.gz \
+gSnp=$s/Vcfs/1000G_phase1.indels.b37.vcf \
+gIndel=$s/Vcfs/Mills_and_1000G_gold_standard.indels.b37.vcf \
+oIndel=$s/Vcfs/1000G_phase1.indels.b37.vcf \
+useqSamAlignmentExtractor="-q 20 -a 0.65 -d -f" \
+useqSam2USeq="-v B37 -x 500 -r -c 20" \
+useqConsensus="-c 500000 -n 6 -f 1" \
+name=$name \
+fastqReadOne=$fastqReadOne \
+fastqReadTwo=$fastqReadTwo \
+allThreads=$ALL_THREADS \
+allRam=$ALL_RAM &> $name"_SnakemakeRun.log"
+
+# Notes
+## regionsForOnTarget - bed file of regions to use in calculating on target capture rates.
+## regionsForReadCoverage - bed file of regions to use in calculating unique observation read coverage uniformity metrics.
+## indexFasta - the BWA mem fasta file with all the associated index files including xxx.fa.fai and xxx.dict files, see https://github.com/lh3/bwa/tree/master/bwakit
+## gIndels - vcf file of trusted indels from the 1000 Genomes project 
+## gSnps - ditto, 1000G high confidence snps 
+## dbsnp - ditto, dbSNP variants 
+## useq - launch each app to see cmd line options
+
+# Replace first and last lines above with the following to get dag svg graph
+#/BioApps/Miniconda3/bin/snakemake --dag \
+#allRam=$ALL_RAM | dot -Tsvg > $name"_B37_dag.svg"
