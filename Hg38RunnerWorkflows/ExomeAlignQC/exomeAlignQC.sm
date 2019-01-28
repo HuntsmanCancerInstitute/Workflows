@@ -1,5 +1,5 @@
 # Hg38 Exome Alignment and QC Workflow 
-# 10 September 2018
+# 23 January 2019
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -37,7 +37,7 @@ htslib = "/BioApps/HTSlib_1.3"
 java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
 javaPart = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(partRam) + "G"
 picard = "/BioApps/Picard_2.17.2/picard.jar"
-useq = "/BioApps/USeq_9.2.0/Apps"
+useq = "/BioApps/USeq/Apps"
 ucsc = "/BioApps/UCSC_6Aug2018"
 
 
@@ -210,7 +210,7 @@ rule HaplotypeCaller:
     threads: 
         allThreads
     shell:
-        "{java} {useq}/GatkRunner -r {regionsForOnTarget} -s GATKRunner -c 'java -jar -Xmx4G {gatk} "
+        "{java} {useq}/GatkRunner -r {regionsForOnTarget} -s GATKRunner -c 'java -jar -Xmx4G -Djava.io.tmpdir=. {gatk} "
         "-T HaplotypeCaller -I {input} --emitRefConfidence GVCF -R {indexFasta} --dbsnp {dbsnp} "
         "-variant_index_type LINEAR -variant_index_parameter 128000' &> {log} && "
         "mv -f GATKRunner/gatk.raw.vcf Vcfs/{nameBuild}_Haplo.g.vcf &>> {log} && "

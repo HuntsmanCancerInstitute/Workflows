@@ -1,6 +1,7 @@
 # Tumor - Normal Somatic Variant Calling Workflow 
-# 28 September 2018
+# 23 January 2019
 # David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
 
 ############ No need to modify anything in this document #############
 
@@ -24,7 +25,7 @@ queryIndexDir = config["queryIndexDir"]
 queryFileFilter = config["queryFileFilter"]
 
 # Apps in docker image
-useq = "/BioApps/USeq_9.2.0/Apps"
+useq = "/BioApps/USeq/Apps"
 strelka = "/BioApps/Strelka_2.9.3"
 manta = "/BioApps/Manta_1.4.0"
 htsLib = "/BioApps/HTSlib_1.3"

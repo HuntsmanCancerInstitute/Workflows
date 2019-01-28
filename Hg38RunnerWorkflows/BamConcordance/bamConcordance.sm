@@ -1,5 +1,5 @@
 # Bam file concordance, a test for mismatched samples
-# 10 September 2018
+# 23 January 2019
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -19,7 +19,7 @@ dbsnp = config["dbsnp"]
 
 # Apps in the docker container
 java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(partRam) + "G"
-useq = "/BioApps/USeq_9.2.0/Apps"
+useq = "/BioApps/USeq/Apps"
 samtools = "/BioApps/Samtools_1.9/samtools"
 
 rule BamConcordance:
