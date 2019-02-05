@@ -3,23 +3,23 @@
 #Define the resources from the config file
 
 ## Base name to prepend on all files
-name = config["name"]
-coreid = config["id"]
+name = str(config["name"])
+coreid = str(config["id"])
 
 ## Gzipped Fastq files
-fastqReadOne = config["fR"]
-fastqReadTwo = config["sR"]
+fastqReadOne = str(config["fR"])
+fastqReadTwo = str(config["sR"])
 
 # For ReadCov calc, smallest, for calc fraction with X coverage
-regionsForRC= config["rcBed"]
+regionsForRC = str(config["rcBed"])
 
 # For OnTarget calc, largest
-regionsForOnTarget= config["otBed"]
+regionsForOnTarget = str(config["otBed"])
 
 ## Params
 allThreads = int(config["threads"])
 halfThreads = int(round(allThreads/2,0))
-allMemory = config["memory"]
+allMemory = str(config["memory"])
 
 ## Apps
 useq = "/uufs/chpc.utah.edu/common/HIPAA/hci-bioinformatics1/atlatl/app/useq/9.1.3/Apps"
@@ -122,7 +122,7 @@ rule PicardIntervalForRC:
     input:
         name+ "_CheckResources.complete"
     output:
-        temp(regionsForRC + ".intervalList")
+        temp(name + ".coverage.intervalList")
     log:
         name+ "_PicardIntervalForRC.log"
     shell:
@@ -135,7 +135,7 @@ rule PicardIntervalForOnTarget:
     input:
         name+ "_CheckResources.complete"
     output:
-        temp(regionsForOnTarget + ".intervalList")
+        temp(name + ".target.intervalList")
     log:
         name+ "_PicardIntervalForOnTarget.log"
     shell:
@@ -251,6 +251,7 @@ rule RemoveDuplicates:
         "{java8} -Xmx{allMemory} -jar {picard} MarkDuplicates "
         "REMOVE_DUPLICATES=true TMP_DIR=. VERBOSITY=ERROR "
         "VALIDATION_STRINGENCY=SILENT MAX_RECORDS_IN_RAM=5000000 CREATE_INDEX=true "
+        "OPTICAL_DUPLICATE_PIXEL_DISTANCE=2500 "
         "METRICS_FILE={output.metrics} INPUT={input.bam} OUTPUT={output.bam} &> {log} && "
         "echo [`date`] rule RemoveDuplicates: COMPLETE; echo" 
         
@@ -374,8 +375,8 @@ rule PicardCollectHsMetrics:
     input:
         bam = name+ ".final.bam",
         bai = name+ ".final.bai",
-        rc = regionsForRC + ".intervalList",
-        ot = regionsForOnTarget + ".intervalList"
+        rc = name + ".coverage.intervalList",
+        ot = name + ".target.intervalList"
     output:
         name+ ".hsMetrics.txt"
     log:
