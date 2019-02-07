@@ -26,10 +26,17 @@ $INDEX=$DATA/Mouse/Mm10/mm10NormChrLambdaPhiXAdapt.nov.bisulphite.nix
 # default is probably >1000, recommended is 690 based on formulas in PDF docs....
 # increase to 600
 
+# original parameters
+# -r Random -t 600 -h 120 -b 2 \
+
+# new parameters use -b 4 mode
+# test which mode works better with your data
+# additional suggestions from Novocraft
+
 $NOVOALIGN --NonC \
 -d $DATA \
 -o SAM "@RG\tID:$ID\tPL:Illumina\tLB:$ID\tSM:$NAME\tCN:HCI" \
--r Random -t 600 -h 120 -b 2 \
+-r Random -b 4 -u 12 -H 20 -t 20,3 --hlimit 6 \
 -a GATCGGAAGAGCTCGTATGCCGTCTTCTGCTTG ACACTCTTTCCCTACACGACGCTCTTCCGATCT \
 -f *.gz | \
 $SAMTOOL view -b -o PART_${NAME}.raw.bam -
