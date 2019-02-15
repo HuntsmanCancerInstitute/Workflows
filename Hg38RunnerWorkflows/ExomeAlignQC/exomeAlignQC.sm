@@ -57,7 +57,7 @@ rule AggregateQCStats:
     log:
         "Logs/"+ nameBuild+ "_AggregateQCStats.log",
     shell:
-        "{java} {useq}/AggregateQCStats -j . -r {output} -p {nameBuild}_ &> {log} && "
+        "{java} {useq}/AggregateQCStats -j Json -r {output} -p {nameBuild}_ &> {log} && "
         "rm -rf *_dupFree.ba* *_sae.ba* *_unfiltered.ba* *_raw.bam *_MPA *_uniObReadCov.useq "    	 
         
 ############# Fastq and resources check ##############

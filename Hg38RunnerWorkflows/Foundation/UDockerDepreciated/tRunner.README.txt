@@ -28,26 +28,4 @@ Annotated somatic variants, additional filters
 		SnpEff ANN impacts	high,moderate
 		CLINSIG	conflicting_interpretations_of_pathogenicity,drug_response,likely_pathogenic,pathogenic,risk_factor
 		Damage to splice junctions or new splice junction adjacent to old, score diff	>=4
-		*** Generates XXX_Avatar_IlluminaAnno_Hg38.anno.filt.gz in the SomaticVariantCalls/XXX_Avatar_IlluminaAnno/Vcfs/ folder
-
-Germline variants
-	Read depth	>= 10
-	Variant haplotype caller/ joint genotyping GATK QUAL	>=20
-	Variant genotype quality GT	>=20
-	AF	>= 0.1
-		*** Generates XXX_NormalExome_Hg38_JointGenotyping_Hg38.vcf.gz in the GermlineVariantCalling/XXX_Avatar_NormalExome/ folder
-	
-Annotated germline variants, additional filters
-	AF	>= 0.2	
-	Population AF from dbNSFP_ExAC_AF or dbNSFP_1000Gp3_AF < 0.01
-	One of the following criteria must be met
-		SnpEff ANN impacts	high
-		CLINSIG	likely_pathogenic,pathogenic
-		Damage to splice junctions or new splice junction adjacent to old, score diff	>=5
-	CLINSIG exclude	benign,likely_benign
-		*** Generates XXX_Avatar_NormalExomeAnno_Hg38.anno.filt.vcf.gz in the GermlineVariantCalling/XXX_Avatar_NormalExomeAnno/Vcfs/ folder
-
-Gene region restricted germline variants, additional filters for Genetic Counselors, ACMG+ list
-	Must fall within 150bp of an exon from	ACTA2,ACTC1,APC,APOB,ATM,ATP7B,BARD1,BMPR1A,BRCA1,BRCA2,BRIP1,CACNA1S,CDH1,CDK4,CDKN2A,CHEK2,COL3A1,DSC2,DSG2,DSP,EPCAM,FBN1,GLA,GREM1,KCNH2,KCNQ1,LDLR,LMNA,MEN1,MLH1,MSH2,MSH6,MUTYH,MYBPC3,MYH7,MYH11,MYL2,MYL3,NBN,NF2,OTC,PALB2,PCSK9,PKP2,PMS2,POLD1,POLE,PRKAG2,PTEN,RAD51C,RAD51D,RB1,RET,RYR1,RYR2,SCN5A,SDHAF2,SDHB,SDHC,SDHD,SMAD3,SMAD4,STK11,TGFBR1,TGFBR2,TMEM43,TNNI3,TNNT2,TP53,TPM1,TSC1,TSC2,VHL,WT1
-		*** Generates XXX_Avatar_NormalExomeAnno_Hg38.anno.filt.roi.vcf.gz in the GermlineVariantCalling/XXX_Avatar_NormalExomeAnno/Vcfs/ROI/ folder
-		
+		*** Generates XXX_IlluminaAnno_Hg38.anno.filt.gz in the SomaticVariantCalls/XXX_IlluminaAnno/Vcfs/ folder
