@@ -1,0 +1,48 @@
+# Bash script to run inside the container
+# 7 February 2019
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+set -e
+cd $jobDir
+
+# Read info
+allThreads=$(nproc)
+allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+xml=`readlink -f *.xml`
+vcf=`readlink -f *.vcf.gz`
+
+# Print params
+echo -n jobDir"       : "; echo $jobDir
+echo -n name"         : "; echo $name
+echo -n dataBundle"   : "; echo $dataBundle
+echo -n threads"      : "; echo $allThreads
+echo -n ram"          : "; echo $allRam
+echo -n host"         : "; echo $(hostname)
+echo -n xml"          : "; echo $xml
+echo -n vcf"          : "; echo $vcf; echo
+
+/BioApps/Miniconda3/bin/snakemake -p -T \
+--cores $allThreads \
+--snakefile *.sm \
+--config \
+hg38Index=$dataBundle/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
+b37Index=$dataBundle/Indexes/B37/human_g1k_v37_decoy_phiXAdaptr.fasta \
+chain=$dataBundle/Indexes/GRCh37_to_GRCh38.chain.gz \
+xml=$xml \
+vcf=$vcf \
+name=$name \
+allThreads=$allThreads \
+allRam=$allRam
+
+# Notes
+## indexFastas - the b37 and hg38 fasta files with all their associated xxx.fa.fai indexs 
+## chain - CrossMap chain file for converting coordinates
+## xml - xml formatted Foundaion report
+## vcf - recalled variants from the 
+
+# Replace first and last lines above with the following to get dag svg graph
+	# /BioApps/Miniconda3/bin/snakemake --dag \
+	# allRam=$allRam | dot -Tsvg > $name"_dag.svg"
+
+

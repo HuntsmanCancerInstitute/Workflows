@@ -1,0 +1,31 @@
+TRunner is a USeq app that executes up to 6 dockerized snakemake workflows for processing Foundation One style tumor only datasets (DNA Bam, RNA Bam, Xml report). Each of these workflows can be launched individually, see the specific README file in the WorkflowDir.  Although TRunner looks for all three datasets, it will execute what it can given the available files.  See the TRunner help menu for details.
+
+
+Default Filtering Parameters for the TRunner workflows and the different output Vcf files:
+
+Exome Alignments
+	Picard's MarkDuplicates is used to remove duplicates
+	Mapping Quality	>= 20
+	AlignmentScore/CIGAR M Length >= 0.65
+
+Somatic variants
+	Read depth, tumor	>= 50
+	Read depth, normal	>= 20  - an ~200x whole genome NA12878 dataset is used in place of the matched normal
+	Allele frequency (AF), tumor >= 0.01
+	AF, normal < 0.6
+	AF ratio tumor/normal	>= 2
+	AF difference tumor-normal	>= 0.01
+	Number of supporting tumor variant reads	>= 3
+	Background AF BKZ z-score >= 3
+	FDR based on tuned Strelka2 QSI/S scores ~0.09-0.15
+		*** Generates XXX_Illumina_Hg38_final.vcf.gz in the SomaticVariantCalls/XXX_Illumina/Vcfs/ folder
+
+Annotated somatic variants, additional filters	
+	AF, tumor >= 0.05
+	Population AF from dbNSFP_ExAC_AF or dbNSFP_1000Gp3_AF < 0.01
+	Fraction bkgrd sample AFs >= observed tumor AF, < 0.1
+	One of the following criteria must be met
+		SnpEff ANN impacts	high,moderate
+		CLINSIG	conflicting_interpretations_of_pathogenicity,drug_response,likely_pathogenic,pathogenic,risk_factor
+		Damage to splice junctions or new splice junction adjacent to old, score diff	>=4
+		*** Generates XXX_IlluminaAnno_Hg38.anno.filt.gz in the SomaticVariantCalls/XXX_IlluminaAnno/Vcfs/ folder
