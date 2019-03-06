@@ -45,12 +45,12 @@ normalBed=$normalBed \
 genomeBuild=Hg38 \
 name=$name \
 minTumorAlignmentDepth=20 \
-minNormalAlignmentDepth=10 \
+minNormalAlignmentDepth=15 \
 minTumorAltCount=3 \
-minTumorAF=0.03 \
-maxNormalAF=0.6 \
-minTNRatio=2 \
-minTNDiff=0.03 \
+minTumorAF=0.05 \
+maxNormalAF=0.01 \
+minTNRatio=4 \
+minTNDiff=0.05 \
 fdrTier=1 \
 minBKZ=3 
 

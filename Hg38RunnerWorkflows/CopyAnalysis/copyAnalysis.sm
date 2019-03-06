@@ -9,7 +9,7 @@
 tumorBam = config["tumorBam"]
 normalBam = config["normalBam"]
 vcf = config["vcf"]
-nameBuild = config["name"]+"_Hg38"
+nameBuild = str(config["name"])+"_Hg38"
 
 # Threads and memory
 allThreads = int(config["allThreads"])
@@ -43,7 +43,8 @@ rule OrganizeResults:
         "DONE"
     shell:
         "cd ModelSegments && mkdir Seg Param Igv HetAF && mv *.igv.* Igv/ && mv *param Param/ && "
-        "mv *seg Seg/ && mv *tsv HetAF/ && cd ../ && rm -rf Anno *.gz.tbi {nameBuild}.germline.snv.vcf.idx && touch {output}"
+        "mv *seg Seg/ && mv *tsv HetAF/ && cd ../ && rm -rf Anno *.gz.tbi {nameBuild}.germline.snv.vcf.idx && "
+        "zip -rq {nameBuild}_CopyAnalysisLogs.zip Logs/ && touch {output}"
 
 # Collect tumor counts
 rule CollectTumorCounts:

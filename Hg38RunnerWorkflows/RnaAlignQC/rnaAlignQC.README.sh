@@ -2,16 +2,16 @@
 #SBATCH --account=hci-rw
 #SBATCH --partition=hci-rw
 #SBATCH -N 1
-#SBATCH -t 96:00:00
+#SBATCH -t 48:00:00
 
 set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 
-# 31 January 2019
+# 23 January 2019
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
-# This is a Unique Molecular Index Barcode (UMI) aware BWA mem alignment to Hg38/GRCh38 followed by USeq Consensus calling on alignments with the same UMI and unclipped start position, quality filtering, deduping, base score recalibration, haplotype calling, and various QC calculations.
-# Run the USeq AggregateQCStats app on a directory containing multiple alignment runs to combine all the QC results into several relevant QC reports.
+# This fires the STAR alignments and Picard's Collect RNASeq metrics on paired end fastq datasets.
+
 
 
 #### Do just once ####
@@ -31,19 +31,18 @@ myData=/uufs/chpc.utah.edu/common/HIPAA/u0028003/Scratch
 container=/uufs/chpc.utah.edu/common/HIPAA/u0028003/HCINix/SingularityBuilds/public_SnakeMakeBioApps_4.sif
 
 
+
 #### Do for every run ####
 
 # 1) Create a folder named as you would like the analysis name to appear, this along with the genome build will be prepended onto all files, no spaces, change into it. This must reside somewhere in the myData mount path.
 
-# 2) Soft link your paired read and UMI fastq.gz files into the job dir naming them 1.fastq.gz, 2.fastq.gz, and u.fastq.gz 
+# 2) Soft link your fastq files into the job directory naming them 1.fastq.gz and 2.fastq.gz.
 
 # 3) Copy over the workflow docs: xxx.sing, xxx.README.sh, and xxx.sm into the job directory.
 
-# 4) Add a file named sam2USeq.config.txt that contains a single line of params for the Sam2USeq tool, e.g. -c 10, or -c 20 to define the minimum read coverage for the normal or tumor samples respectively.
+# 4) Launch the xxx.README.sh via slurm's sbatch or run it on your local server.  
 
-# 5) Launch the xxx.README.sh via sbatch or run it on your local server.  
-
-# 6) If the run fails, fix the issue and restart.  Snakemake should pick up where it left off.
+# 5) If the run fails, fix the issue and restart.  Snakemake should pick up where it left off.
 
 
 
@@ -51,7 +50,7 @@ container=/uufs/chpc.utah.edu/common/HIPAA/u0028003/HCINix/SingularityBuilds/pub
 
 echo -e "\n---------- Starting -------- $((($(date +'%s') - $start)/60)) min"
 
-# Read out params
+# Read out params 
 name=${PWD##*/}
 jobDir=`readlink -f .`
 
@@ -61,12 +60,12 @@ bash $jobDir/*.sing
 
 echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min total"
 
+
 # Final cleanup
 mkdir -p RunScripts
-mv exomeConsensusAlignQC* RunScripts/
-mv sam2USeq.config.txt RunScripts/
-mv -f *.log  Logs/ &> /dev/null || true
-mv -f slurm* Logs/ &> /dev/null || true
+mv rnaAlignQC* RunScripts/
+mv -f *.log  Logs/ || true
+mv -f slurm* Logs/ || true
 rm -rf .snakemake 
 rm -f FAILED STARTED DONE RESTART
 touch COMPLETE 

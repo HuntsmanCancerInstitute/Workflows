@@ -2,18 +2,17 @@
 #SBATCH --account=hci-rw
 #SBATCH --partition=hci-rw
 #SBATCH -N 1
-#SBATCH -t 48:00:00
+#SBATCH -t 96:00:00
 
 set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 
-# 23 January 2019
+# 31 January 2019
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
-# This tumor-normal exome workflow uses Illumina's Manta and Strelka2 variant callers to identify short INDELs and SNVs. 
-# A tuned set of filtering statistics is applied to produce lists with different FDR tiers. 
-# Lastly a panel of normals is used to remove systematic false positives due to high localized background. 
-# It works best with tumor samples sequenced to >= 100x depth and >= 20x for the normal.  
+# This is a Unique Molecular Index Barcode (UMI) aware BWA mem alignment to Hg38/GRCh38 followed by USeq Consensus calling on alignments with the same UMI and unclipped start position, quality filtering, deduping, base score recalibration, haplotype calling, and various QC calculations.
+# Run the USeq AggregateQCStats app on a directory containing multiple alignment runs to combine all the QC results into several relevant QC reports.
+
 
 #### Do just once ####
 
@@ -31,20 +30,18 @@ myData=/uufs/chpc.utah.edu/common/HIPAA/u0028003/Scratch
 #$singExec pull docker://hcibioinformatics/public:SnakeMakeBioApps_4
 container=/uufs/chpc.utah.edu/common/HIPAA/u0028003/HCINix/SingularityBuilds/public_SnakeMakeBioApps_4.sif
 
-# 5) Create a file named vcfCallFreqConfig.txt containing a single line that defines the data files to scan for prior calling e.g. "fileFilter TAB Hg38/Somatic/Avatar/HA1" 
-
 
 #### Do for every run ####
 
 # 1) Create a folder named as you would like the analysis name to appear, this along with the genome build will be prepended onto all files, no spaces, change into it. This must reside somewhere in the myData mount path.
 
-# 2) Soft link bam and bai files naming them tumor.bam, tumor.bai, normal.bam, and normal.bai into the analysis folder. 
+# 2) Soft link your paired read and UMI fastq.gz files into the job dir naming them 1.fastq.gz, 2.fastq.gz, and u.fastq.gz 
 
-# 3) Soft link passing read coverage bed files for the tumor and normal samples naming them tumor.bed.gz and normal.bed.gz into the analysis folder. 
+# 3) Copy over the workflow docs: xxx.sing, xxx.README.sh, and xxx.sm into the job directory.
 
-# 4) Copy over the workflow docs: xxx.sing, xxx.README.sh, and xxx.sm into the job directory.
+# 4) Add a file named sam2USeq.config.txt that contains a single line of params for the Sam2USeq tool, e.g. -c 10, or -c 20 to define the minimum read coverage for the normal or tumor samples respectively.
 
-# 5) Launch the xxx.README.sh via slurm's sbatch or run it on your local server.  
+# 5) Launch the xxx.README.sh via sbatch or run it on your local server.  
 
 # 6) If the run fails, fix the issue and restart.  Snakemake should pick up where it left off.
 
@@ -66,10 +63,10 @@ echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min to
 
 # Final cleanup
 mkdir -p RunScripts
-mv somExoCaller* RunScripts/
-mv -f *.log  Logs/ || true
-mv -f slurm* Logs/ || true
+mv dnaConsensusAlignQC* RunScripts/
+mv sam2USeq.config.txt RunScripts/
+mv -f *.log  Logs/ &> /dev/null || true
+mv -f slurm* Logs/ &> /dev/null || true
 rm -rf .snakemake 
 rm -f FAILED STARTED DONE RESTART
 touch COMPLETE 
-

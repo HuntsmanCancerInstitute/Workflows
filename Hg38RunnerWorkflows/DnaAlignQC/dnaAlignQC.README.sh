@@ -2,7 +2,7 @@
 #SBATCH --account=hci-rw
 #SBATCH --partition=hci-rw
 #SBATCH -N 1
-#SBATCH -t 48:00:00
+#SBATCH -t 96:00:00
 
 set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 
@@ -10,8 +10,8 @@ set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
-# This fires the STAR alignments and Picard's Collect RNASeq metrics on paired end fastq datasets.
-
+# This is a standard BWA mem alignment to Hg38/GRCh38 followed by quality filtering, deduping, base score recalibration, haplotype calling, and various QC calculations.
+# Run the USeq AggregateQCStats app on a directory containing multiple alignment runs to combine all the QC results into several relevant QC reports.
 
 
 #### Do just once ####
@@ -31,18 +31,19 @@ myData=/uufs/chpc.utah.edu/common/HIPAA/u0028003/Scratch
 container=/uufs/chpc.utah.edu/common/HIPAA/u0028003/HCINix/SingularityBuilds/public_SnakeMakeBioApps_4.sif
 
 
-
 #### Do for every run ####
 
 # 1) Create a folder named as you would like the analysis name to appear, this along with the genome build will be prepended onto all files, no spaces, change into it. This must reside somewhere in the myData mount path.
 
-# 2) Soft link your fastq files into the job directory naming them 1.fastq.gz and 2.fastq.gz.
+# 2) Soft link your paired fastq.gz files into the job dir naming them 1.fastq.gz and 2.fastq.gz . These file links will be deleted so don't mv the actual files within.
 
-# 3) Copy over the workflow docs: xxx.sing, xxx.README.sh, and xxx.sm into the job directory.
+# 3) Copy over the DNAAlignQC workflow docs: xxx.sing, xxx.README.sh, and xxx.sm into the job directory.
 
-# 4) Launch the xxx.README.sh via slurm's sbatch or run it on your local server.  
+# 4) Add a file named sam2USeq.config.txt that contains a single line of params for the sam2USeq tool, e.g. -c 10, or -c 20 to define the minimum read coverage for the normal and tumor samples respectively.
 
-# 5) If the run fails, fix the issue and restart.  Snakemake should pick up where it left off.
+# 5) Launch the xxx.README.sh via sbatch or run it on your local server.  
+
+# 6) If the run fails, fix the issue and restart.  Snakemake should pick up where it left off.
 
 
 
@@ -50,7 +51,7 @@ container=/uufs/chpc.utah.edu/common/HIPAA/u0028003/HCINix/SingularityBuilds/pub
 
 echo -e "\n---------- Starting -------- $((($(date +'%s') - $start)/60)) min"
 
-# Read out params 
+# Read out params
 name=${PWD##*/}
 jobDir=`readlink -f .`
 
@@ -60,10 +61,9 @@ bash $jobDir/*.sing
 
 echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min total"
 
-
 # Final cleanup
 mkdir -p RunScripts
-mv transAlignQC* RunScripts/
+mv dnaAlignQC* RunScripts/
 mv -f *.log  Logs/ || true
 mv -f slurm* Logs/ || true
 rm -rf .snakemake 

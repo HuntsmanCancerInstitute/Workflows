@@ -58,7 +58,8 @@ rule AggregateQCStats:
         "Logs/"+ nameBuild+ "_AggregateQCStats.log",
     shell:
         "{java} {useq}/AggregateQCStats -j Json -r {output} -p {nameBuild}_ &> {log} && "
-        "rm -rf *_dupFree.ba* *_sae.ba* *_unfiltered.ba* *_raw.bam *_MPA *_uniObReadCov.useq "    	 
+        "rm -rf *_dupFree.ba* *_sae.ba* *_unfiltered.ba* *_raw.bam *_MPA *_uniObReadCov.useq && " 
+        "zip -rq {nameBuild}_ExomeAlignQCLogs.zip Logs/"   	 
         
 ############# Fastq and resources check ##############
 
