@@ -28,7 +28,7 @@ Annotated somatic variants, additional filters
 		SnpEff ANN impacts	high,moderate
 		CLINSIG	conflicting_interpretations_of_pathogenicity,drug_response,likely_pathogenic,pathogenic,risk_factor
 		Damage to splice junctions or new splice junction adjacent to old, score diff	>=4
-		*** Generates XXX_Avatar_IlluminaAnno_Hg38.anno.filt.gz in the SomaticVariantCalls/XXX_Avatar_IlluminaAnno/Vcfs/ folder
+		*** Generates XXX_Avatar_Anno_Hg38.anno.filt.gz in the SomaticVariantCalls/XXX_Avatar_Anno/Vcfs/ folder
 
 Copy number - ratio analysis
         Min tumor copy ratio, 0.15
