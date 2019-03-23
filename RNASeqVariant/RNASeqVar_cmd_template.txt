@@ -8,6 +8,7 @@ NAME=MYNAME
 ID=MYID
 SAMPLE=MYNAME
 
+
 # Load environment and modules 
 module use /uufs/chpc.utah.edu/common/HIPAA/hci-bioinformatics1/Modules/modulefiles
 module load parallel 
@@ -31,8 +32,8 @@ TAB_PATH=/tomato/dev/app/tabix/1.8/
 INDEX=/tomato/dev/data/Human/GRCh38/release90/star125
 RSEMINDEX=/tomato/dev/data/Human/GRCh38/release90/rsem/GRCh38
 GTF=/tomato/dev/data/Human/GRCh38/release90/Homo_sapiens.GRCh38.90.gtf
-REFFLAT=/tomato/dev/data/Human/GRCh38/release90/Homo_sapiens.GRCh38.refflat
-RIBOINT=/tomato/dev/data/Human/GRCh38/release90/Homo_sapiens.GRCh38.rRNA.interval
+REFFLAT=/tomato/dev/data/Human/GRCh38/release90/Homo_sapiens.GRCh38.90.refflat
+RIBOINT=/tomato/dev/data/Human/GRCh38/release90/Homo_sapiens.GRCh38.90.rRNA.interval
 CHROMSIZE=/tomato/dev/data/Human/GRCh38/chrom.sizes
 REF=/tomato/dev/data/Human/GRCh38/Homo_sapiens.GRCh38.dna.primary_assembly.fa
 GOLDINDELS=/tomato/dev/data/Human/GRCh38/GATK/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz
