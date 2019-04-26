@@ -8,7 +8,6 @@ ORG=/tomato/dev/data/Mouse/GRCm38
 # Paths
 APP=/tomato/dev/app
 FASTQC=$APP/FastQC/0.11.5/fastqc
-module load cutadapt/1.16
 CUTADAPT=$APP/modulesoftware/cutadapt
 BISMARK=/tomato/dev/app/Bismark/0.20.0/
 

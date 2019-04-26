@@ -11,13 +11,13 @@ ID=MYID
 
 
 # Applications
-$APP=/tomato/dev/app
-$NOVOALIGN=$APP/novoalign/3.08.02/novoalign
-$SAMTOOL=$APP/samtools/1.8/samtools
+APP=/tomato/dev/app
+NOVOALIGN=$APP/novoalign/3.08.02/novoalign
+SAMTOOL=$APP/samtools/1.8/samtools
 
 # data
-$DATA=/tomato/dev/data
-$INDEX=$DATA/Mouse/Mm10/mm10NormChrLambdaPhiXAdapt.nov.bisulphite.nix
+DATA=/tomato/dev/data
+INDEX=$DATA/Mouse/Mm10/mm10NormChrLambdaPhiXAdapt.nov.bisulphite.nix
 
 # align with updated version of novoalign, 3.7
 # still using the 2.8 version of the index, that shouldn't matter too much
@@ -32,9 +32,10 @@ $INDEX=$DATA/Mouse/Mm10/mm10NormChrLambdaPhiXAdapt.nov.bisulphite.nix
 # new parameters use -b 4 mode
 # test which mode works better with your data
 # additional suggestions from Novocraft
+# http://www.novocraft.com/documentation/novoalign-2/novoalign-user-guide/bisulphite-treated-reads/
 
 $NOVOALIGN --NonC \
--d $DATA \
+-d $INDEX \
 -o SAM "@RG\tID:$ID\tPL:Illumina\tLB:$ID\tSM:$NAME\tCN:HCI" \
 -r Random -b 4 -u 12 -H 20 -t 20,3 --hlimit 6 \
 -a GATCGGAAGAGCTCGTATGCCGTCTTCTGCTTG ACACTCTTTCCCTACACGACGCTCTTCCGATCT \

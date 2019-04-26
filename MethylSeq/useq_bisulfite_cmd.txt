@@ -34,7 +34,6 @@ FASTA=/uufs/chpc.utah.edu/common/home/hcibcore/Genomes/Mouse/mm10
 
 
 # remove duplicates
-# using advanced duplicate remover that looks at cigar strings too
 echo; echo "======= Running Picard Mark Duplicates ======="
 $JAVA -Xmx${SMGB}G \
 -jar $PICARD MarkDuplicates \
