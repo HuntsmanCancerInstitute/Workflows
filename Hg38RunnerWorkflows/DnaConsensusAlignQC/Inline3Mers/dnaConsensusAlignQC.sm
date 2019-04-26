@@ -1,5 +1,5 @@
 # Hg38 Exome Alignment and QC Workflow 
-# 23 January 2019
+# 26 April 2019
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -17,7 +17,6 @@ partRam = int(round(float(config["allRam"])*0.75))
 # Gzipped Fastq files
 fastqReadOne = config["fastqReadOne"]
 fastqReadTwo = config["fastqReadTwo"]
-fastqReadBarcode = config["fastqReadBarcode"]
 
 # Resources
 regionsForReadCoverage = config["regionsForReadCoverage"]
@@ -97,7 +96,7 @@ rule FastqBarcodeTagger:
     log:
         "Logs/"+ nameBuild+ "_FastqBarcodeTagger.log",
     shell:
-        "{java} {useq}/FastqBarcodeTagger -f {fastqReadOne} -s {fastqReadTwo} -b {fastqReadBarcode} "
+        "{java} {useq}/FastqBarcodeTagger -f {fastqReadOne} -s {fastqReadTwo} -e "
         "-r {nameBuild}_FastqBarcodeTagger &> {log}"
 
 
@@ -118,12 +117,11 @@ rule AlignHg38:
         "mkdir -p Logs && "
         "fq=$(ls {input}/*gz) && "
         "{bwa} -o {nameBuild}_AlignHg38 -R {params.rg} -t {threads} -a -d "
-        "{indexFasta} $fq > {nameBuild}_AlignHg38.sh 2> {log} && "
+        "{indexFasta} $fq | grep -v samblaster > {nameBuild}_AlignHg38.sh 2> {log} && "
         "chmod 750 {nameBuild}_AlignHg38.sh 2>> {log} && "
         "cat {nameBuild}_AlignHg38.sh >> {log} && "
         "./{nameBuild}_AlignHg38.sh && "
         "cat {nameBuild}_AlignHg38.log.bwamem >> {log} && "
-        "cat {nameBuild}_AlignHg38.log.dedup >> {log} && "
         "cat {nameBuild}_AlignHg38.log.trim >> {log} && "
         "rm -f {nameBuild}_AlignHg38.log.* {nameBuild}_AlignHg38.sh {nameBuild}_AlignHg38.hla.* && "
         "mv {nameBuild}_AlignHg38.aln.bam {output}"
@@ -154,7 +152,7 @@ rule Consensus:
     threads:
         allThreads    
     params:
-        "-c 500000"
+        "-c 500000 -n 6 -f 1"
     log:
         "Logs/"+ nameBuild+ "_Consensus.log",
     shell:
@@ -174,12 +172,11 @@ rule AlignUnpairedConsensusFastq:
         "Logs/"+ nameBuild+ "_AlignUnPairedConsensusFastq.log"
     shell:
         "{bwa} -o {nameBuild}_UnPairedAlignHg38 -R {params.rg} -t {threads} -a -d "
-        "{indexFasta} {input} > {nameBuild}_UnPairedAlignHg38.sh 2> {log} && "
+        "{indexFasta} {input} | grep -v samblaster > {nameBuild}_UnPairedAlignHg38.sh 2> {log} && "
         "chmod 750 {nameBuild}_UnPairedAlignHg38.sh 2>> {log} && "
         "cat {nameBuild}_UnPairedAlignHg38.sh >> {log} && "
         "./{nameBuild}_UnPairedAlignHg38.sh && "
         "cat {nameBuild}_UnPairedAlignHg38.log.bwamem >> {log} && "
-        "cat {nameBuild}_UnPairedAlignHg38.log.dedup >> {log} && "
         "cat {nameBuild}_UnPairedAlignHg38.log.trim >> {log} && "
         "rm -f {nameBuild}_UnPairedAlignHg38.log.* {nameBuild}_UnPairedAlignHg38.sh {nameBuild}_UnPairedAlignHg38.hla.* && "
         "{samtools} view {nameBuild}_UnPairedAlignHg38.aln.bam | gzip > {output}"
@@ -199,15 +196,14 @@ rule AlignPairedConsensusFastq:
         "Logs/"+ nameBuild+ "_AlignPairedConsensusFastq.log"
     shell:
         "{bwa} -o {nameBuild}_PairedAlignHg38 -R {params.rg} -t {threads} -a -d "
-        "{indexFasta} {input} > {nameBuild}_PairedAlignHg38.sh 2> {log} && "
+        "{indexFasta} {input} | grep -v samblaster > {nameBuild}_PairedAlignHg38.sh 2> {log} && "
         "chmod 750 {nameBuild}_PairedAlignHg38.sh 2>> {log} && "
         "cat {nameBuild}_PairedAlignHg38.sh >> {log} && "
         "./{nameBuild}_PairedAlignHg38.sh && "
         "cat {nameBuild}_PairedAlignHg38.log.bwamem >> {log} && "
-        "cat {nameBuild}_PairedAlignHg38.log.dedup >> {log} && "
         "cat {nameBuild}_PairedAlignHg38.log.trim >> {log} && "
         "rm -f {nameBuild}_PairedAlignHg38.log.* {nameBuild}_PairedAlignHg38.sh {nameBuild}_PairedAlignHg38.hla.* && "
-        "{samtools} view {nameBuild}_UnPairedAlignHg38.aln.bam | gzip > {output}"
+        "{samtools} view {nameBuild}_PairedAlignHg38.aln.bam | gzip > {output}"
 
 # Concatinate alignments
 rule ConcatinateAlignments:
@@ -271,7 +267,7 @@ rule RecalibrateBases:
     shell:
         "{java} {gatk} -nct {threads} -T BaseRecalibrator -R {indexFasta} "
         "-knownSites {dbsnp} -knownSites {gSnp} -knownSites {gIndel} "
-        "-I {input.bam} -o {output} &> {log}"
+        "-I {input.bam} -o {output} --emit_original_quals &> {log}"
         
 # Write out recalibrated bam with GATK
 rule PrintRecalibratedBam:
@@ -288,7 +284,8 @@ rule PrintRecalibratedBam:
         "Logs/"+ nameBuild+ "_PrintRecalibratedBam.log"
     shell:
         "{java} {gatk} -nct {threads} -T PrintReads --use_jdk_deflater --use_jdk_inflater "
-        "-R {indexFasta} -I {input.bam} -BQSR {input.grp} -o {output.bam} &> {log}" 
+        "-R {indexFasta} -I {input.bam} -BQSR {input.grp} -o {output.bam} "
+        "--emit_original_quals &> {log}" 
 
 # Run the Haplotype caller, needed for germline, not so much for somatic, use the GATKRunner since the -nct arg doesn't work        
 rule HaplotypeCaller:
