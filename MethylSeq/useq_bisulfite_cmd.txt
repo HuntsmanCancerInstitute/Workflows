@@ -51,23 +51,23 @@ $JAVA -Xmx${SMGB}G \
 -a 15508R.dedup.bam \
 -v $VERSION \
 -f $FASTA \
--s ${MYNAME}_Parsed \
--b 20 -c 20 -x 360 -q 13  > ${MYNAME}_NovoalignBisulfiteParser.out.txt
+-s ${NAME}_Parsed \
+-b 20 -c 20 -x 360 -q 13  > ${NAME}_NovoalignBisulfiteParser.out.txt
 
 
 # Parse CpG context
 echo; echo "====== Running USeq ParsePointDataContexts for CpG ======"
 $JAVA -Xmx${SMGB}G \
 -jar $USEQ/ParsePointDataContexts \
--p ${MYNAME}_Parsed/ConvertedC \
--s ${MYNAME}_Parsed/ConvertedCpG \
+-p ${NAME}_Parsed/ConvertedC \
+-s ${NAME}_Parsed/ConvertedCpG \
 -f $FASTA \
 -c '..CG.' 
 
 $JAVA -Xmx${SMGB}G \
 -jar $USEQ/ParsePointDataContexts \
--p ${MYNAME}_Parsed/NonConvertedC \
--s ${MYNAME}_Parsed/NonConvertedCpG \
+-p ${NAME}_Parsed/NonConvertedC \
+-s ${NAME}_Parsed/NonConvertedCpG \
 -f $FASTA \
 -c '..CG.' 
 
@@ -97,24 +97,24 @@ $JAVA -Xmx${SMGB}G \
 echo; echo "====== Running USeq convertors ======"
 $JAVA -Xmx${SMGB}G \
 -jar $USEQ/Bar2USeq \
--f ${MYNAME}_Parsed 
+-f ${NAME}_Parsed 
 
 
 # Convert to USeq files
 echo; echo "====== Running BigWig convertors ======"
 $JAVA -Xmx16G \
 -jar $USEQ/USeq2UCSCBig \
--u ${MYNAME}_Parsed \
+-u ${NAME}_Parsed \
 -d $APP/UCSC
 
 $JAVA -Xmx16G \
 -jar $USEQ/USeq2UCSCBig \
--u ${MYNAME}_BisStatAll \
+-u ${NAME}_BisStatAll \
 -d $APP/UCSC
 
 $JAVA -Xmx16G \
 -jar $USEQ/USeq2UCSCBig \
--u ${MYNAME}_BisStatCpG \
+-u ${NAME}_BisStatCpG \
 -d $APP/UCSC
 
 
