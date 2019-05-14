@@ -48,7 +48,7 @@ REMOVE_DUPLICATES=true ASSUME_SORTED=true
 echo; echo "====== Running USeq NovoalignBisulfiteParser ======"
 $JAVA -Xmx${SMGB}G \
 -jar $USEQ/NovoalignBisulfiteParser \
--a 15508R.dedup.bam \
+-a $NAME.dedup.bam \
 -v $VERSION \
 -f $FASTA \
 -s ${NAME}_Parsed \
