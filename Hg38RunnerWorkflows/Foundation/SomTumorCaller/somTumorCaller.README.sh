@@ -17,12 +17,12 @@ set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 #### Do just once ####
 
 # 1) Install Singularity (https://www.sylabs.io) or load via a module then define the path to the executable
-module load singularity/3.0.1
-singExec=/uufs/chpc.utah.edu/sys/installdir/singularity3/3.0.1/bin/singularity
+module load singularity/3.2.0
+singExec=/uufs/chpc.utah.edu/sys/installdir/singularity3/3.2.0/bin/singularity
 
 # 2) Define file paths to "mount" in the container. The first is to the TNRunner data bundle downloaded and uncompressed from https://hci-bio-app.hci.utah.edu/gnomex/gnomexFlex.jsp?analysisNumber=A5578 . The second is the path to your data.
 dataBundle=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner
-myData=/uufs/chpc.utah.edu/common/HIPAA/u0028003/Scratch
+myData=/scratch/mammoth/serial/u0028003
 
 # 3) Modify the workflow xxx.sing file setting the paths to the required resources. These must be within the mounts.
 
