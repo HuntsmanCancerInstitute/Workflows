@@ -1,5 +1,5 @@
 # Tumor - Normal Somatic Variant Calling Workflow 
-# 23 January 2019
+# 22 May 2019
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -137,7 +137,7 @@ rule VCFBackgroundChecker:
         allThreads
     shell:
         "{java} {useq}/VCFBackgroundChecker -v {input} -m {mpileup} -c {minNormalAlignmentDepth} "
-        "-s VCFBkgFilt -t {threads} -z {minBKZ} &> {log} && "
+        "-s VCFBkgFilt -t {threads} -z {minBKZ} -b 1 &> {log} && "
         "mv -f VCFBkgFilt/{nameBuild}_Strelka.raw_Filtered.vcf.gz {output} "
 
 # Calculate the prior call frequency from a QueryAPI index, the config file should just specify the fileFilter
