@@ -46,15 +46,38 @@ DBSNP=/tomato/dev/data/Human/GRCh38/GATK/dbsnp_144.hg38.vcf.gz
 EXONS=/tomato/dev/data/Human/GRCh38/release96/Homo_sapiens.GRCh38.96.mergedExons.bed
 
 
+### Fastq file
+FIRST=`ls *R1_001.fastq.gz`
+SECOND=`ls *R2_001.fastq.gz`
+
+
+### Remove optical duplicates from fastq
+# this is only needed for NovaSeq alignments - adjust accordingly
+$CLUMPIFY \
+in1=$FIRST \
+in2=$SECOND \
+out1=$NAME.read1.fastq.gz \
+out2=$NAME.read2.fastq.gz \
+dupedist=10000 \
+dedupe=t \
+optical=t 2> $NAME.clumpify.out.txt 
+
+FIRST=$NAME.read1.fastq.gz
+SECOND=$NAME.read2.fastq.gz
+
+
+
 ### Trim adapters
 echo "==== Trimming with cutadapt ===="
 $CUTADAPT \
 -a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA \
 -A AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT \
--o trimmed_1.fastq.gz \
--p trimmed_2.fastq.gz \
--j $NCPU \
-*.gz > $NAME.cutadapt.out.txt
+-o $NAME.trim1.fastq.gz \
+-p $NAME.trim2.fastq.gz \
+-j $NCPU -m 25 \
+$FIRST $SECOND > $NAME.cutadapt.out.txt
+
+rm -f $FIRST $SECOND
 
 
 ###  STAR alignment
@@ -63,7 +86,7 @@ echo "==== aligning $NAME with STAR ===="
 $STAR --runMode alignReads \
 --genomeDir $INDEX \
 --twopassMode Basic \
---readFilesIn trimmed_*.fastq.gz \
+--readFilesIn $NAME.trim1.fastq.gz $NAME.trim2.fastq.gz \
 --readFilesCommand zcat \
 --runThreadN $NCPU \
 --alignIntronMax 100000 \
@@ -88,7 +111,7 @@ mv Log.final.out $NAME.Log.final.out
 rm -rf _STARpass1
 rm -rf _STARgenome
 rm -f Log.out Log.progress.out
-rm -f trimmed_*.fastq.gz
+rm -f $NAME.trim1.fastq.gz $NAME.trim2.fastq.gz
 
 # Samtools index
 echo; echo "==== samtools stats ===="
