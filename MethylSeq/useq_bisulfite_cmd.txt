@@ -30,6 +30,13 @@ FASTA=/uufs/chpc.utah.edu/common/home/hcibcore/Genomes/Mouse/mm10
 # # special UCSC fasta folder with individual chromosome fastas plus lambda
 # FASTA=/uufs/chpc.utah.edu/common/home/hcibcore/Genomes/H_sapiens/Hg19/Fasta
 
+### Zebrafish Zv10 data
+# DATA=/tomato/dev/data
+# INDEX=$DATA/Zebrafish/Zv10/zv10StdChrLambPhiAdapt.nov.bisulphite.nix
+# VERSION='D_rerio_Sep_2014'
+# # special UCSC fasta folder with individual chromosome fastas plus lambda
+# FASTA=/uufs/chpc.utah.edu/common/home/hcibcore/Genomes/Zebrafish/Zv10/Fasta
+
 
 
 
