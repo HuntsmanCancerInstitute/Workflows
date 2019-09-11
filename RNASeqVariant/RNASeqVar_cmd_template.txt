@@ -82,6 +82,7 @@ rm -f $FIRST $SECOND
 
 ###  STAR alignment
 # set maximum intron 100 kb, mean intron for hg38 is 8kb, SD 25 kb
+# set BAM sort ram to 25 GB - complains if too low or takes all
 echo "==== aligning $NAME with STAR ===="
 $STAR --runMode alignReads \
 --genomeDir $INDEX \
@@ -95,7 +96,7 @@ $STAR --runMode alignReads \
 --outFilterMismatchNmax 20 \
 --outFilterMismatchNoverLmax 0.3 \
 --outSAMtype BAM SortedByCoordinate \
---limitBAMsortRAM 10000000000 \
+--limitBAMsortRAM 25000000000 \
 --outSAMmapqUnique 60 \
 --outSAMattrRGline ID:$ID LB:$ID PL:Illumina PU:$ID SM:$SAMPLE CN:HCI \
 --quantMode TranscriptomeSAM \
