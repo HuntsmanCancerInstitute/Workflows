@@ -277,7 +277,7 @@ $JAVA_PATH -Xmx4G -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/local \
 -mmq 1 \
 --min_base_quality_score 20 \
 -L {} \
--o {.}.raw.vcf \
+-o {.}.raw.vcf.gz \
 ':::' ${NAME}_call.*.bed
 
 # variant filtering
@@ -286,33 +286,33 @@ parallel -k --delay 10 \
 $JAVA_PATH -Xmx4G -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/local \
 -jar $GATK_PATH -T VariantFiltration \
 -R $REF \
--V {.}.raw.vcf \
+-V {.}.raw.vcf.gz \
 -window 35 \
 -cluster 3 \
 -filterName FS \
 -filter "'FS > 30.0'" \
 -filterName QD \
 -filter "'QD < 2.0'" \
--o {.}.vcf \
+-o {.}.vcf.gz \
 ':::' ${NAME}_call.*.bed
 
 # merge raw variants
 echo; echo "======= Concatenate final variants"
 $JAVA_PATH -Xmx20G -jar $PICARD SortVcf \
 SD=${REF%fa}dict \
-O=$NAME.vcf \
-I=${NAME}_call.a.vcf \
-I=${NAME}_call.b.vcf \
-I=${NAME}_call.c.vcf \
-I=${NAME}_call.d.vcf \
-I=${NAME}_call.e.vcf \
-I=${NAME}_call.f.vcf \
-I=${NAME}_call.g.vcf \
-I=${NAME}_call.h.vcf \
-I=${NAME}_call.i.vcf \
-I=${NAME}_call.j.vcf \
-I=${NAME}_call.k.vcf \
-I=${NAME}_call.l.vcf \
+O=$NAME.vcf.gz \
+I=${NAME}_call.a.vcf.gz \
+I=${NAME}_call.b.vcf.gz \
+I=${NAME}_call.c.vcf.gz \
+I=${NAME}_call.d.vcf.gz \
+I=${NAME}_call.e.vcf.gz \
+I=${NAME}_call.f.vcf.gz \
+I=${NAME}_call.g.vcf.gz \
+I=${NAME}_call.h.vcf.gz \
+I=${NAME}_call.i.vcf.gz \
+I=${NAME}_call.j.vcf.gz \
+I=${NAME}_call.k.vcf.gz \
+I=${NAME}_call.l.vcf.gz \
 && rm -f ${NAME}_call.*
 
 
@@ -339,32 +339,30 @@ $JAVA_PATH -Xmx4G -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/local \
 --min_base_quality_score 20 \
 -L {} \
 --interval_padding 20 \
--o {.}.g.vcf \
+-o {.}.g.vcf.gz \
 ':::' exon_call.*.bed
 
 echo; echo "======= Concatenate gVCF variants"
 $JAVA_PATH -Xmx20G -jar $PICARD SortVcf \
 SD=${REF%fa}dict \
-O=$NAME.g.vcf \
-I=exon_call.a.g.vcf \
-I=exon_call.b.g.vcf \
-I=exon_call.c.g.vcf \
-I=exon_call.d.g.vcf \
-I=exon_call.e.g.vcf \
-I=exon_call.f.g.vcf \
-I=exon_call.g.g.vcf \
-I=exon_call.h.g.vcf \
-I=exon_call.i.g.vcf \
-I=exon_call.j.g.vcf \
-I=exon_call.k.g.vcf \
-I=exon_call.l.g.vcf \
+O=$NAME.g.vcf.gz \
+I=exon_call.a.g.vcf.gz \
+I=exon_call.b.g.vcf.gz \
+I=exon_call.c.g.vcf.gz \
+I=exon_call.d.g.vcf.gz \
+I=exon_call.e.g.vcf.gz \
+I=exon_call.f.g.vcf.gz \
+I=exon_call.g.g.vcf.gz \
+I=exon_call.h.g.vcf.gz \
+I=exon_call.i.g.vcf.gz \
+I=exon_call.j.g.vcf.gz \
+I=exon_call.k.g.vcf.gz \
+I=exon_call.l.g.vcf.gz \
 && rm -f exon_call.*
 
 
 
 
 ### Clean up
-parallel $TAB_PATH/bgzip {} ':::' *.vcf
-parallel $TAB_PATH/tabix -p vcf {} ':::' *.vcf.gz
-rm -f *.idx $NAME.ba*
+rm -f $NAME.ba*
 
