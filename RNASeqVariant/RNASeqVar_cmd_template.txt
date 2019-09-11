@@ -1,26 +1,28 @@
 #e your.name@hci.utah.edu -ab
 #c redwood
 
-# version 5
+# version 6
+
 
 # custom stuff, replace as necessary
 NAME=MYNAME
 ID=MYID
-SAMPLE=MYNAME
+SAMPLE=MYSAMPLE
 
 
 # Load environment and modules 
-module use /uufs/chpc.utah.edu/common/HIPAA/hci-bioinformatics1/Modules/modulefiles
 module load parallel 
 module load jdk 
 JAVA_PATH=`which java`
 
 
-## paths
+### Paths - relative to Pysano directories
+# Applications
+CLUMPIFY=/tomato/dev/app/BBmap/v38.34/clumpify.sh
 CUTADAPT=/tomato/dev/app/modulesoftware/cutadapt
-STAR=/tomato/dev/app/STAR/2.5.4a/STAR
+STAR=/tomato/dev/app/STAR/2.7.0f/STAR
 FEATCOUNT=/tomato/dev/app/Subread/1.5.1/bin/featureCounts
-RSEM=/tomato/dev/app/rsem/1.3.0/
+RSEM=/tomato/dev/app/rsem/1.3.1/
 SAMTOOL=/tomato/dev/app/samtools/1.8/samtools
 PICARD=/tomato/dev/app/picard/2.9.0/picard.jar
 STU=/tomato/dev/app/useq/9.1.3/Apps/Sam2USeq
@@ -29,19 +31,22 @@ UCSC=/tomato/dev/app/UCSC/
 BEDTOOL=/tomato/dev/app/bedtools/2.22.1/bedtools
 GATK_PATH=/tomato/dev/app/gatk/3.8/GenomeAnalysisTK.jar
 TAB_PATH=/tomato/dev/app/tabix/1.8/
-INDEX=/tomato/dev/data/Human/GRCh38/release90/star125
-RSEMINDEX=/tomato/dev/data/Human/GRCh38/release90/rsem/GRCh38
-GTF=/tomato/dev/data/Human/GRCh38/release90/Homo_sapiens.GRCh38.90.gtf
-REFFLAT=/tomato/dev/data/Human/GRCh38/release90/Homo_sapiens.GRCh38.90.refflat
-RIBOINT=/tomato/dev/data/Human/GRCh38/release90/Homo_sapiens.GRCh38.90.rRNA.interval
+
+# Resources
+INDEX=/tomato/dev/data/Human/GRCh38/release96/star125
+RSEMINDEX=/tomato/dev/data/Human/GRCh38/release96/rsem/RSEM
+GTF=/tomato/dev/data/Human/GRCh38/release96/Homo_sapiens.GRCh38.96.gtf
+REFFLAT=/tomato/dev/data/Human/GRCh38/release96/Homo_sapiens.GRCh38.96.refflat
+RIBOINT=/tomato/dev/data/Human/GRCh38/release96/Homo_sapiens.GRCh38.96.rRNA.interval
 CHROMSIZE=/tomato/dev/data/Human/GRCh38/chrom.sizes
 REF=/tomato/dev/data/Human/GRCh38/Homo_sapiens.GRCh38.dna.primary_assembly.fa
 GOLDINDELS=/tomato/dev/data/Human/GRCh38/GATK/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz
 HICONFSNPS=/tomato/dev/data/Human/GRCh38/GATK/1000G_phase1.snps.high_confidence.hg38.vcf.gz
 DBSNP=/tomato/dev/data/Human/GRCh38/GATK/dbsnp_144.hg38.vcf.gz
-EXONS=/tomato/dev/data/Human/GRCh38/release90/Homo_sapiens.GRCh38.90.mergedExons.bed
+EXONS=/tomato/dev/data/Human/GRCh38/release96/Homo_sapiens.GRCh38.96.mergedExons.bed
 
 
+### Trim adapters
 echo "==== Trimming with cutadapt ===="
 $CUTADAPT \
 -a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA \
@@ -51,7 +56,8 @@ $CUTADAPT \
 -j $NCPU \
 *.gz > $NAME.cutadapt.out.txt
 
-#  STAR alignment
+
+###  STAR alignment
 # set maximum intron 100 kb, mean intron for hg38 is 8kb, SD 25 kb
 echo "==== aligning $NAME with STAR ===="
 $STAR --runMode alignReads \
@@ -73,7 +79,6 @@ $STAR --runMode alignReads \
 --quantTranscriptomeBan IndelSoftclipSingleend \
 --outWigType None 
 
-
 # rename 
 mv Aligned.sortedByCoord.out.bam $NAME.bam
 mv Aligned.toTranscriptome.out.bam $NAME.transcriptome.bam
@@ -91,13 +96,13 @@ $SAMTOOL index -b -@ 4 $NAME.bam
 $SAMTOOL idxstats $NAME.bam | sort -V > $NAME.idxstats
 
 
-# Run featureCounts for paired-end alignments
+### Run featureCounts for paired-end alignments
 echo; echo "==== FeatureCounts ===="
 $FEATCOUNT -T $NCPU -p -C -s 2 --largestOverlap -a $GTF -o $NAME.counts $NAME.bam
 gzip $NAME.counts
 
 
-# Run RSEM
+### Run RSEM
 echo; echo "==== RSEM calculate expression ===="
 $RSEM/rsem-calculate-expression \
 --alignments --paired-end --num-threads $NCPU \
@@ -108,20 +113,21 @@ $NAME \
 && rm -f $NAME.transcriptome.bam
 
 
-## RnaSeq metrics
+### RnaSeq metrics
 echo; echo "==== RNASeq Metrics ===="
 $JAVA_PATH -Xmx${SMGB}G -jar $PICARD CollectRnaSeqMetrics REF_FLAT=$REFFLAT \
 STRAND=SECOND_READ_TRANSCRIPTION_STRAND RIBOSOMAL_INTERVALS=$RIBOINT \
 I=$NAME.bam O=$NAME.rna_metrics
 
-# filter out unwanted reads
+
+### Filter reads
 # UNMAP,SECONDARY,QCFAIL,SUPPLEMENTARY = 2820 = 0xb04
 echo; echo "==== samtools filter ===="
 $SAMTOOL view -F 2820 -@ 8 -b -o $NAME.filter.bam $NAME.bam
 $SAMTOOL index -b -@ 8 $NAME.filter.bam $NAME.filter.bai
 
 
-# Mark duplicates  
+### Mark duplicates  
 echo; echo "==== Picard MarkDuplicates ===="
 $JAVA_PATH -Xmx${SMGB}g -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/local \
 -jar $PICARD MarkDuplicates \
@@ -134,7 +140,7 @@ CREATE_INDEX=true \
 
 
 
-# Generate Read Coverage and passing bed file
+### Generate Read Coverage and passing bed file
 echo; echo "==== USeq Coverage Stats ===="
 $JAVA_PATH -Xmx${SMGB}G -jar $STU \
 -f $NAME.mkdup.bam \
@@ -147,7 +153,6 @@ $JAVA_PATH -Xmx${SMGB}G -jar $STU \
 -o $NAME.stats.txt \
 -n $NAME
 
-
 # Convert USeq to BigWig and clean up
 $JAVA_PATH -Xmx${SMGB}G -jar $UTBW \
 -u ./ \
@@ -155,7 +160,8 @@ $JAVA_PATH -Xmx${SMGB}G -jar $UTBW \
 && rm -f *.useq
 
 
-# split and trim intron junctions
+
+### Split and trim intron junctions
 echo; echo "==== GATK SplitNCigarReads ===="
 $JAVA_PATH -Xmx${SMGB}g -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/local \
 -jar $GATK_PATH -T SplitNCigarReads \
@@ -168,7 +174,8 @@ $JAVA_PATH -Xmx${SMGB}g -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/l
 && rm -f $NAME.mkdup.ba*
 
 
-# Indel realigner - probably not necessary, but we can do it
+
+### Indel realigner - probably not necessary, but we can do it
 echo; echo "==== GATK RealignerTargetCreator ===="
 $JAVA_PATH -Xmx${SMGB}g -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/local \
 -jar $GATK_PATH -T RealignerTargetCreator \
@@ -192,7 +199,8 @@ $JAVA_PATH -Xmx${SMGB}g -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/l
 && rm -f $NAME.split.ba* $NAME.intervals
 
 
-# Base recalibration
+
+### Base recalibration
 echo; echo "==== GATK BaseRecalibrator ===="
 $JAVA_PATH -Xmx${SMGB}g -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/local \
 -jar $GATK_PATH -T BaseRecalibrator \
@@ -229,7 +237,8 @@ split -a 1 -n l/12 --additional-suffix=.bed ${NAME}_Pass.ext20.bed ${NAME}_call.
 gzip ${NAME}_Pass.ext20.bed
 
 
-# haplotype variant call
+
+### Haplotype variant call
 # keep duplicate read filter intact
 echo; echo "==== GATK HaplotypeCaller ===="
 parallel -k --delay 10 \
@@ -285,10 +294,12 @@ I=${NAME}_call.l.vcf \
 
 
 
-# haplotype variant call
+### Generate genomic VCF for joint genotyping
+
 # split file by lines into chunks
 split -a 1 -n l/12 --additional-suffix=.bed $EXONS exon_call.
 
+# haplotype call
 echo; echo "==== GATK gVCF HaplotypeCaller ===="
 parallel -k --delay 10 \
 $JAVA_PATH -Xmx4G -XX:ParallelGCThreads=${GCT} -Djava.io.tmpdir=/scratch/local \
