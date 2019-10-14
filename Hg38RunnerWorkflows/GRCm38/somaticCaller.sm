@@ -1,6 +1,7 @@
-# Tumor Somatic Variant Calling Workflow 
-# 11 October 2018
+# Tumor - Normal Somatic Variant Calling Workflow 
+# 27 June 2019
 # David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
 
 ############ No need to modify anything in this document #############
 
@@ -9,22 +10,18 @@ nameBuild = str(config["name"]) + "_" + config["genomeBuild"]
 
 # Threads and memory
 allThreads = int(config["allThreads"])
-halfThreads = int(round(allThreads/2,0))
 allRam = int(round(float(config["allRam"])))
 
 # Resources
 tumorBam = config["tumorBam"]
 normalBam = config["normalBam"]
+tumorBed = config["tumorBed"]
+normalBed = config["normalBed"]
 indexFasta = config["indexFasta"]
-dbsnp = config["dbsnp"]
 regions = config["regionsForAnalysis"]
-mpileup = config["mpileup"]
-queryDataDir = config["queryDataDir"]
-queryIndexDir = config["queryIndexDir"]
-queryFileFilter = config["queryFileFilter"]
 
 # Apps in docker image
-useq = "/BioApps/USeq_9.2.0/Apps"
+useq = "/BioApps/USeq/Apps"
 strelka = "/BioApps/Strelka_2.9.3"
 manta = "/BioApps/Manta_1.4.0"
 htsLib = "/BioApps/HTSlib_1.3"
@@ -38,7 +35,6 @@ minTumorAF = config["minTumorAF"]
 maxNormalAF = config["maxNormalAF"]
 minTNRatio = config["minTNRatio"]
 minTNDiff = config["minTNDiff"]
-minBKZ = config["minBKZ"]
 fdrTier = config["fdrTier"]
 
 # Workflow trigger, final Rule, cleanup and tabix index the vcfs 
@@ -52,7 +48,7 @@ rule VcfTabix:
     log:
         "Logs/"+ nameBuild+ "_VcfTabix.log"
     shell:
-        "rm -rf VCFBkgFilt {nameBuild}_Strelka {nameBuild}_Manta snappy* && "
+        "rm -rf VCFBkgFilt Vcfs/{nameBuild}_Strelka.raw_Filtered.vcf.gz {nameBuild}_Strelka {nameBuild}_Manta && "
         "{java} {useq}/VCFTabix -t {htsLib} -v Vcfs/ &> {log}"
 
 
@@ -115,46 +111,14 @@ rule StrelkaFilter:
     input:
         "Vcfs/" + nameBuild+"_Strelka.raw.vcf.gz"
     output:
-        temp (nameBuild+"_Strelka.filt.vcf.gz")
+        "Vcfs/" + nameBuild+"_final.vcf.gz"
     log:
         "Logs/"+ nameBuild+ "_StrelkaFilter.log"
     shell:
         "{java} {useq}/StrelkaVCFParser -v {input} -t {minTumorAF} -f Vcfs "
         "-n {maxNormalAF} -u {minTumorAlignmentDepth} -o {minNormalAlignmentDepth} "
         "-d {minTNDiff} -r {minTNRatio} -a {minTumorAltCount} -e {fdrTier} &> {log} && "
-        "mv Vcfs/{nameBuild}_Strelka.raw_Filtered.vcf.gz {output} &>> {log} "
-        
-
-
-# Use panel of normal bams to z-score the vcf records
-rule VCFBackgroundChecker:
-    input:
-        nameBuild+"_Strelka.filt.vcf.gz"
-    output:
-        temp (nameBuild+ "_vbc.vcf.gz")
-    log:
-        "Logs/"+ nameBuild+ "_VCFBackgroundChecker.log"
-    threads:
-        allThreads
-    shell:
-        "{java} {useq}/VCFBackgroundChecker -v {input} -m {mpileup} -c {minNormalAlignmentDepth} "
-        "-s VCFBkgFilt -t {threads} -z {minBKZ} &> {log} && "
-        "mv -f VCFBkgFilt/{nameBuild}_Strelka.filt.vcf.gz {output} "
-
-# Calculate the prior call frequency from a QueryAPI index, the config file should just specify the fileFilter
-rule VCFCallFrequency:
-    input:
-        vcf = nameBuild+ "_vbc.vcf.gz"
-    output:
-        "Vcfs/" + nameBuild+ "_final.vcf.gz"
-    log:
-        "Logs/"+ nameBuild+ "_VCFCallFrequency.log"
-    threads:
-        allThreads
-    shell:
-        "{java} {useq}/VCFCallFrequency -v {input.vcf} -s TempVCFCallFreq -f {queryFileFilter} "
-        "-i {queryIndexDir} -d {queryDataDir} -m 0.075 &> {log} && "
-        "mv -f TempVCFCallFreq/*.callFreq.vcf.gz {output} && rm -rf TempVCFCallFreq"
+        "mv -f Vcfs/{nameBuild}_Strelka.raw_Filtered.vcf.gz {output} "
 
 onerror:
     shell( "rm -f STARTED COMPLETE; touch FAILED")

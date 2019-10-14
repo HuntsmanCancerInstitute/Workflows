@@ -1,5 +1,5 @@
 # Hg38 Exome Alignment and QC Workflow 
-# 23 January 2019
+# 8 August 2019
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -37,9 +37,9 @@ htslib = "/BioApps/HTSlib_1.3"
 java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
 javaPart = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(partRam) + "G"
 picard = "/BioApps/Picard_2.17.2/picard.jar"
+samtools = "/BioApps/Samtools_1.8/bin/samtools"
 useq = "/BioApps/USeq/Apps"
 ucsc = "/BioApps/UCSC_6Aug2018"
-
 
 ############# Rules ##############
 
@@ -51,15 +51,15 @@ rule AggregateQCStats:
         m= "Json/"+nameBuild+ "_MergePairedAlignments.json.gz",
         u= "Json/"+nameBuild+ "_Sam2USeq.json.gz",
         w= "QC/"+ nameBuild+ "_uniObReadCov.bw",
-        v= "Vcfs/"+ nameBuild+ "_Haplo.g.vcf.gz.tbi"
+        v= "Vcfs/"+ nameBuild+ "_Haplo.g.vcf.gz.tbi",
+        c= "Bam/"+ nameBuild+ "_final.cram.crai"
     output:
         "QC/"+ nameBuild+ "_AggQC"
     log:
         "Logs/"+ nameBuild+ "_AggregateQCStats.log",
     shell:
         "{java} {useq}/AggregateQCStats -j Json -r {output} -p {nameBuild}_ &> {log} && "
-        "rm -rf *_dupFree.ba* *_sae.ba* *_unfiltered.ba* *_raw.bam *_MPA *_uniObReadCov.useq && " 
-        "zip -rq {nameBuild}_ExomeAlignQCLogs.zip Logs/"   	 
+        "rm -rf *_dupFree.ba* *_sae.ba* *_unfiltered.ba* *_raw.bam *_MPA *_uniObReadCov.useq " 
         
 ############# Fastq and resources check ##############
 
@@ -203,7 +203,8 @@ rule PrintRecalibratedBam:
 # Run the Haplotype caller, needed for germline, not so much for somatic, use the GATKRunner since the -nct arg doesn't work        
 rule HaplotypeCaller:
     input:
-        "Bam/"+ nameBuild+ "_final.bam"
+        bam = "Bam/"+ nameBuild+ "_final.bam",
+        bai = "Bam/"+ nameBuild+ "_final.bai"
     output:
         "Vcfs/"+ nameBuild+ "_Haplo.g.vcf.gz.tbi"
     log:
@@ -212,19 +213,36 @@ rule HaplotypeCaller:
         allThreads
     shell:
         "{java} {useq}/GatkRunner -r {regionsForOnTarget} -s GATKRunner -c 'java -jar -Xmx4G -Djava.io.tmpdir=. {gatk} "
-        "-T HaplotypeCaller -I {input} --emitRefConfidence GVCF -R {indexFasta} --dbsnp {dbsnp} "
+        "-T HaplotypeCaller -I {input.bam} --emitRefConfidence GVCF -R {indexFasta} --dbsnp {dbsnp} "
         "-variant_index_type LINEAR -variant_index_parameter 128000' &> {log} && "
         "mv -f GATKRunner/gatk.raw.vcf Vcfs/{nameBuild}_Haplo.g.vcf &>> {log} && "
         "{htslib}/bgzip Vcfs/{nameBuild}_Haplo.g.vcf &>> {log} && "
         "{htslib}/tabix -p vcf Vcfs/{nameBuild}_Haplo.g.vcf.gz &>> {log} && "
-	"rm -rf GATKRunner &>> {log}"
+	    "rm -rf GATKRunner &>> {log}"
+
+# Converts the bam to cram and then indexes the cram with samtools, must use 1.8, 1.9 is broken for cram conversion
+rule Bam2Cram:
+    input:
+        bam = "Bam/"+ nameBuild+ "_final.bam",
+       	bai = "Bam/"+ nameBuild+ "_final.bai"
+    output:
+        cram = "Bam/"+ nameBuild+ "_final.cram",
+        crai = "Bam/"+ nameBuild+ "_final.cram.crai"
+    log:
+        "Logs/"+ nameBuild+ "_Bam2Cram.log"
+    threads: 
+        allThreads
+    shell:
+        "{samtools} view -@ {threads} {input.bam} -C -T {indexFasta} > {output.cram} 2> {log} && "
+        "{samtools} index -@ {threads} {output.cram} 2>> {log} "
         
 ############################# QC ###############################
 
 # QC, Merge paired alignments for unique observation QC
 rule MergePairedAlignments:
     input:
-        bam = "Bam/"+ nameBuild+ "_final.bam"
+        bam = "Bam/"+ nameBuild+ "_final.bam",
+        bai = "Bam/"+ nameBuild+ "_final.bai"
     output:
         dir = nameBuild+ "_MPA",
         json = "Json/"+ nameBuild+ "_MergePairedAlignments.json.gz"   
@@ -271,3 +289,4 @@ rule USeq2UCSCBig:
 
 onerror:
     shell( "rm -f STARTED COMPLETE; touch FAILED")
+

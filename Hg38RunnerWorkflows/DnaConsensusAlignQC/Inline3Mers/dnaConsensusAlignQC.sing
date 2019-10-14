@@ -9,8 +9,8 @@ cd $jobDir
 # Read threads and ram
 allThreads=$(nproc)
 allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
-fastqReadOne=$(readlink -f 1.fastq.gz)
-fastqReadTwo=$(readlink -f 2.fastq.gz)
+fastqReadOne=$(readlink -f *_R1_*)
+fastqReadTwo=$(readlink -f *_R2_*)
 
 # Print params
 echo -n jobDir"       : "; echo $jobDir
@@ -26,7 +26,7 @@ echo -n fastqReadTwo" : "; echo $fastqReadTwo
 --cores $allThreads \
 --snakefile *.sm \
 --config \
-regionsForReadCoverage=$dataBundle/Bed/Underhill/HSV1_GBM_IDT_Probes_Hg38_91K.bed.gz \
+regionsForReadCoverage=$dataBundle/Bed/Underhill/HSV1_GBM_IDT_Probes_Hg38.bed.gz \
 regionsForOnTarget=$dataBundle/Bed/Underhill/HSV1_GBM_IDT_Probes_Hg38Pad150bps.bed.gz \
 indexFasta=$dataBundle/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
 dbsnp=$dataBundle/Vcfs/dbsnp_146.hg38.vcf.gz \

@@ -1,5 +1,5 @@
 # Joint Genotyping of Haplotype called gVCFs
-# 23 January 2019
+# 20 March 2019
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -79,13 +79,26 @@ rule VtDecompose:
     input:
         nameBuild+ "_jointGenotyped.vcf"
     output:
-        temp (nameBuild+ ".vt.vcf.gz")
+        temp (nameBuild+ ".vtDecom.vcf.gz")
     log:
         "Logs/"+ nameBuild+ "_VtDecompose.log"
     threads:
         allThreads
     shell:
         "{vt} decompose -s {input} -o {output} &> {log} "
+
+# Normalize the genotyped vcf with Vt
+rule VtNormalize:
+    input:
+        nameBuild+ ".vtDecom.vcf.gz"
+    output:
+        temp (nameBuild+ ".vt.vcf.gz")
+    log:
+        "Logs/"+ nameBuild+ "_VtNormalize.log"
+    threads:
+        allThreads
+    shell:
+        "{vt} normalize -o {output} -r {indexFasta} {input} &> {log} "
 
 # Calculate the prior call frequency from a QueryAPI index, the config file should just specify the fileFilter
 rule VCFCallFrequency:

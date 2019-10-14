@@ -44,7 +44,7 @@ rule OrganizeResults:
     shell:
         "cd ModelSegments && mkdir Seg Param Igv HetAF && mv *.igv.* Igv/ && mv *param Param/ && "
         "mv *seg Seg/ && mv *tsv HetAF/ && cd ../ && rm -rf Anno *.gz.tbi {nameBuild}.germline.snv.vcf.idx && "
-        "zip -rq {nameBuild}_CopyAnalysisLogs.zip Logs/ && touch {output}"
+        "touch {output}"
 
 # Collect tumor counts
 rule CollectTumorCounts:

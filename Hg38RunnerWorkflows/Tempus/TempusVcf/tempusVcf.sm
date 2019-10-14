@@ -121,7 +121,7 @@ rule TempusVcfComparator:
         allThreads
     shell:
         "{java} {useq}/TempusVcfComparator -t {input} "
-        "-r {somaticVcf} -m {output} -e -c &> {log}"
+        "-r {somaticVcf} -m {output} -g -c &> {log}"
 
 onerror:
     shell( "rm -f STARTED COMPLETE; touch FAILED")
