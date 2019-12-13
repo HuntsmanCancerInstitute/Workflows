@@ -24,14 +24,14 @@ tempDir=/scratch/local/TempDeleteMe_u0028003
 
 # 3) Define the file path to the TNRunner data bundle downloaded and uncompressed from https://hci-bio-app.hci.utah.edu/gnomex/gnomexFlex.jsp?analysisNumber=A5578 and the required reference resources
 dataBundle=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner
-regionsForReadCoverage=$dataBundle/Bed/SeqCapEZ_Hg38_GRCh38_Hg19/sharedSeqCap_EZ_Exome_v3_hg38_capture_primary_targets.bed.gz
-regionsForOnTarget=$dataBundle/Bed/SeqCapEZ_Hg38_GRCh38_Hg19/mergedSeqCap_EZ_Exome_v3_hg38_capture_primary_targets_pad150bp.bed.gz
+regionsForReadCoverage=$dataBundle/Bed/AvatarV2IDTBedNov2019/hg38IdtSharedProbeTargetCCDSRegions.bed.gz
+regionsForOnTarget=$dataBundle/Bed/AvatarV2IDTBedNov2019/hg38IdtProbesPad150bp.bed.gz
 
 # 4) Modify the workflow xxx.sing file setting the paths to the required resources.
 
 # 5) Build the singularity container, and define the path to the xxx.sif file, do just once after each update.
-#singularity pull docker://hcibioinformatics/public:SnakeMakeBioApps_4
-container=/uufs/chpc.utah.edu/common/HIPAA/u0028003/HCINix/SingularityBuilds/public_SnakeMakeBioApps_4.sif
+#singularity pull docker://hcibioinformatics/public:SnakeMakeBioApps_5
+container=/uufs/chpc.utah.edu/common/HIPAA/u0028003/HCINix/SingularityBuilds/public_SnakeMakeBioApps_5.sif
 
 
 #### Do for every run ####

@@ -1,5 +1,5 @@
-# Hg38 Foundation Alignment and QC Workflow 
-# 13 November 2019
+# Hg38 Exome Alignment and QC Workflow 
+# 8 August 2019
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -14,8 +14,9 @@ halfThreads = int(round(allThreads/2,0))
 allRam = int(round(float(config["allRam"])))
 partRam = int(round(float(config["allRam"])*0.75))
 
-# Input
-bam = config["bam"]
+# Gzipped Fastq files
+fastqReadOne = config["fastqReadOne"]
+fastqReadTwo = config["fastqReadTwo"]
 
 # Resources
 regionsForReadCoverage = config["regionsForReadCoverage"]
@@ -36,9 +37,9 @@ htslib = "/BioApps/HTSlib_1.3"
 java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
 javaPart = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(partRam) + "G"
 picard = "/BioApps/Picard_2.17.2/picard.jar"
+samtools = "/BioApps/Samtools_1.8/bin/samtools"
 useq = "/BioApps/USeq/Apps"
 ucsc = "/BioApps/UCSC_6Aug2018"
-samtools = "/BioApps/Samtools_1.8/bin/samtools"
 
 ############# Rules ##############
 
@@ -50,36 +51,31 @@ rule AggregateQCStats:
         m= "Json/"+nameBuild+ "_MergePairedAlignments.json.gz",
         u= "Json/"+nameBuild+ "_Sam2USeq.json.gz",
         w= "QC/"+ nameBuild+ "_uniObReadCov.bw",
+        v= "Vcfs/"+ nameBuild+ "_Haplo.g.vcf.gz.tbi",
         c= "Bam/"+ nameBuild+ "_final.cram.crai"
     output:
         "QC/"+ nameBuild+ "_AggQC"
     log:
         "Logs/"+ nameBuild+ "_AggregateQCStats.log",
     shell:
-        "{java} {useq}/AggregateQCStats -j . -r {output} -p {nameBuild}_ &> {log} && "
-        "rm -rf *_dupFree.ba* *_sae.ba* *_unfiltered.ba* *_raw.bam *_MPA *_uniObReadCov.useq "    	 
+        "{java} {useq}/AggregateQCStats -j Json -r {output} -p {nameBuild}_ &> {log} && "
+        "rm -rf *_dupFree.ba* *_sae.ba* *_unfiltered.ba* *_raw.bam *_MPA *_uniObReadCov.useq " 
         
 ############# Fastq and resources check ##############
 
-# Convert input Bam to fastq
-rule Sam2Fastq:
-    input:
-        bam
+# Uses gunzip -t to check the integrity of the xxx.gz files in the working directory
+rule CheckGzipFiles:
     output:
-        f1 = temp (nameBuild+ "_1.fastq.gz"),
-        f2 = temp (nameBuild+ "_2.fastq.gz")
+        temp( nameBuild+ "_checkGzipFiles.complete")
     log:
-        "Logs/"+ nameBuild+ "_Sam2Fastq.log"
-    threads:
-        allThreads
+        "Logs/"+ nameBuild+ "_CheckGzipFiles.log"
     shell:
-        "{java} {picard} SamToFastq INPUT={input} FASTQ={output.f1} "
-        "SECOND_END_FASTQ={output.f2} TMP_DIR=. VALIDATION_STRINGENCY=SILENT &> {log}" 
-
+        "gunzip -tv {fastqReadOne} {fastqReadTwo} &> {log} && touch {output}" 
+        
 # Count the number of fastq records
 rule CountFastq:
     input:
-        nameBuild+ "_1.fastq.gz"
+        fastqReadOne
     output:
         "Json/" + nameBuild + "_FastqCount.json.gz"
     shell:
@@ -93,11 +89,8 @@ rule CountFastq:
         
 ############# Alignment B38 ###############
 
-# Align to Hg38 with bwa mem, trim adapters, mark dups, sort                                                                                                
+# Align to Hg38 with bwa mem, trim adapters, mark dups, sort                                                                                                  
 rule AlignHg38:
-    input:
-        f1 = nameBuild+ "_1.fastq.gz",
-        f2 = nameBuild+ "_2.fastq.gz"
     output:
         nameBuild+ "_raw.bam"
     log:
@@ -110,7 +103,7 @@ rule AlignHg38:
         # Align with run-bwamem this trims adapters, marks dups, and sorts
         "mkdir -p Logs && "
         "{bwa} -o {nameBuild}_AlignHg38 -R {params.rg} -t {threads} -a -d "
-        "{indexFasta} {input.f1} {input.f2} > {nameBuild}_AlignHg38.sh 2> {log} && "
+        "{indexFasta} {fastqReadOne} {fastqReadTwo} > {nameBuild}_AlignHg38.sh 2> {log} && "
         "chmod 750 {nameBuild}_AlignHg38.sh 2>> {log} && "
         "cat {nameBuild}_AlignHg38.sh >> {log} && "
         "./{nameBuild}_AlignHg38.sh && "
@@ -207,6 +200,26 @@ rule PrintRecalibratedBam:
         "{java} {gatk} -nct {threads} -T PrintReads --use_jdk_deflater --use_jdk_inflater "
         "-R {indexFasta} -I {input.bam} -BQSR {input.grp} -o {output.bam} &> {log}" 
 
+# Run the Haplotype caller, needed for germline, not so much for somatic, use the GATKRunner since the -nct arg doesn't work        
+rule HaplotypeCaller:
+    input:
+        bam = "Bam/"+ nameBuild+ "_final.bam",
+        bai = "Bam/"+ nameBuild+ "_final.bai"
+    output:
+        "Vcfs/"+ nameBuild+ "_Haplo.g.vcf.gz.tbi"
+    log:
+        "Logs/"+ nameBuild+ "_HaplotypeCaller.log"
+    threads: 
+        allThreads
+    shell:
+        "{java} {useq}/GatkRunner -r {regionsForOnTarget} -s GATKRunner -c 'java -jar -Xmx4G -Djava.io.tmpdir=. {gatk} "
+        "-T HaplotypeCaller -I {input.bam} --emitRefConfidence GVCF -R {indexFasta} --dbsnp {dbsnp} "
+        "-variant_index_type LINEAR -variant_index_parameter 128000' &> {log} && "
+        "mv -f GATKRunner/gatk.raw.vcf Vcfs/{nameBuild}_Haplo.g.vcf &>> {log} && "
+        "{htslib}/bgzip Vcfs/{nameBuild}_Haplo.g.vcf &>> {log} && "
+        "{htslib}/tabix -p vcf Vcfs/{nameBuild}_Haplo.g.vcf.gz &>> {log} && "
+	    "rm -rf GATKRunner &>> {log}"
+
 # Converts the bam to cram and then indexes the cram with samtools, must use 1.8, 1.9 is broken for cram conversion
 rule Bam2Cram:
     input:
@@ -222,14 +235,14 @@ rule Bam2Cram:
     shell:
         "{samtools} view -@ {threads} {input.bam} -C -T {indexFasta} > {output.cram} 2> {log} && "
         "{samtools} index -@ {threads} {output.cram} 2>> {log} "
-
-
+        
 ############################# QC ###############################
 
 # QC, Merge paired alignments for unique observation QC
 rule MergePairedAlignments:
     input:
-        bam = "Bam/"+ nameBuild+ "_final.bam"
+        bam = "Bam/"+ nameBuild+ "_final.bam",
+        bai = "Bam/"+ nameBuild+ "_final.bai"
     output:
         dir = nameBuild+ "_MPA",
         json = "Json/"+ nameBuild+ "_MergePairedAlignments.json.gz"   
@@ -276,3 +289,4 @@ rule USeq2UCSCBig:
 
 onerror:
     shell( "rm -f STARTED COMPLETE; touch FAILED")
+

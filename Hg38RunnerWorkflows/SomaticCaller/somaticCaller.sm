@@ -1,5 +1,5 @@
 # Tumor - Normal Somatic Variant Calling Workflow 
-# 22 May 2019
+# 26 Nov 2019
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -19,7 +19,7 @@ tumorBed = config["tumorBed"]
 normalBed = config["normalBed"]
 indexFasta = config["indexFasta"]
 regions = config["regionsForAnalysis"]
-mpileup = config["mpileup"]
+bpileup = config["bpileup"]
 queryDataDir = config["queryDataDir"]
 queryIndexDir = config["queryIndexDir"]
 queryFileFilter = config["queryFileFilter"]
@@ -46,7 +46,8 @@ fdrTier = config["fdrTier"]
 rule VcfTabix:
     input:
         "Vcfs/" + nameBuild+ "_final.vcf.gz",
-        "Bed/" + nameBuild+ "_CoveredRegion.bed.gz.tbi"
+        "Bed/" + nameBuild+ "_CoveredRegion.bed.gz.tbi",
+        "Logs/" + nameBuild+ "_Tmb.txt"
     output:
         "Vcfs/" + nameBuild+ "_final.vcf.gz.tbi"
     threads:
@@ -54,7 +55,7 @@ rule VcfTabix:
     log:
         "Logs/"+ nameBuild+ "_VcfTabix.log"
     shell:
-        "rm -rf VCFBkgFilt Vcfs/{nameBuild}_Strelka.raw_Filtered.vcf.gz {nameBuild}_Strelka {nameBuild}_Manta && "
+        "rm -rf {nameBuild}_Strelka {nameBuild}_Manta && "
         "{java} {useq}/VCFTabix -t {htsLib} -v Vcfs/ &> {log}"
 
 
@@ -117,7 +118,7 @@ rule StrelkaFilter:
     input:
         "Vcfs/" + nameBuild+"_Strelka.raw.vcf.gz"
     output:
-        "Vcfs/" + nameBuild+"_Strelka.raw_Filtered.vcf.gz"
+        temp ("Vcfs/" + nameBuild+"_Strelka.raw_Filtered.vcf.gz")
     log:
         "Logs/"+ nameBuild+ "_StrelkaFilter.log"
     shell:
@@ -126,24 +127,25 @@ rule StrelkaFilter:
         "-d {minTNDiff} -r {minTNRatio} -a {minTumorAltCount} -e {fdrTier} &> {log} "
 
 # Use panel of normal bams to z-score the vcf records
-rule VCFBackgroundChecker:
+rule VCFBkz:
     input:
         "Vcfs/" + nameBuild+ "_Strelka.raw_Filtered.vcf.gz"
     output:
-        temp (nameBuild+ "_vbc.vcf.gz")
+        temp (nameBuild+ "_bkz.vcf.gz")
     log:
-        "Logs/"+ nameBuild+ "_VCFBackgroundChecker.log"
+        "Logs/"+ nameBuild+ "_VCFBkz.log"
     threads:
         allThreads
     shell:
-        "{java} {useq}/VCFBackgroundChecker -v {input} -m {mpileup} -c {minNormalAlignmentDepth} "
-        "-s VCFBkgFilt -t {threads} -z {minBKZ} -b 1 &> {log} && "
-        "mv -f VCFBkgFilt/{nameBuild}_Strelka.raw_Filtered.vcf.gz {output} "
+        "{java} {useq}/VCFBkz -v {input} -b {bpileup} -c {minTumorAlignmentDepth} "
+        "-s TempVCFBkz -p {threads} -z {minBKZ} -u -l -e &> {log} && "
+        "mv -f TempVCFBkz/{nameBuild}_Strelka.raw_Filtered.bkz.vcf.gz {output} && "
+        "rm -rf TempVCFBkz "
 
 # Calculate the prior call frequency from a QueryAPI index, the config file should just specify the fileFilter
 rule VCFCallFrequency:
     input:
-        vcf = nameBuild+ "_vbc.vcf.gz"
+        vcf = nameBuild+ "_bkz.vcf.gz"
     output:
         "Vcfs/" + nameBuild+ "_final.vcf.gz"
     log:
@@ -165,11 +167,56 @@ rule FindSharedRegions:
     shell:
         "{java} {useq}/FindSharedRegions -f {tumorBed} -s {normalBed} -r {output} &> {log}"
 
+# Find regions shared by the Strelka callable regions and those that meet the minimal read coverage regions
+rule FindSharedRegionsForTMB:
+    input:
+        strelkaBed = "Bed/"+ nameBuild+ "_StrelkaCallableRegion.bed.gz",
+        coveredBed = "Bed/" + nameBuild+ "_CoveredRegion.bed.gz"
+    output:
+        temp ("Bed/" + nameBuild+ "_StrelkaIntCovered.bed")
+    log:
+        "Logs/"+ nameBuild+ "_FindSharedRegionsForTMB.log"
+    shell:
+        "{java} {useq}/FindSharedRegions -f {input.strelkaBed} -s {input.coveredBed} -r {output} &> {log}"
+
+# Filter final vcf against the tmb region file
+rule FilterVcfForTMB:
+    input:
+        bed = "Bed/" + nameBuild+ "_StrelkaIntCovered.bed",
+        vcf = "Vcfs/" + nameBuild+ "_final.vcf.gz"
+    output:
+        temp ("Vcfs/" + nameBuild+ "_final_int.vcf.gz")
+    log:
+        "Logs/"+ nameBuild+ "_FilterVcfForTMB.log"
+    shell:
+        "{java} {useq}/VCFRegionFilter -v {input.vcf} -b {input.bed} -s Vcfs &> {log} && "
+        "rm -f Vcfs/*_nonInt.vcf.gz &>> {log} "
+        
+# Some bash scripting to calculate the tmb
+rule CalculateTMB:
+    input:
+        notUsed = "Vcfs/" + nameBuild+ "_final_int.vcf.gz",
+        notUsed2 = "Bed/" + nameBuild+ "_StrelkaIntCovered.bed",
+        bedLog = "Logs/"+ nameBuild+ "_FindSharedRegionsForTMB.log",
+        vcfLog = "Logs/"+ nameBuild+ "_FilterVcfForTMB.log"
+    output:
+        "Logs/" + nameBuild+ "_Tmb.txt"
+    log:
+        "Logs/"+ nameBuild+ "_CalculateTMB.log"
+    shell:
+        "numVar=$(grep -A 1 NumNonInt {input.vcfLog} | tail -n 1 | cut -f2) && "
+        "numBps=$(grep 'Total BP length' {input.bedLog} | cut -f1) && "
+        "tmb=$(echo $numVar $numBps |awk '{{ print $1/$2*1000000}}') && "
+        "echo 'numberVariants '$numVar > {output} && "
+        "echo 'numberBps '$numBps >> {output} && "
+        "echo 'tmb '$tmb >> {output} "
+
 # Tabix index all of the bed files
 rule BedTabix:
     input:
         "Bed/" + nameBuild+ "_CoveredRegion.bed"
     output:
+        "Bed/" + nameBuild+ "_CoveredRegion.bed.gz",
         "Bed/" + nameBuild+ "_CoveredRegion.bed.gz.tbi"
     log:
         "Logs/"+ nameBuild+ "_BedTabix.log"

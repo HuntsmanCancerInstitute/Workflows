@@ -1,0 +1,46 @@
+# MSI Calling Workflow 
+# 21 Oct 2019
+# Aaron.Atkinson@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+############ No need to modify anything in this document #############
+
+# Base name to prepend on all files
+nameBuild = str(config["name"]) + "_" + config["genomeBuild"]
+
+# Threads and memory
+allThreads = int(config["allThreads"])
+allRam = int(round(float(config["allRam"])))
+
+# Resources
+tumorBam = config["tumorBam"]
+normalBam = config["normalBam"]
+indexFasta = config["indexFasta"]
+regions = config["regions"]
+
+# Apps in docker image
+mantis = "/BioApps/Mantis/1.0.4/mantis.py"
+
+# Filtering params
+mrq = config["mrq"]
+mlq = config["mlq"]
+mlc = config["mlc"]
+mrr = config["mrr"]
+
+# Calls Mantis
+rule Mantis:
+    output:
+        nameBuild+ "_Mantis.txt"
+    log:
+        "Logs/"+ nameBuild+ "_Mantis.log"
+    threads: 
+        allThreads
+    shell:
+        "source /BioApps/Miniconda3/bin/activate python2 &> {log} && "
+        "python {mantis} -b {regions} -n {normalBam} -t {tumorBam} -o {output} "
+        "-mrq {mrq} -mlq {mlq} -mlc {mlc} -mrr {mrr} --genome {indexFasta} &>> {log} && "
+        "mv -f {output}.status {output} &>> {log} && rm -f *kmer_counts.txt *kmer_counts_filtered.txt &>> {log} && " 
+        "source /BioApps/Miniconda3/bin/deactivate &>> {log} "
+
+onerror:
+    shell( "rm -f QUEUED STARTED COMPLETE; touch FAILED")

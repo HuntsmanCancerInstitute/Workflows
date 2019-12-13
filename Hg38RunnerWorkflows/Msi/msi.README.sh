@@ -6,12 +6,12 @@
 
 set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 
+# MSI Calling Workflow 
 # 13 December 2019
-# David.Nix@Hci.Utah.Edu
+# Aaron.Atkinson@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
-# This fires the STAR alignments and Picard's Collect RNASeq metrics on paired end fastq extracted from an input bam dataset.
-
+# MSI status calculator with Mantis https://github.com/OSU-SRLab/MANTIS
 
 #### Do just once ####
 
@@ -28,12 +28,14 @@ myData=/scratch/mammoth/serial/u0028003
 #singularity pull docker://hcibioinformatics/public:SnakeMakeBioApps_4
 container=/uufs/chpc.utah.edu/common/HIPAA/u0028003/HCINix/SingularityBuilds/public_SnakeMakeBioApps_4.sif
 
+# 5) Create a file named vcfCallFreqConfig.txt containing a single line that defines the data files to scan for prior calling e.g. "fileFilter TAB Hg38/Somatic/Avatar/HA1" 
+
 
 #### Do for every run ####
 
 # 1) Create a folder named as you would like the analysis name to appear, this along with the genome build will be prepended onto all files, no spaces, change into it. This must reside somewhere in the myData mount path.
 
-# 2) Soft link or move in your bam file.
+# 2) Soft link bam and bai files naming them tumor.bam, tumor.bam.bai, normal.bam, and normal.bam.bai into the analysis folder. Mantis only finds xxx.bam.bai indexes so make sure realpath xxx.bam.bai points to an actual index named xxx.bam.bai .
 
 # 3) Copy over the workflow docs: xxx.sing, xxx.README.sh, and xxx.sm into the job directory.
 
@@ -47,7 +49,7 @@ container=/uufs/chpc.utah.edu/common/HIPAA/u0028003/HCINix/SingularityBuilds/pub
 
 echo -e "\n---------- Starting -------- $((($(date +'%s') - $start)/60)) min"
 
-# Read out params 
+# Read out params
 name=${PWD##*/}
 jobDir=`readlink -f .`
 
@@ -57,15 +59,11 @@ bash $jobDir/*.sing
 
 echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min total"
 
-
 # Final cleanup
 mkdir -p RunScripts
-mv transAlignQC* RunScripts/
-mv -f *.log  Logs/ || true
+mv -f msi.* RunScripts
 mv -f slurm* Logs/ || true
 rm -rf .snakemake 
 rm -f FAILED STARTED DONE RESTART
 touch COMPLETE 
-
-
 

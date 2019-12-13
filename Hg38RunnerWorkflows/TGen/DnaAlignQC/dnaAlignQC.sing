@@ -1,0 +1,55 @@
+# Bash script to run inside the container
+# 3 Sept 2019
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+set -e
+cd $tempDir
+
+# Read threads and ram
+allThreads=$(nproc)
+allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+
+# Print params
+echo -n tempDir"      : "; echo $tempDir
+echo -n name"         : "; echo $name
+echo -n threads"      : "; echo $allThreads
+echo -n ram"          : "; echo $allRam
+echo -n host"         : "; echo $(hostname)
+echo
+echo "Reference files: "
+ls -la $tempDir/Ref
+echo
+
+# Launch snakemake
+cd $name
+/BioApps/Miniconda3/bin/snakemake -p -T \
+--cores $allThreads \
+--snakefile *.sm \
+--config \
+regionsForReadCoverage=$tempDir/Ref/$regionsForReadCoverage \
+regionsForOnTarget=$tempDir/Ref/$regionsForOnTarget \
+indexFasta=$tempDir/Ref/$indexFastaTruncated".fa" \
+dbsnp=$tempDir/Ref/$dbsnp \
+gSnp=$tempDir/Ref/$gSnp \
+gIndel=$tempDir/Ref/$gIndel \
+useqSamAlignmentExtractor="-q 20 -a 0.65 -d -f" \
+useqSam2USeq="-v Hg38 -x 500 -r -w sam2USeq.config.txt" \
+name=$name \
+fastqReadOne="1.fastq.gz" \
+fastqReadTwo="2.fastq.gz" \
+allThreads=$allThreads \
+allRam=$allRam
+
+# Notes
+## regionsForOnTarget - bgzipped bed file of regions to use in calculating on target capture rates, use chrXXXX naming. See bgzip and tabix from https://github.com/samtools/htslib .
+## regionsForReadCoverage - bgzipped bed file of regions to use in calculating unique observation read coverage uniformity metrics, ditto.
+## indexFasta - the BWA mem fasta file with all the associated index files including xxx.fa.fai and xxx.dict files, see https://github.com/lh3/bwa/tree/master/bwakit
+## gIndels - a bgzipped and tabix indexed vcf file of trusted indels from the 1000 Genomes project Hg38GATKBundle, see https://software.broadinstitute.org/gatk/download/bundle
+## gSnps - ditto, 1000G high confidence snps from the Hg38 GATKBundle
+## dbsnp - ditto, dbSNP variants from the Hg38 GATKBundle
+## useq - launch each app to see cmd line options
+
+# Replace first and last lines above with the following to get dag svg graph
+	# /BioApps/Miniconda3/bin/snakemake --dag \
+	# allRam=$allRam | dot -Tsvg > $name"_dag.svg"

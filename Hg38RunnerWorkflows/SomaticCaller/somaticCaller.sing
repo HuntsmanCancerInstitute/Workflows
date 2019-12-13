@@ -1,5 +1,5 @@
 # Bash script to run inside the container
-# 23 January 2019
+# 26 November 2019
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -34,7 +34,7 @@ allThreads=$allThreads \
 allRam=$allRam \
 regionsForAnalysis=$dataBundle/Bed/SeqCapEZ_Hg38_GRCh38_Hg19/mergedSeqCap_EZ_Exome_v3_hg38_capture_primary_targets_pad150bp.bed.gz \
 indexFasta=$dataBundle/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
-mpileup=$dataBundle/MpileupBkg/Hg38AvatarBkgnd/bkg.mpileup_DP20MS3.txt.gz \
+bpileup=$dataBundle/MpileupBkg/Hg38AvatarBkgnd/AvatarHA1.bp.txt.gz \
 queryDataDir=$dataBundle/QueryAPI/Data \
 queryIndexDir=$dataBundle/QueryAPI/Index \
 queryFileFilter=Hg38/Somatic/Avatar/HA1 \
@@ -48,7 +48,7 @@ minTumorAlignmentDepth=20 \
 minNormalAlignmentDepth=15 \
 minTumorAltCount=3 \
 minTumorAF=0.05 \
-maxNormalAF=0.01 \
+maxNormalAF=0.05 \
 minTNRatio=4 \
 minTNDiff=0.05 \
 fdrTier=1 \

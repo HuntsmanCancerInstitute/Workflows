@@ -6,12 +6,15 @@
 
 set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 
+# Circulating Tumor - Normal Somatic Variant Calling Workflow
+# Bash script for launching the Singularity Container
 # 13 December 2019
-# David.Nix@Hci.Utah.Edu
-# Huntsman Cancer Institute
 
-# This fires the STAR alignments and Picard's Collect RNASeq metrics on paired end fastq extracted from an input bam dataset.
-
+# This workflow calls somatic variants found at low allele frequencies (< 1%) in high depth capture DNA datasets such as those derived from sequencing cell free DNA samples for circulating tumor analysis.
+# It utilized Bcftools to generate nearly every possible observed variant, filters the calls with a USeq tool called SimpleSomaticCaller, and lastly z-scores the variants using a panel of high depth normals. See the USeq VCFBkz and BamPileup apps for details.
+# Benchmarking with CLINVAR variant spike ins shows excellent sensitivity and specificity (e.g. > 95% TPR at 5% FDR for 0.5% spiked SNVs).
+# It works best with plasma and buffy coat samples sequenced > 2000x depth where UMIs were used to reduce error rates and call consensus on PCR duplicate families.
+  
 
 #### Do just once ####
 
@@ -25,15 +28,15 @@ myData=/scratch/mammoth/serial/u0028003
 # 3) Modify the workflow xxx.sing file setting the paths to the required resources. These must be within the mounts.
 
 # 4) Build the singularity container, and define the path to the xxx.sif file, do just once after each update.
-#singularity pull docker://hcibioinformatics/public:SnakeMakeBioApps_4
-container=/uufs/chpc.utah.edu/common/HIPAA/u0028003/HCINix/SingularityBuilds/public_SnakeMakeBioApps_4.sif
+#singularity pull docker://hcibioinformatics/public:CtSom_1
+container=/uufs/chpc.utah.edu/common/HIPAA/u0028003/HCINix/SingularityBuilds/public_CtSom_1.sif
 
 
 #### Do for every run ####
 
 # 1) Create a folder named as you would like the analysis name to appear, this along with the genome build will be prepended onto all files, no spaces, change into it. This must reside somewhere in the myData mount path.
 
-# 2) Soft link or move in your bam file.
+# 2) Soft link bam and bai files naming them tumor.bam, tumor.bai, normal.bam, and normal.bai into the analysis folder. 
 
 # 3) Copy over the workflow docs: xxx.sing, xxx.README.sh, and xxx.sm into the job directory.
 
@@ -47,7 +50,7 @@ container=/uufs/chpc.utah.edu/common/HIPAA/u0028003/HCINix/SingularityBuilds/pub
 
 echo -e "\n---------- Starting -------- $((($(date +'%s') - $start)/60)) min"
 
-# Read out params 
+# Read out params
 name=${PWD##*/}
 jobDir=`readlink -f .`
 
@@ -57,15 +60,10 @@ bash $jobDir/*.sing
 
 echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min total"
 
-
 # Final cleanup
 mkdir -p RunScripts
-mv transAlignQC* RunScripts/
-mv -f *.log  Logs/ || true
+mv ctSom* RunScripts/
 mv -f slurm* Logs/ || true
-rm -rf .snakemake 
-rm -f FAILED STARTED DONE RESTART
+rm -rf .snakemake FAILED QUEUED STARTED DONE RESTART
 touch COMPLETE 
-
-
 
