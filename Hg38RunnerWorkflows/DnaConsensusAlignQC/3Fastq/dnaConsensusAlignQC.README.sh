@@ -6,7 +6,7 @@
 
 set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 
-# 13 December 2019
+# 3 January 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -26,9 +26,8 @@ myData=/scratch/mammoth/serial/u0028003
 # 3) Modify the workflow xxx.sing file setting the paths to the required resources. These must be within the mounts.
 
 # 4) Build the singularity container, and define the path to the xxx.sif file, do just once after each update.
-#singularity pull docker://hcibioinformatics/public:SnakeMakeBioApps_4
-container=/uufs/chpc.utah.edu/common/HIPAA/u0028003/HCINix/SingularityBuilds/public_SnakeMakeBioApps_4.sif
-
+#singularity pull docker://hcibioinformatics/public:SnakeMakeBioApps_5
+container=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/SingularityBuilds/public_SnakeMakeBioApps_5.sif
 
 #### Do for every run ####
 

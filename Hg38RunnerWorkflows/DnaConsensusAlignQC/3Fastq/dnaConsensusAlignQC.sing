@@ -1,5 +1,5 @@
 # Bash script to run inside the container
-# 31 January 2019
+# 3 January 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -24,12 +24,14 @@ echo -n fastqReadOne" : "; echo $fastqReadOne
 echo -n fastqReadTwo" : "; echo $fastqReadTwo
 echo -n fastqReadUMI" : "; echo $fastqReadBarcode; echo
 
+ls sam2USeq.config.txt 1.fastq.gz 2.fastq.gz u.fastq.gz > /dev/null
+
 /BioApps/Miniconda3/bin/snakemake -p -T \
 --cores $allThreads \
 --snakefile *.sm \
 --config \
-regionsForReadCoverage=$dataBundle/Bed/IDTXGenV1.0Exome/xgenExomeHg38Probes.bed.gz \
-regionsForOnTarget=$dataBundle/Bed/IDTXGenV1.0Exome/xgenExomeHg38TargetsProbesPad150bps.bed.gz \
+regionsForReadCoverage=/scratch/mammoth/serial/u6015361/17572R_TNCooney/Beds/Probes2Bed_final.bed.gz \
+regionsForOnTarget=/scratch/mammoth/serial/u6015361/17572R_TNCooney/Beds/Probes2Bed_final_padded100.bed.gz \
 indexFasta=$dataBundle/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
 dbsnp=$dataBundle/Vcfs/dbsnp_146.hg38.vcf.gz \
 gSnp=$dataBundle/Vcfs/1000G_phase1.snps.high_confidence.hg38.vcf.gz \
