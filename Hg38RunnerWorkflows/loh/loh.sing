@@ -1,0 +1,15 @@
+#!/bin/bash
+# Bash script to run inside the container
+#exit on any app error and save start time
+set -e
+
+cd $jobDir
+vcfFile=$(ls $jobDir/*vcf.gz)
+vcfIdx=$(ls $jobDir/*vcf.gz.tbi)
+bamFile=$(ls $jobDir/*.bam)
+bamIdx=$(ls $jobDir/*.bai)
+/nextflow run loh.singu.nf -with-trace -resume --vcf "$vcfFile" --vcfIdx "$vcfIdx" --bam "$bamFile" --bamIdx "$bamIdx"
+
+
+
+
