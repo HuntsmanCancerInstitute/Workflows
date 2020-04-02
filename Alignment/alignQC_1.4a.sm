@@ -4,30 +4,30 @@
 #Define the resources from the config file
 
 ## Base name to prepend on all files
-name = config["name"]
-coreid = config["id"]
+name = str(config["name"])
+coreid = str(config["id"])
 
 ## Gzipped Fastq files
-fastqReadOne = config["fR"]
-fastqReadTwo = config["sR"]
+fastqReadOne = str(config["fR"])
+fastqReadTwo = str(config["sR"])
 
 # For ReadCov calc, smallest, for calc fraction with X coverage
-regionsForRC= config["rcBed"]
+regionsForRC = str(config["rcBed"])
 
 # For OnTarget calc, largest
-regionsForOnTarget= config["otBed"]
+regionsForOnTarget = str(config["otBed"])
 
 ## Params
 allThreads = int(config["threads"])
 halfThreads = int(round(allThreads/2,0))
-allMemory = config["memory"]
+allMemory = str(config["memory"])
 
 ## Apps
 cutadapt="/uufs/chpc.utah.edu/common/HIPAA/hci-bioinformatics1/atlatl/app/modulesoftware/cutadapt"
 bwa = "/uufs/chpc.utah.edu/common/HIPAA/hci-bioinformatics1/atlatl/app/bwa/0.7.15/bwa"
 picard= "/uufs/chpc.utah.edu/common/HIPAA/hci-bioinformatics1/atlatl/app/picard/2.9.0/picard.jar"
 ucsc= "/uufs/chpc.utah.edu/common/HIPAA/hci-bioinformatics1/atlatl/app/UCSC"
-samtools= "/uufs/chpc.utah.edu/common/HIPAA/hci-bioinformatics1/atlatl/app/samtools/1.5/samtools"
+samtools= "/uufs/chpc.utah.edu/common/HIPAA/hci-bioinformatics1/atlatl/app/samtools/1.10/samtools"
 gatk = "/uufs/chpc.utah.edu/common/HIPAA/hci-bioinformatics1/atlatl/app/gatk/3.8/GenomeAnalysisTK.jar"
 
 ## Resources
@@ -209,6 +209,7 @@ rule RemoveDuplicates:
         "{java8} -Xmx{allMemory} -jar {picard} MarkDuplicates "
         "REMOVE_DUPLICATES=true TMP_DIR=. VERBOSITY=ERROR "
         "VALIDATION_STRINGENCY=SILENT MAX_RECORDS_IN_RAM=5000000 CREATE_INDEX=true "
+        "OPTICAL_DUPLICATE_PIXEL_DISTANCE=2500 "
         "METRICS_FILE={output.metrics} INPUT={input.bam} OUTPUT={output.bam} &> {log} && "
         "echo [`date`] rule RemoveDuplicates: COMPLETE; echo" 
         
