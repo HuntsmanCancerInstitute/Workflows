@@ -1,5 +1,5 @@
 # Bash script to run inside the container
-# 29 March 2019
+# 16 April 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -33,7 +33,7 @@ snakemake --printshellcmds \
 --snakefile *.sm \
 --config \
 genomeBuild=Hg38 \
-intervals=$dataBundle/CNV/Tempus/hg38_595xTPad150bp.preprocessed.interval_list \
+intervals=$dataBundle/CNV/Tempus/648GeneXTv2-3/Regions/tempusXTv2-3Min32Pad150_Int_refGeneTempusXT648.processed.interval_list \
 indexFasta=$dataBundle/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
 dictFasta=$dataBundle/Indexes/B38IndexForBwa-0.7.17/hs38DH.dict \
 name=$name \
@@ -47,6 +47,8 @@ maxNormalCopyRatio=0.5 \
 minTNCRRatio=0.15 \
 allThreads=$allThreads \
 allRam=$allRam
+
+#intervals=$dataBundle/CNV/Intervals/mergedSeqCap_EZ_Exome_v3_hg38_capture_primary_targets_pad150bp.preprocessed.interval_list 
 
 # See GATK's tutorials on copy ratio analysis and USeq's GatkCalledSegmentAnnotator app for a description of the arguments
 # https://gatkforums.broadinstitute.org/dsde/discussion/11682 

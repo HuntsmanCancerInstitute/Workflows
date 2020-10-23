@@ -58,8 +58,19 @@ rule CollectRNASeqMetrics:
         "RIBOSOMAL_INTERVALS={rRNAIntervals} STRAND_SPECIFICITY=SECOND_READ_TRANSCRIPTION_STRAND "
         "I={input.b} O={output} &> {log} "
 
+# Uses gunzip -t to check the integrity of the fastq files in the working directory
+rule CheckGzipFiles:
+    output:
+        temp( nameBuild+ "_checkGzipFiles.complete")
+    log:
+        "Logs/"+ nameBuild+ "_CheckGzipFiles.log"
+    shell:
+        "gunzip -tv {fastqReadOne} {fastqReadTwo} &> {log} && touch {output}"
+
 # Run star to generate alignments, using the ENCODE params, emits a random multimapper, and generates relative read coverage tracks
 rule StarAlignment:
+    input:
+        nameBuild+ "_checkGzipFiles.complete"
     output:
         bam = "Bam/"+ nameBuild+ ".bam",
         wig1 = temp("Signal.Unique.str1.out.wig"),

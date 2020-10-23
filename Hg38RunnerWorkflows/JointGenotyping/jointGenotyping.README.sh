@@ -6,7 +6,7 @@
 
 set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 
-# 13 December 2019
+# 7 Aug 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -18,16 +18,19 @@ set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 # 1) Install Singularity (https://www.sylabs.io) or load via a module, place in your path
 module load singularity/3.5.1
 
-# 2) Define file paths to "mount" in the container. The first is to the TNRunner data bundle downloaded and uncompressed from https://hci-bio-app.hci.utah.edu/gnomex/gnomexFlex.jsp?analysisNumber=A5578 . The second is the path to your data.
+# 2) Define file paths to "mount" in the container. The first is to the TNRunner data bundle downloaded and uncompressed from https://hci-bio-app.hci.utah.edu/gnomex/?analysisNumber=A5578 . The second is the path to your data.
 dataBundle=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner
-myData=/scratch/mammoth/serial/u0028003
+myData=/scratch/general/pe-nfs1/u0028003
 
 # 3) Modify the workflow xxx.sing file setting the paths to the required resources. These must be within the mounts.
 
 # 4) Build the singularity container, and define the path to the xxx.sif file, do just once after each update.
-#singularity pull docker://hcibioinformatics/public:SnakeMakeBioApps_4
-container=/uufs/chpc.utah.edu/common/HIPAA/u0028003/HCINix/SingularityBuilds/public_SnakeMakeBioApps_4.sif
+#singularity pull docker://hcibioinformatics/public:SnakeMakeBioApps_5
+container=/uufs/chpc.utah.edu/common/HIPAA/u0028003/HCINix/SingularityBuilds/public_SnakeMakeBioApps_5.sif
 
+# 5) If Sentieon is installed, define the paths for the regionsForAnalyze (no compression) and the fastaIndex here as well as in the xxx.sif file. Otherwise comment out this code and below.
+regionsForAnalysis=$dataBundle/Bed/AvatarMergedNimIdtBeds/hg38NimIdtMergedPad150bp.bed
+indexFasta=$dataBundle/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa
 
 #### Do for every run ####
 
@@ -53,6 +56,15 @@ echo -e "\n---------- Starting -------- $((($(date +'%s') - $start)/60)) min"
 name=${PWD##*/}
 jobDir=`readlink -f .`
 
+echo -e "\n---------- Sentieon GVCFtyper -------- $((($(date +'%s') - $start)/60)) min"
+# If installed, run the fast Sentieon Joint Genotyper here, otherwise comment out this code, it's licensed and can't be installed in a public container
+module use /uufs/chpc.utah.edu/common/PE/proj_UCGD/modulefiles/$UUFSCELL
+module load sentieon/201911.00
+rm -rf Logs; mkdir Logs
+sentieon driver -r $indexFasta --interval $regionsForAnalysis -t 56 --algo GVCFtyper  $name"_Hg38_jointGenotyped.vcf" ToGenotype/*.g.vcf.gz &> Logs/$name"_Hg38_GenotypeGVCFs.log"
+
+echo -e "\n---------- Launching Container -------- $((($(date +'%s') - $start)/60)) min"
+# Launch the container and execute the sing file
 SINGULARITYENV_name=$name SINGULARITYENV_jobDir=$jobDir SINGULARITYENV_dataBundle=$dataBundle \
 singularity exec --containall --bind $dataBundle,$myData $container \
 bash $jobDir/*.sing
@@ -62,7 +74,6 @@ echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min to
 # Final cleanup
 mkdir -p RunScripts
 mv jointGenotyping* RunScripts/
-mv -f *.log  Logs/ || true
 mv -f slurm* Logs/ || true
 rm -rf .snakemake 
 rm -f FAILED STARTED DONE RESTART

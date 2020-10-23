@@ -1,6 +1,6 @@
 # Circulating Tumor DNA Somatic Variant Caller
 # Bash script to run inside the container
-# 22 October 2019
+# 17 July 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -40,15 +40,14 @@ name=$name \
 minMappingQuality=13 \
 minTumorAlignmentDepth=100 \
 minNormalAlignmentDepth=100 \
-minTumorAF=0.0025 \
-maxTumorAF=0.2 \
+minTumorAF=0.0005 \
+maxTumorAF=0.5 \
 maxNormalAF=0.1 \
 minTumorAltCount=3 \
-minTNRatio=2 \
-minTNDiff=0.0025 \
+minTNRatio=3 \
+minTNDiff=0.0005 \
 maxFisherPval=0.001 \
-minBKZ=3 \
-extraVCFBkzArgs="-i 8 -e -l"
+VCFBkzArgs="-x 3 -y"
 
 # Notes
 ## regionsForAnalysis - a non overlapping bed file of regions to scan. Run the USeq MergedRegions app if unsure.

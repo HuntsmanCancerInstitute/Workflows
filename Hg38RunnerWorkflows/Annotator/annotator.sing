@@ -23,7 +23,6 @@ echo -n host"       : "; echo $(hostname); echo
 --snakefile *.sm \
 --config \
 genomeBuild=Hg38 \
-regionsForAnalysis=$dataBundle/Bed/SeqCapEZ_Hg38_GRCh38_Hg19/mergedSeqCap_EZ_Exome_v3_hg38_capture_primary_targets_pad150bp.bed.gz \
 indexFasta=$dataBundle/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
 dataDir=$dataBundle/AnnotatorData \
 annoVcfParser="-m 0.05 -y annotatedVcfParser.config.txt" \

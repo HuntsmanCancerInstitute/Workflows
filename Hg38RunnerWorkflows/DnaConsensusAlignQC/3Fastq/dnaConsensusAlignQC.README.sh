@@ -6,7 +6,7 @@
 
 set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 
-# 3 January 2020
+# 3 June 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -21,7 +21,7 @@ module load singularity/3.5.1
 
 # 2) Define file paths to "mount" in the container. The first is to the TNRunner data bundle downloaded and uncompressed from https://hci-bio-app.hci.utah.edu/gnomex/gnomexFlex.jsp?analysisNumber=A5578 . The second is the path to your data.
 dataBundle=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner
-myData=/scratch/mammoth/serial/u0028003
+myData=/scratch/general/pe-nfs1/u0028003
 
 # 3) Modify the workflow xxx.sing file setting the paths to the required resources. These must be within the mounts.
 

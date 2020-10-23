@@ -1,5 +1,5 @@
 # Hg38 Exome Alignment and QC Workflow 
-# 11 Feb 2020
+# 18 Aug 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -12,7 +12,6 @@ nameBuild = str(config["name"]) + "_Hg38"
 allThreads = int(config["allThreads"])
 halfThreads = int(round(allThreads/2,0))
 allRam = int(round(float(config["allRam"])))
-partRam = int(round(float(config["allRam"])*0.75))
 
 # Gzipped Fastq files
 fastqReadOne = config["fastqReadOne"]
@@ -30,35 +29,32 @@ dbsnp = config["dbsnp"]
 useqSamAlignmentExtractor = config["useqSamAlignmentExtractor"]
 useqSam2USeq = config["useqSam2USeq"]
 
-# Apps in the docker container
-bwa = "/BioApps/bwakit-0.7.15/run-bwamem"
-gatk = "/BioApps/GATK_3.8/GenomeAnalysisTK.jar"
-htslib = "/BioApps/HTSlib_1.3"
+# Apps
 java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
-javaPart = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(partRam) + "G"
-picard = "/BioApps/Picard_2.17.2/picard.jar"
-samtools = "/BioApps/Samtools_1.8/bin/samtools"
-useq = "/BioApps/USeq/Apps"
-ucsc = "/BioApps/UCSC_6Aug2018"
+useq = config["useq"]
+ucsc = config["ucsc"]
 
 ############# Rules ##############
 
 # Workflow trigger, pulls info from the json files into xls and html reports
 rule AggregateQCStats:
     input:
+        g=  nameBuild+ "_checkGzipFiles.complete",
         f= "Json/"+nameBuild+ "_FastqCount.json.gz",
         s= "Json/"+nameBuild+ "_SamAlignmentExtractor.json.gz",
         m= "Json/"+nameBuild+ "_MergePairedAlignments.json.gz",
         u= "Json/"+nameBuild+ "_Sam2USeq.json.gz",
         w= "QC/"+ nameBuild+ "_uniObReadCov.bw",
-        v= "Vcfs/"+ nameBuild+ "_Haplo.g.vcf.gz.tbi",
+        v= "Vcfs/"+ nameBuild+ "_Haplo.g.vcf.gz",
+        d= "Json/"+ nameBuild+ "_RemoveDuplicates.json.gz",
         c= "Bam/"+ nameBuild+ "_final.cram.crai"
     output:
-        "QC/"+ nameBuild+ "_AggQC"
+        directory( "QC/"+ nameBuild+ "_AggQC" )
     log:
         "Logs/"+ nameBuild+ "_AggregateQCStats.log",
     shell:
         "{java} {useq}/AggregateQCStats -j Json -r {output} -p {nameBuild}_ &> {log} && "
+        "touch COMPLETE && "
         "rm -rf *_dupFree.ba* *_sae.ba* *_unfiltered.ba* *_raw.bam *_MPA *_uniObReadCov.useq " 
         
 ############# Fastq and resources check ##############
@@ -70,31 +66,28 @@ rule CheckGzipFiles:
     log:
         "Logs/"+ nameBuild+ "_CheckGzipFiles.log"
     shell:
-        "gunzip -tv {fastqReadOne} {fastqReadTwo} &> {log} && touch {output}" 
-        
+        "gunzip -tv {fastqReadOne} {fastqReadTwo} &> {log} && touch {output}"
+
 # Count the number of fastq records
 rule CountFastq:
     input:
-        fastqReadOne
+        "Logs/"+ nameBuild+ "_AlignHg38.log"
     output:
         "Json/" + nameBuild + "_FastqCount.json.gz"
     shell:
-        "x=$(gunzip -c {input} | wc -l | tr -d \" \") && "
-        "y=$(($x/2)) && "
+        "y=$(grep -A 1 'algo: bwa-mem' {input} | tail -n 1 | cut -d' ' -f2) && "
         "echo \{{ > Json/{nameBuild}_FastqCount.json && "
         "echo \\\"numberFastqReads\\\": $y >> Json/{nameBuild}_FastqCount.json && "
         "echo \}} >> Json/{nameBuild}_FastqCount.json && "
         "gzip Json/{nameBuild}_FastqCount.json"
         
-        
 ############# Alignment B38 ###############
 
-# Align to Hg38 with bwa mem, trim adapters, mark dups, sort. Must check the integrity of the fastq. BWA silently stops with no error.                                                                                                 
+# Align to Hg38 with bwa mem and sort                                                                                                 
 rule AlignHg38:
-    input:
-        nameBuild+ "_checkGzipFiles.complete"
     output:
-        nameBuild+ "_raw.bam"
+        bam = temp (nameBuild+ "_sorted.bam"),
+        bai = temp (nameBuild+ "_sorted.bam.bai")
     log:
         "Logs/"+ nameBuild+ "_AlignHg38.log"
     params:
@@ -102,44 +95,21 @@ rule AlignHg38:
     threads:
         allThreads
     shell:
-        # Align with run-bwamem this trims adapters, marks dups, and sorts
-        "mkdir -p Logs && "
-        "{bwa} -o {nameBuild}_AlignHg38 -R {params.rg} -t {threads} -a -d "
-        "{indexFasta} {fastqReadOne} {fastqReadTwo} > {nameBuild}_AlignHg38.sh 2> {log} && "
-        "chmod 750 {nameBuild}_AlignHg38.sh 2>> {log} && "
-        "cat {nameBuild}_AlignHg38.sh >> {log} && "
-        "./{nameBuild}_AlignHg38.sh && "
-        "cat {nameBuild}_AlignHg38.log.bwamem >> {log} && "
-        "cat {nameBuild}_AlignHg38.log.dedup >> {log} && "
-        "cat {nameBuild}_AlignHg38.log.trim >> {log} && "
-        "rm -f {nameBuild}_AlignHg38.log.* {nameBuild}_AlignHg38.sh {nameBuild}_AlignHg38.hla.* && "
-        "mv {nameBuild}_AlignHg38.aln.bam {output}"
+        "rm -f {log} && "
+        "sentieon bwa mem -M -R {params.rg} -t {threads} -K 10000000 {indexFasta} {fastqReadOne} "
+        "{fastqReadTwo} 2>> {log} | sentieon util sort -r {indexFasta} -o {output.bam} -t {threads} --sam2bam -i - 2>> {log}"
 
-# Sort alignments
-rule SortSam:
-    input:
-        nameBuild+ "_raw.bam"
-    output:
-        bam = nameBuild+ "_unfiltered.bam",
-        bai = nameBuild+ "_unfiltered.bai"
-    threads:
-        halfThreads
-    log:
-        "Logs/"+ nameBuild+ "_SortSam.log"
-    shell:
-        "{java} {picard} SortSam CREATE_INDEX=true SO=coordinate "
-        "MAX_RECORDS_IN_RAM=5000000 TMP_DIR=. VALIDATION_STRINGENCY=SILENT INPUT={input} "
-        "OUTPUT={output.bam} USE_JDK_DEFLATER=true USE_JDK_INFLATER=true &> {log}"
-        
 # Use the SamAlignmentExtractor to remove poor quality alignments 
 rule SamAlignmentExtractor:
     input:
-        bam = nameBuild+ "_unfiltered.bam",
-        bai = nameBuild+ "_unfiltered.bai"
+        bam = nameBuild+ "_sorted.bam",
+        bai = nameBuild+ "_sorted.bam.bai"
     output:
-        bam = nameBuild+ "_sae.bam",
-        bai = nameBuild+ "_sae.bai",
+        bam = temp (nameBuild+ "_sae.bam"),
+        bai = temp (nameBuild+ "_sae.bai"),
         json = "Json/"+ nameBuild+ "_SamAlignmentExtractor.json.gz"
+    threads:
+       halfThreads
     log:
         "Logs/"+ nameBuild+ "_SamAlignmentExtractor.log",
     shell:
@@ -156,71 +126,84 @@ rule RemoveDuplicates:
         bam = nameBuild+ "_sae.bam",
         bai = nameBuild+ "_sae.bai"
     output:
-        bam = nameBuild+ "_dupFree.bam",
-        bai = nameBuild+ "_dupFree.bai",
-        metrics = "Logs/"+ nameBuild+ "_RemoveDuplicates.metrics"
+        bam = temp (nameBuild+ "_dupFree.bam"),
+        bai = temp (nameBuild+ "_dupFree.bam.bai"),
+        metrics = temp ("Logs/"+ nameBuild+ "_RemoveDuplicates.metrics")
     threads:
-        halfThreads
+        allThreads
     log:
         "Logs/"+ nameBuild+ "_RemoveDuplicates.log"
     shell:
-        "{javaPart} {picard} MarkDuplicates REMOVE_DUPLICATES=true TMP_DIR=. VERBOSITY=ERROR "
-        "VALIDATION_STRINGENCY=SILENT MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=true "
-        "USE_JDK_INFLATER=true USE_JDK_DEFLATER=true CLEAR_DT=true OPTICAL_DUPLICATE_PIXEL_DISTANCE=2500 "
-        "METRICS_FILE={output.metrics} INPUT={input.bam} OUTPUT={output.bam} &> {log}"
+        "sentieon driver -t {threads} -i {input.bam} --algo LocusCollector --fun score_info score.txt &> {log} && "
+        "sentieon driver -t {threads} -i {input.bam} --algo Dedup --rmdup --score_info score.txt "
+        "--metrics {output.metrics} {output.bam} &>> {log} && "
+        "rm -f score.txt* "
 
-# Base recalibration with GATK, target creator, not needed for Strelka but recommended for GATK
-rule RecalibrateBases:
+# Parse fraction duplicates into json
+rule ExtractFractionDuplicates:
+    input:
+        "Logs/"+ nameBuild+ "_RemoveDuplicates.metrics"
+    output:
+        "Json/"+ nameBuild+ "_RemoveDuplicates.json.gz"
+    log:
+        "Logs/"+ nameBuild+ "_ExtractFractionDuplicates.log"
+    shell:
+        "y=$(grep -A 1 'PERCENT_DUPLICATION' {input} | tail -n 1 | cut -f9) 2> {log} && "
+        "echo \{{ > Json/{nameBuild}_RemoveDuplicates.json 2>> {log} && "
+        "echo \\\"estimatedFractionDuplicateAlignments\\\": $y >> Json/{nameBuild}_RemoveDuplicates.json 2>> {log} && "
+        "echo \}} >> Json/{nameBuild}_RemoveDuplicates.json 2>> {log} && "
+        "gzip Json/{nameBuild}_RemoveDuplicates.json 2>> {log}"
+
+# Indel realignment, needed for Sastrugie
+rule IndelRealignment:
     input:
         bam = nameBuild+ "_dupFree.bam",
-        bai = nameBuild+ "_dupFree.bai"
+        bai = nameBuild+ "_dupFree.bam.bai"
     output:
-        temp( nameBuild+ "_recalibration.grp")
+        bam = temp (nameBuild+ "_realign.bam"),
+        bai = temp (nameBuild+ "_realign.bam.bai")
+    threads:
+        allThreads    
+    log:
+        "Logs/"+ nameBuild+ "_Realign.log"
+    shell:
+        "sentieon driver -t {threads} -r {indexFasta} -i {input.bam} --algo Realigner -k {gIndel} -k {dbsnp} {output.bam} &> {log}"
+
+# Base recalibration 
+rule RecalibrateBases:
+    input:
+        bam = nameBuild+ "_realign.bam",
+        bai = nameBuild+ "_realign.bam.bai"
+    output:
+        bam = "Bam/"+ nameBuild+ "_final.bam",
+        bai = "Bam/"+ nameBuild+ "_final.bai"
     threads:
         allThreads    
     log:
         "Logs/"+ nameBuild+ "_RecalibrateBases.log"
     shell:
-        "{java} {gatk} -nct {threads} -T BaseRecalibrator -R {indexFasta} "
-        "-knownSites {dbsnp} -knownSites {gSnp} -knownSites {gIndel} "
-        "-I {input.bam} -o {output} &> {log}"
-        
-# Write out recalibrated bam with GATK
-rule PrintRecalibratedBam:
-    input:
-        grp = nameBuild+ "_recalibration.grp",
-        bam = nameBuild+ "_dupFree.bam",
-        bai = nameBuild+ "_dupFree.bai"
-    output:
-        bam = "Bam/"+ nameBuild+ "_final.bam",
-        bai = "Bam/"+ nameBuild+ "_final.bai"
-    threads:
-        allThreads
-    log:
-        "Logs/"+ nameBuild+ "_PrintRecalibratedBam.log"
-    shell:
-        "{java} {gatk} -nct {threads} -T PrintReads --use_jdk_deflater --use_jdk_inflater "
-        "-R {indexFasta} -I {input.bam} -BQSR {input.grp} -o {output.bam} &> {log}" 
+        "sentieon driver -r {indexFasta} -t {threads} -i {input.bam} --algo QualCal -k {dbsnp} "
+        "-k {gIndel} -k {gSnp} recal_data.table &> {log} && "
+        "sentieon driver -r {indexFasta} -t {threads} -i {input.bam} -q recal_data.table --algo QualCal "
+        "-k {dbsnp} -k {gIndel} -k {gSnp} recal_data.table.post &>> {log} && "
+        "sentieon driver -r {indexFasta} -t {threads} -i {input.bam} -q recal_data.table --algo ReadWriter "
+        "{output.bam} &>> {log} && "
+        "mv Bam/{nameBuild}_final.bam.bai {output.bai} &>> {log} && rm -f recal_data.table* "
 
-# Run the Haplotype caller, needed for germline, not so much for somatic, use the GATKRunner since the -nct arg doesn't work        
+# Run the Haplotype caller, needed for germline, not so much for somatic        
 rule HaplotypeCaller:
     input:
         bam = "Bam/"+ nameBuild+ "_final.bam",
         bai = "Bam/"+ nameBuild+ "_final.bai"
     output:
-        "Vcfs/"+ nameBuild+ "_Haplo.g.vcf.gz.tbi"
+        "Vcfs/"+ nameBuild+ "_Haplo.g.vcf.gz"
     log:
         "Logs/"+ nameBuild+ "_HaplotypeCaller.log"
     threads: 
         allThreads
     shell:
-        "{java} {useq}/GatkRunner -r {regionsForOnTarget} -s GATKRunner -c 'java -jar -Xmx4G -Djava.io.tmpdir=. {gatk} "
-        "-T HaplotypeCaller -I {input.bam} --emitRefConfidence GVCF -R {indexFasta} --dbsnp {dbsnp} "
-        "-variant_index_type LINEAR -variant_index_parameter 128000' &> {log} && "
-        "mv -f GATKRunner/gatk.raw.vcf Vcfs/{nameBuild}_Haplo.g.vcf &>> {log} && "
-        "{htslib}/bgzip Vcfs/{nameBuild}_Haplo.g.vcf &>> {log} && "
-        "{htslib}/tabix -p vcf Vcfs/{nameBuild}_Haplo.g.vcf.gz &>> {log} && "
-	    "rm -rf GATKRunner &>> {log}"
+        "sentieon driver -r {indexFasta} -t {threads} -i {input.bam} --algo Haplotyper "
+        "--emit_mode gvcf {output} &> {log} && rm -f Vcfs/*idx"
 
 # Converts the bam to cram and then indexes the cram with samtools, must use 1.8, 1.9 is broken for cram conversion
 rule Bam2Cram:
@@ -235,8 +218,8 @@ rule Bam2Cram:
     threads: 
         allThreads
     shell:
-        "{samtools} view -@ {threads} {input.bam} -C -T {indexFasta} > {output.cram} 2> {log} && "
-        "{samtools} index -@ {threads} {output.cram} 2>> {log} "
+        "samtools view -@ {threads} {input.bam} -C -T {indexFasta} > {output.cram} 2> {log} && "
+        "samtools index -@ {threads} {output.cram} 2>> {log} "
         
 ############################# QC ###############################
 
@@ -246,10 +229,10 @@ rule MergePairedAlignments:
         bam = "Bam/"+ nameBuild+ "_final.bam",
         bai = "Bam/"+ nameBuild+ "_final.bai"
     output:
-        dir = nameBuild+ "_MPA",
+        dir = directory( nameBuild+ "_MPA"),
         json = "Json/"+ nameBuild+ "_MergePairedAlignments.json.gz"   
     threads: 
-        halfThreads
+        allThreads
     log:
         "Logs/"+ nameBuild+ "_MergePairedAlignments.log"
     shell:

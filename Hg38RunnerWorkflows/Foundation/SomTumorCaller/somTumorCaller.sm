@@ -1,4 +1,4 @@
-# 22 May 2019
+# 19 Feb 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -18,10 +18,11 @@ normalBam = config["normalBam"]
 indexFasta = config["indexFasta"]
 dbsnp = config["dbsnp"]
 regions = config["regionsForAnalysis"]
-mpileup = config["mpileup"]
+bpileup = config["bpileup"]
 queryDataDir = config["queryDataDir"]
 queryIndexDir = config["queryIndexDir"]
-queryFileFilter = config["queryFileFilter"]
+queryVcfFileFilter = config["queryVcfFileFilter"]
+queryBedFileFilter = config["queryBedFileFilter"]
 
 # Apps in docker image
 useq = "/BioApps/USeq/Apps"
@@ -123,38 +124,38 @@ rule StrelkaFilter:
         "-n {maxNormalAF} -u {minTumorAlignmentDepth} -o {minNormalAlignmentDepth} "
         "-d {minTNDiff} -r {minTNRatio} -a {minTumorAltCount} -e {fdrTier} &> {log} && "
         "mv Vcfs/{nameBuild}_Strelka.raw_Filtered.vcf.gz {output} &>> {log} "
-        
-
 
 # Use panel of normal bams to z-score the vcf records
-rule VCFBackgroundChecker:
+rule VCFBkz:
     input:
         nameBuild+"_Strelka.filt.vcf.gz"
     output:
-        temp (nameBuild+ "_vbc.vcf.gz")
+        temp (nameBuild+ "_bkz.vcf.gz")
     log:
-        "Logs/"+ nameBuild+ "_VCFBackgroundChecker.log"
+        "Logs/"+ nameBuild+ "_VCFBkz.log"
     threads:
         allThreads
     shell:
-        "{java} {useq}/VCFBackgroundChecker -v {input} -m {mpileup} -c {minNormalAlignmentDepth} "
-        "-s VCFBkgFilt -t {threads} -z {minBKZ} -b 1 &> {log} && "
-        "mv -f VCFBkgFilt/{nameBuild}_Strelka.filt.vcf.gz {output} "
+        "{java} {useq}/VCFBkz -v {input} -b {bpileup} -c {minNormalAlignmentDepth} "
+        "-s TempVCFBkz -p {threads} -z {minBKZ} -u -l &> {log} && "
+        "mv -f TempVCFBkz/{nameBuild}_Strelka.filt.bkz.vcf.gz {output} && "
+        "rm -rf TempVCFBkz "
 
 # Calculate the prior call frequency from a QueryAPI index, the config file should just specify the fileFilter
 rule VCFCallFrequency:
     input:
-        vcf = nameBuild+ "_vbc.vcf.gz"
+        vcf = nameBuild+ "_bkz.vcf.gz"
     output:
-        "Vcfs/" + nameBuild+ "_final.vcf.gz"
+         "Vcfs/" + nameBuild+ "_final.vcf.gz"
     log:
         "Logs/"+ nameBuild+ "_VCFCallFrequency.log"
     threads:
         allThreads
     shell:
-        "{java} {useq}/VCFCallFrequency -v {input.vcf} -s TempVCFCallFreq -f {queryFileFilter} "
-        "-i {queryIndexDir} -d {queryDataDir} -m 0.075 &> {log} && "
+        "{java} {useq}/VCFCallFrequency -f {input.vcf} -s TempVCFCallFreq -v {queryVcfFileFilter} "
+        "-b {queryBedFileFilter}  -i {queryIndexDir} -d {queryDataDir} -m 0.075 &> {log} && "
         "mv -f TempVCFCallFreq/*.callFreq.vcf.gz {output} && rm -rf TempVCFCallFreq"
+
 
 onerror:
     shell( "rm -f STARTED COMPLETE; touch FAILED")

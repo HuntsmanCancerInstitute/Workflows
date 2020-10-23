@@ -1,5 +1,5 @@
 # Hg38 Exome Alignment and QC Workflow 
-# 8 August 2019
+# 27 July 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -59,6 +59,7 @@ rule AggregateQCStats:
         "Logs/"+ nameBuild+ "_AggregateQCStats.log",
     shell:
         "{java} {useq}/AggregateQCStats -j Json -r {output} -p {nameBuild}_ &> {log} && "
+        "touch COMPLETE && "
         "rm -rf *_dupFree.ba* *_sae.ba* *_unfiltered.ba* *_raw.bam *_MPA *_uniObReadCov.useq " 
         
 ############# Fastq and resources check ##############
@@ -89,8 +90,10 @@ rule CountFastq:
         
 ############# Alignment B38 ###############
 
-# Align to Hg38 with bwa mem, trim adapters, mark dups, sort                                                                                                  
+# Align to Hg38 with bwa mem, trim adapters, mark dups, sort. Must check the integrity of the fastq. BWA silently stops with no error.                                                                                                 
 rule AlignHg38:
+    input:
+        nameBuild+ "_checkGzipFiles.complete"
     output:
         nameBuild+ "_raw.bam"
     log:

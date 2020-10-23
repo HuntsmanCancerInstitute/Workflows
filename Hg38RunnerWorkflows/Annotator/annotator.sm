@@ -1,5 +1,5 @@
 # Annotation of a vcf file with snpEff and USeq splice followed by region and quality filtering
-# 23 January 2019
+# 12 Sept 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -7,7 +7,7 @@
 
 # Vcf file to annotate
 vcf = config["vcf"]
-nameBuild = config["name"]+"_Hg38"
+nameBuild = str(config["name"])+"_Hg38"
 
 # Threads and memory
 allThreads = int(config["allThreads"])
@@ -16,7 +16,6 @@ allRam = int(round(float(config["allRam"])))
 annoVcfParser = config["annoVcfParser"]
 
 # Resources
-regionsForAnalysis = config["regionsForAnalysis"]
 regionsOfInterest = config["regionsOfInterest"]
 indexFasta = config["indexFasta"]
 dataDir = config["dataDir"]

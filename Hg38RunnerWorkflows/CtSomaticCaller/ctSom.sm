@@ -1,6 +1,6 @@
 # Circulating Tumor - Normal Somatic Variant Calling Workflow 
 # Snakemake rule set
-# 22 Oct 2019
+# 17 July 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -37,8 +37,7 @@ maxNormalAF = config["maxNormalAF"]
 minTNRatio = config["minTNRatio"]
 minTNDiff = config["minTNDiff"]
 maxFisherPval = config["maxFisherPval"]
-minBKZ = config["minBKZ"]
-extraBkzArgs = config["extraVCFBkzArgs"]
+bkzArgs = config["VCFBkzArgs"]
 
 # Workflow trigger, final rule, cleanup and tabix index the vcfs 
 rule VcfTabix:
@@ -68,21 +67,36 @@ rule Bcftools:
         "--fasta-ref {indexFasta} --ff UNMAP,SECONDARY,QCFAIL --annotate FORMAT/AD -Ou {tumorBam} {normalBam} | "
         "{bcftools} norm --fasta-ref {indexFasta} --multiallelics -any 2> {log} | grep -w -v '<\*>' | gzip > {output} "
 
+# Tabulate pileup info from normal file for INDEL scanning by SSC
+rule BamPileup:
+    output:
+        bp = temp (nameBuild+ "_Normal.bp.txt.gz"),
+        index = temp (nameBuild+ "_Normal.bp.txt.gz.tbi")
+    log:
+        "Logs/"+ nameBuild+ "_BamPileup.log"
+    threads:
+        allThreads
+    shell:
+        "{java} {useq}/BamPileup -b {normalBam} -r {regions} -f {indexFasta} "
+        "-s {output.bp} -p {threads} -t {htsLib} &> {log} "
+
 # Filter the raw calls
 rule SimpleSomaticCaller:
     input:
-        "Vcfs/" + nameBuild+ "_raw.vcf.gz"
+        vcf = "Vcfs/" + nameBuild+ "_raw.vcf.gz",
+        bp = nameBuild+ "_Normal.bp.txt.gz",
+        ix = nameBuild+ "_Normal.bp.txt.gz.tbi" 
     output:
-        "Vcfs/" + nameBuild+ "_ssc.vcf.gz"
+        temp ("Vcfs/" + nameBuild+ "_ssc.vcf.gz")
     log:
         "Logs/"+ nameBuild+ "_SimpleSomaticCaller.log"
     threads:
         allThreads
     shell:
-        "{java} {useq}/SimpleSomaticCaller -v {input} -s Vcfs -t {minTumorAF} -x {maxTumorAF} "
+        "{java} {useq}/SimpleSomaticCaller -v {input.vcf} -s Vcfs -t {minTumorAF} -x {maxTumorAF} "
         "-u {minTumorAlignmentDepth} -n {maxNormalAF} -o {minNormalAlignmentDepth} -a {minTumorAltCount} "
-        "-f {maxFisherPval} -d {minTNDiff} -r {minTNRatio} -m &> {log} && "
-        "mv -f Vcfs/{nameBuild}_raw.ssc.vcf.gz {output} &>> {log} "
+        "-f {maxFisherPval} -d {minTNDiff} -r {minTNRatio} -m -b {input.bp} -i 0.02 -j 0.5 &> {log} && "
+        "mv -f Vcfs/{nameBuild}_raw.ssc.pass.vcf.gz {output} &>> {log} && rm -f Vcfs/{nameBuild}_raw.ssc.fail.vcf.gz"
 
 # Use panel of normal bams to z-score and filter the vcf records
 rule VCFBkz:
@@ -95,7 +109,7 @@ rule VCFBkz:
     threads:
         allThreads
     shell:
-        "{java} {useq}/VCFBkz -u -b {bpileup} {extraBkzArgs} -v {input} -s Vcfs -z {minBKZ} "
+        "{java} {useq}/VCFBkz -u -b {bpileup} {bkzArgs} -v {input} -s Vcfs "
         "-c {minTumorAlignmentDepth} &> {log} && mv -f Vcfs/{nameBuild}_ssc.bkz.vcf.gz {output} &>> {log} "
 
 onerror:

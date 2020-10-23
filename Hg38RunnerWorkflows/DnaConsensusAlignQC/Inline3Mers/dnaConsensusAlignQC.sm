@@ -1,5 +1,5 @@
 # Hg38 Exome Alignment and QC Workflow 
-# 26 April 2019
+# 6 Oct 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -298,7 +298,7 @@ rule HaplotypeCaller:
     threads: 
         allThreads
     shell:
-        "{java} {useq}/GatkRunner -r {regionsForOnTarget} -s GATKRunner -c 'java -jar -Xmx4G -Djava.io.tmpdir=. {gatk} "
+        "{java} {useq}/GatkRunner -r {regionsForOnTarget} -s GATKRunner -t 20 -c 'java -jar -Xmx4G -Djava.io.tmpdir=. {gatk} "
         "-T HaplotypeCaller -I {input} --emitRefConfidence GVCF -R {indexFasta} --dbsnp {dbsnp} "
         "-variant_index_type LINEAR -variant_index_parameter 128000' &> {log} && "
         "mv -f GATKRunner/gatk.raw.vcf Vcfs/{nameBuild}_Haplo.g.vcf &>> {log} && "

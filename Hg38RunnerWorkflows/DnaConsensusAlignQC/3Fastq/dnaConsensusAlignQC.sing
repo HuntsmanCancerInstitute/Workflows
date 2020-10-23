@@ -30,14 +30,14 @@ ls sam2USeq.config.txt 1.fastq.gz 2.fastq.gz u.fastq.gz > /dev/null
 --cores $allThreads \
 --snakefile *.sm \
 --config \
-regionsForReadCoverage=/scratch/mammoth/serial/u6015361/17572R_TNCooney/Beds/Probes2Bed_final.bed.gz \
-regionsForOnTarget=/scratch/mammoth/serial/u6015361/17572R_TNCooney/Beds/Probes2Bed_final_padded100.bed.gz \
+regionsForReadCoverage=$dataBundle/Bed/Underhill/HSV1_GBM_IDT_Probes_Hg38.bed.gz \
+regionsForOnTarget=$dataBundle/Bed/Underhill/HSV1_GBM_IDT_Probes_Hg38Pad150bps.bed.gz \
 indexFasta=$dataBundle/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
 dbsnp=$dataBundle/Vcfs/dbsnp_146.hg38.vcf.gz \
 gSnp=$dataBundle/Vcfs/1000G_phase1.snps.high_confidence.hg38.vcf.gz \
 gIndel=$dataBundle/Vcfs/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz \
 useqSamAlignmentExtractor="-q 20 -a 0.65 -d -f" \
-useqSam2USeq="-v Hg38 -x 500 -r -w sam2USeq.config.txt" \
+useqSam2USeq="-v Hg38 -x 10000 -r -w sam2USeq.config.txt" \
 name=$name \
 fastqReadOne=$fastqReadOne \
 fastqReadTwo=$fastqReadTwo \

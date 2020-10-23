@@ -1,5 +1,5 @@
 # GATK Copy Ratio Calling with USeq filtering
-# 23 January 2019
+# 20 April 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -24,10 +24,11 @@ indexFasta = config["indexFasta"]
 dictFasta = config["dictFasta"]
 geneTable = config["geneTable"]
 
-# Apps in the docker container
+# Apps in the container
 java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
-useq = "/BioApps/USeq_9.2.0/Apps"
+useq = "/BioApps/USeq/Apps"
 ucsc = "/BioApps/UCSC_6Aug2018"
+htslib= "/BioApps/HTSlib/1.10.2/bin"
 
 ############# Rules ##############
 
@@ -265,16 +266,16 @@ rule IndexHetAndCopyRatios:
     shell:
         "grep -vE '(@|CONTIG)' {input.tCr} > {nameBuild}.tumor.cr.txt 2> {log} && "
         "grep -vE '(@|CONTIG)' {input.nCr} > {nameBuild}.normal.cr.txt 2>> {log} && "
-        "/BioApps/HTSlib/1.3/bin/bgzip {nameBuild}.tumor.cr.txt &>> {log} && "
-        "/BioApps/HTSlib/1.3/bin/bgzip {nameBuild}.normal.cr.txt &>> {log} && "
-        "/BioApps/HTSlib/1.3/bin/tabix -s 1 -b 2 -e 3 {output.tCr} &>> {log} && "
-        "/BioApps/HTSlib/1.3/bin/tabix -s 1 -b 2 -e 3 {output.nCr} &>> {log} && "
+        "{htslib}/bgzip {nameBuild}.tumor.cr.txt &>> {log} && "
+        "{htslib}/bgzip {nameBuild}.normal.cr.txt &>> {log} && "
+        "{htslib}/tabix -s 1 -b 2 -e 3 {output.tCr} &>> {log} && "
+        "{htslib}/tabix -s 1 -b 2 -e 3 {output.nCr} &>> {log} && "
         "grep -vE '(@|CONTIG)' {input.tAf} > {nameBuild}.hets.txt 2>> {log} && "
         "grep -vE '(@|CONTIG)' {input.nAf} > {nameBuild}.hets.normal.txt 2>> {log} && "
-        "/BioApps/HTSlib/1.3/bin/bgzip {nameBuild}.hets.txt &>> {log} && "
-        "/BioApps/HTSlib/1.3/bin/bgzip {nameBuild}.hets.normal.txt &>> {log} && "
-        "/BioApps/HTSlib/1.3/bin/tabix -s 1 -b 2 -e 2 {output.tAf} &>> {log} && "
-        "/BioApps/HTSlib/1.3/bin/tabix -s 1 -b 2 -e 2 {output.nAf} &>> {log} "
+        "{htslib}/bgzip {nameBuild}.hets.txt &>> {log} && "
+        "{htslib}/bgzip {nameBuild}.hets.normal.txt &>> {log} && "
+        "{htslib}/tabix -s 1 -b 2 -e 2 {output.tAf} &>> {log} && "
+        "{htslib}/tabix -s 1 -b 2 -e 2 {output.nAf} &>> {log} "
 
 # Annotate and filter segment calls
 rule GatkCalledSegmentAnnotator:

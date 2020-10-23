@@ -1,5 +1,5 @@
 # Hg38 Exome Alignment and QC Workflow 
-# 8 August 2019
+# 11 Feb 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -91,6 +91,8 @@ rule CountFastq:
 
 # Align to Hg38 with bwa mem, trim adapters, mark dups, sort                                                                                                  
 rule AlignHg38:
+    input:
+        nameBuild+ "_checkGzipFiles.complete"
     output:
         nameBuild+ "_raw.bam"
     log:

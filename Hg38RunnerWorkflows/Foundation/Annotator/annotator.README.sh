@@ -6,7 +6,7 @@
 
 set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 
-# 13 December 2019
+# 19 Feb 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -20,13 +20,13 @@ module load singularity/3.5.1
 
 # 2) Define file paths to "mount" in the container. The first is to the TNRunner data bundle downloaded and uncompressed from https://hci-bio-app.hci.utah.edu/gnomex/gnomexFlex.jsp?analysisNumber=A5578 . The second is the path to your data.
 dataBundle=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner
-myData=/scratch/mammoth/serial/u0028003
+myData=/scratch/general/pe-nfs1/u0028003
 
 # 3) Modify the workflow xxx.sing file setting the paths to the required resources. These must be within the mounts.
 
 # 4) Build the singularity container, and define the path to the xxx.sif file, do just once after each update.
-#singularity pull docker://hcibioinformatics/public:SnakeMakeBioApps_4
-container=/uufs/chpc.utah.edu/common/HIPAA/u0028003/HCINix/SingularityBuilds/public_SnakeMakeBioApps_4.sif
+#singularity pull docker://hcibioinformatics/public:SnakeMakeBioApps_5
+container=/uufs/chpc.utah.edu/common/HIPAA/u0028003/HCINix/SingularityBuilds/public_SnakeMakeBioApps_5.sif
 
 # 5) Create a file called annotatedVcfParser.config.txt and provide params for the USeq AnnotatedVcfParser application, e.g. '-d 10 -m 0.2 -x 1 -p 0.01 -g D5S,D3S -n 5 -a HIGH -c Pathogenic,Likely_pathogenic -o -e Benign,Likely_benign' for germline or '-d 20 -f' for somatic.
 

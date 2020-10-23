@@ -20,7 +20,7 @@ module load singularity/3.5.1
 
 # 2) Define file paths to "mount" in the container. The first is to the TNRunner data bundle downloaded and uncompressed from https://hci-bio-app.hci.utah.edu/gnomex/gnomexFlex.jsp?analysisNumber=A5578 . The second is the path to your data.
 dataBundle=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner
-myData=/scratch/mammoth/serial/u0028003
+myData=/scratch/general/pe-nfs1/u0028003
 
 # 3) Modify the workflow xxx.sing file setting the paths to the required resources. These must be within the mounts.
 
@@ -62,7 +62,7 @@ mkdir -p RunScripts
 mv tempusVcf* RunScripts/
 mv -f slurm* Logs/ || true
 rm -rf .snakemake 
-rm -f FAILED STARTED DONE RESTART
+rm -f FAILED STARTED DONE RESTARTED
 touch COMPLETE 
 
 

@@ -12,8 +12,8 @@ Somatic variants
 	Read depth, tumor	>= 20
 	Read depth, normal	>= 15
 	Allele frequency (AF), tumor >= 0.05
-	AF, normal < 0.01
-	AF ratio tumor/normal	>= 4
+	AF, normal < 0.05
+	AF ratio tumor/normal	>= 3
 	AF difference tumor-normal	>= 0.05
 	Number of supporting tumor variant reads	>= 3
 	Background AF BKZ z-score >= 3
@@ -28,7 +28,7 @@ Annotated somatic variants, additional filters
 		SnpEff ANN impacts	high,moderate
 		CLINSIG	conflicting_interpretations_of_pathogenicity,drug_response,likely_pathogenic,pathogenic,risk_factor
 		Damage to splice junctions or new splice junction adjacent to old, score diff	>=4
-		*** Generates XXX_Avatar_Anno_Hg38.anno.filt.gz in the SomaticVariantCalls/XXX_Avatar_Anno/Vcfs/ folder
+		*** Generates XXX_Avatar_IlluminaAnno_Hg38.anno.filt.gz in the SomaticVariantCalls/XXX_Avatar_IlluminaAnno/Vcfs/ folder
 
 Copy number - ratio analysis
         Min tumor copy ratio, 0.15

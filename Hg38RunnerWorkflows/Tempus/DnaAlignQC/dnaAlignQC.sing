@@ -1,42 +1,43 @@
 # Bash script to run inside the container
-# 23 January 2019
+# 8 April 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
 set -e
-cd $jobDir
+cd $tempDir
 
 # Read threads and ram
 allThreads=$(nproc)
 allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
-fastqReadOne=$(readlink -f 1.fastq.gz)
-fastqReadTwo=$(readlink -f 2.fastq.gz)
 
 # Print params
-echo -n jobDir"       : "; echo $jobDir
+echo -n tempDir"      : "; echo $tempDir
 echo -n name"         : "; echo $name
-echo -n dataBundle"   : "; echo $dataBundle
 echo -n threads"      : "; echo $allThreads
 echo -n ram"          : "; echo $allRam
 echo -n host"         : "; echo $(hostname)
-echo -n fastqReadOne" : "; echo $fastqReadOne
-echo -n fastqReadTwo" : "; echo $fastqReadTwo; echo
+echo
+echo "Reference files: "
+ls -la $tempDir/Ref
+echo
 
+# Launch snakemake
+cd $name
 /BioApps/Miniconda3/bin/snakemake -p -T \
 --cores $allThreads \
 --snakefile *.sm \
 --config \
-regionsForReadCoverage=$dataBundle/Bed/Tempus/hg38_MergexOxTPad150bp.bed.gz \
-regionsForOnTarget=$dataBundle/Bed/Tempus/hg38_MergexOxTPad150bp.bed.gz \
-indexFasta=$dataBundle/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
-dbsnp=$dataBundle/Vcfs/dbsnp_146.hg38.vcf.gz \
-gSnp=$dataBundle/Vcfs/1000G_phase1.snps.high_confidence.hg38.vcf.gz \
-gIndel=$dataBundle/Vcfs/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz \
+regionsForReadCoverage=$tempDir/Ref/$regionsForReadCoverage \
+regionsForOnTarget=$tempDir/Ref/$regionsForOnTarget \
+indexFasta=$tempDir/Ref/$indexFastaTruncated".fa" \
+dbsnp=$tempDir/Ref/$dbsnp \
+gSnp=$tempDir/Ref/$gSnp \
+gIndel=$tempDir/Ref/$gIndel \
 useqSamAlignmentExtractor="-q 20 -a 0.65 -d -f" \
-useqSam2USeq="-v Hg38 -x 2000 -r -w sam2USeq.config.txt" \
+useqSam2USeq="-v Hg38 -x 1000 -r -w sam2USeq.config.txt" \
 name=$name \
-fastqReadOne=$fastqReadOne \
-fastqReadTwo=$fastqReadTwo \
+fastqReadOne="1.fastq.gz" \
+fastqReadTwo="2.fastq.gz" \
 allThreads=$allThreads \
 allRam=$allRam
 

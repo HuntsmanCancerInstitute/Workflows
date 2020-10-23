@@ -1,5 +1,5 @@
 # Joint Genotyping of Haplotype called gVCFs
-# 20 March 2019
+# 10 Aug 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -18,7 +18,8 @@ regionsForAnalysis = config["regionsForAnalysis"]
 indexFasta = config["indexFasta"]
 queryDataDir = config["queryDataDir"]
 queryIndexDir = config["queryIndexDir"]
-queryFileFilter	= config["queryFileFilter"]
+queryVcfFileFilter = config["queryVcfFileFilter"]
+queryBedFileFilter = config["queryBedFileFilter"]
 
 # Filtering params
 useqJointGenotypeVCFParser = config["useqJointGenotypeVCFParser"]
@@ -100,19 +101,19 @@ rule VtNormalize:
     shell:
         "{vt} normalize -o {output} -r {indexFasta} {input} &> {log} "
 
-# Calculate the prior call frequency from a QueryAPI index, the config file should just specify the fileFilter
+# Calculate the prior call frequency from a GQuery index
 rule VCFCallFrequency:
     input:
         nameBuild+ ".vt.vcf.gz"
     output:
-       temp (nameBuild+ ".vcf.gz")
+       nameBuild+ ".vcf.gz"
     log:
         "Logs/"+ nameBuild+ "_VCFCallFrequency.log"
     threads:
         allThreads
     shell:
-        "{java} {useq}/VCFCallFrequency -v {input} -s TempVCFCallFreq -f {queryFileFilter} "
-        "-i {queryIndexDir} -d {queryDataDir} -m 0.075 &> {log} && "
+        "{java} {useq}/VCFCallFrequency -f {input} -s TempVCFCallFreq -v {queryVcfFileFilter} "
+        "-b {queryBedFileFilter}  -i {queryIndexDir} -d {queryDataDir} -m 0.075 &> {log} && "
         "mv -f TempVCFCallFreq/*.callFreq.vcf.gz {output} && rm -rf TempVCFCallFreq"
 
 onerror:

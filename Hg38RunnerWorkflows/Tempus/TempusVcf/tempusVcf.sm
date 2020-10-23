@@ -1,4 +1,4 @@
-# 19 March 2019
+# 9 Sept 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -92,7 +92,7 @@ rule ConvertVcfEnds:
     input:
         nameBuild+ "_TempusBadEnds.vcf"
     output:
-        "Vcfs/"+ nameBuild+ "_Tempus.vcf.gz"
+        temp ("Vcfs/"+ nameBuild+ "_Unsorted_Tempus.vcf.gz")
     log:
         "Logs/"+ nameBuild+ "_ConvertVcfEnds.log"
     threads:
@@ -103,11 +103,27 @@ rule ConvertVcfEnds:
         "then {crossmap} bed {chainFile} VCF2BedTemp/{nameBuild}_TempusBadEndsPad0bp.bed.gz "
         "VCF2BedTemp/{nameBuild}_TempusCorrEnds.bed &>> {log} && "
         "{java} {useq}/CorrectVCFEnds -v {input} -b VCF2BedTemp/{nameBuild}_TempusCorrEnds.bed "
-        "-r Vcfs/{nameBuild}_Tempus.vcf &>> {log}; "
-        "else cp -f {input} Vcfs/{nameBuild}_Tempus.vcf &>> {log};"
-        "gzip Vcfs/{nameBuild}_Tempus.vcf &>> {log};"
+        "-r Vcfs/{nameBuild}_Unsorted_Tempus.vcf &>> {log}; "
+        "else cp -f {input} Vcfs/{nameBuild}_Unsorted_Tempus.vcf &>> {log};"
+        "gzip Vcfs/{nameBuild}_Unsorted_Tempus.vcf &>> {log};"
         "fi; "
 	"rm -rf VCF2BedTemp"
+
+# Sort the Tempus vcf
+rule SortVcf:
+    input:
+        "Vcfs/"+ nameBuild+ "_Unsorted_Tempus.vcf.gz"
+    output:
+        "Vcfs/"+ nameBuild+ "_Tempus.vcf.gz"
+    log:
+        "Logs/"+ name + "_SortVcf.log"
+    threads:
+        allThreads
+    shell:
+        "gunzip -c {input} | grep '^#' > temp.vcf 2> {log} && "
+        "gunzip -c {input} | grep -v '^#' || true | sort -k1,1V -k2,2g >> temp.vcf 2> {log} && "
+        "gzip -f temp.vcf &>> {log} && "
+        "mv -f temp.vcf.gz {output} &>> {log} "
              
 # Compare the Tempus vcf with the recalled vcf, this generates a merged vcf too
 rule TempusVcfComparator:

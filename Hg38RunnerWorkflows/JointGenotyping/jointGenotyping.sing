@@ -1,5 +1,5 @@
 # Bash script to run inside the container
-# 23 January 2019
+# 6 Aug 2019
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -23,11 +23,12 @@ echo -n host"       : "; echo $(hostname); echo
 --snakefile *.sm \
 --config \
 genomeBuild=Hg38 \
-regionsForAnalysis=$dataBundle/Bed/SeqCapEZ_Hg38_GRCh38_Hg19/mergedSeqCap_EZ_Exome_v3_hg38_capture_primary_targets_pad150bp.bed.gz \
+regionsForAnalysis=$dataBundle/Bed/AvatarMergedNimIdtBeds/hg38NimIdtMergedPad150bp.bed.gz \
 indexFasta=$dataBundle/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
-queryDataDir=$dataBundle/QueryAPI/Data \
-queryIndexDir=$dataBundle/QueryAPI/Index \
-queryFileFilter=Hg38/Germline/Avatar/HA1 \
+queryDataDir=$dataBundle/GQuery/Data \
+queryIndexDir=$dataBundle/GQuery/Index \
+queryVcfFileFilter=Hg38/Germline/Avatar/Vcf \
+queryBedFileFilter=Hg38/Germline/Avatar/Bed \
 useqJointGenotypeVCFParser="-q 20 -d 10 -a 0.2 -g 20" \
 name=$name \
 allThreads=$allThreads \
