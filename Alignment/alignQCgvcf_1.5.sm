@@ -1,0 +1,331 @@
+# This SnakeMake file contains paths for the HCI redwood cluster
+
+#Define the resources from the config file
+
+## Base name to prepend on all files
+name = str(config["name"])
+coreid = str(config["id"])
+
+## Gzipped Fastq files
+fastqReadOne = str(config["fR"])
+fastqReadTwo = str(config["sR"])
+
+# For ReadCov calc, smallest, for calc fraction with X coverage
+regionsForRC = str(config["rcBed"])
+
+# For OnTarget calc, largest
+regionsForOnTarget = str(config["otBed"])
+
+## Params
+allThreads = int(config["threads"])
+halfThreads = int(round(allThreads/2,0))
+allMemory = str(config["memory"])
+
+## Apps
+appBase = "/uufs/chpc.utah.edu/common/HIPAA/hci-bioinformatics1/atlatl"
+cutadapt = str(appBase) + "/app/modulesoftware/cutadapt"
+bwa = str(appBase) + "/app/bwa/0.7.15/bwa"
+picard= str(appBase) + "/app/picard/2.23.3/picard.jar"
+samtools= str(appBase) + "/app/samtools/1.10/samtools"
+gatk = str(appBase) + "/app/gatk/3.8/GenomeAnalysisTK.jar"
+
+## Resources
+resBase = "/uufs/chpc.utah.edu/common/HIPAA/hci-bioinformatics1/atlatl"
+goldIndels = str(resBase) + "/data/Human/B37/2.8/Mills_and_1000G_gold_standard.indels.b37.vcf"
+oneKIndels = str(resBase) + "/data/Human/B37/2.8/1000G_phase1.indels.b37.vcf"
+dbsnp = str(resBase) + "/data/Human/B37/2.8/dbsnp_138.b37.vcf"
+indexFasta= str(resBase) + "/data/Human/B37/human_g1k_v37_decoy_phiXAdaptr.fasta"
+indexDict= str(resBase) + "/data/Human/B37/human_g1k_v37_decoy_phiXAdaptr.dict"
+
+## Languages
+# we are relying on the system java being java version 1.8, slightly dangerous
+# gatk doesn't play nice with this version, must use jdk inflaters and not C extensions 
+# do not put java options in here, doesn't play nice with CheckResources ls command
+java8= "/usr/bin/java"
+
+requiredFiles = [fastqReadOne, fastqReadTwo, regionsForRC, regionsForOnTarget, cutadapt, bwa, picard, samtools, gatk, goldIndels, oneKIndels, dbsnp, indexFasta, java8]
+
+
+############# Messaging ##############
+onerror:
+    shell( "echo \"There were errors! see logs\"")
+onsuccess:
+    shell( "echo \"Mission complete!\"")
+
+############# Rules ##############
+
+# One rule to rule them all
+rule Cleanup:
+    input:
+        name+ "_checkGzipFiles.complete",
+        name+ ".alignmentSummaryMetrics.txt",
+        name+ ".insertSizeMetrics.txt",
+        name+ ".insertSizeMetrics.pdf",
+        name+ ".hsMetrics.txt",
+        name+ ".final.bam",
+        name+ ".final.bai",
+        name+ ".g.vcf.gz"
+    shell:
+        "mkdir Log Metrics && "
+        "gzip *.log && "
+        "mv *.log.gz Log/ && "
+        "mv *Metrics.txt *Metrics.pdf Metrics/ && "
+        "rm -f snappy* && "
+        "echo [`date`] rule Cleanup: COMPLETE; echo" 
+
+############# Fastq and resources check ##############
+
+# Uses ls to check if all the required resources are present 
+rule CheckResources:
+    output:
+        temp(name+ "_CheckResources.complete")
+    log:
+        name+ "_CheckResources.log"
+    shell:
+        "ls {requiredFiles} &> {log} && touch {output} && "
+        "echo [`date`] rule CheckResources: COMPLETE ; echo"
+
+# Uses gunzip -t to check the integrity of the xxx.gz files in the working directory
+rule CheckGzipFiles:
+    input:
+        name+ "_CheckResources.complete"
+    output:
+        temp(name+ "_checkGzipFiles.complete")
+    log:
+        name+ "_CheckGzipFiles.log"
+    shell:
+        "gunzip -tv *.gz &> {log} && touch {output} && "
+        "echo [`date`] rule CheckGzipFiles: COMPLETE; echo" 
+        
+
+# prepare interval lists, because Picard is annoying and doesn't work with bed files
+rule PicardIntervalForRC:
+    input:
+        name+ "_CheckResources.complete"
+    output:
+        temp(name + ".coverage.intervalList")
+    log:
+        name+ "_PicardIntervalForRC.log"
+    shell:
+        "{java8} -Xmx4G -jar {picard} BedToIntervalList -I {regionsForRC} "
+        "-O {output} -SD {indexDict} &> {log} && "
+        "echo [`date`] rule PicardIntervalForRC: COMPLETE; echo" 
+
+# prepare interval lists, because Picard is annoying and doesn't work with bed files
+rule PicardIntervalForOnTarget:
+    input:
+        name+ "_CheckResources.complete"
+    output:
+        temp(name + ".target.intervalList")
+    log:
+        name+ "_PicardIntervalForOnTarget.log"
+    shell:
+        "{java8} -Xmx4G -jar {picard} BedToIntervalList -I {regionsForOnTarget} "
+        "-O {output} -SD {indexDict} &> {log} && "
+        "echo [`date`] rule PicardIntervalForOnTarget: COMPLETE; echo" 
+
+
+############# Alignment ###############
+
+# The input isn't needed but triggers the resource check before the big pipe kicks off
+rule TrimAdapters:
+    input:
+        name+ "_checkGzipFiles.complete"
+    output:
+        tfq1 = temp(name+ "_trimmed1.fastq.gz"),
+        tfq2 = temp(name+ "_trimmed2.fastq.gz")
+    log:
+        name+ "_cutadaptMetrics.txt"
+    threads:
+        allThreads
+    shell:
+        "{cutadapt} -j {threads} -a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA "
+        "-A AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT -o {output.tfq1} -p {output.tfq2} "
+        " {fastqReadOne} {fastqReadTwo} &> {log} && "
+        "echo [`date`] rule TrimAdapters: COMPLETE; echo" 
+
+# align with BWA with all threads
+rule BwaAlign:
+    input:
+        tfq1 = name+ "_trimmed1.fastq.gz",
+        tfq2 = name+ "_trimmed2.fastq.gz"
+    output:
+        temp(name+ "_raw.bam")
+    log:
+        name+ "_BwaAlign.log"
+    params: 
+        "\"@RG\\tID:" +coreid+ "\\tPL:ILLUMINA\\tLB:" +coreid+ "\\tSM:" +name+ "\\tCN:HCI\\tPU:" +coreid+ "\""
+    threads:    
+        allThreads
+    shell:
+        # Remove prior log
+        "rm -f {log} && "
+
+        # Align with bwa mem
+        "{bwa} mem -v 1 -t {threads} -R {params} {indexFasta} "
+        "{input.tfq1} {input.tfq2} "
+        " 2>> {log} | "
+
+        # Fix mates and write as bam
+        "{samtools} fixmate -m - {output} 2>> {log} && "
+        
+        # clean up
+        "echo [`date`] rule BwaAlign: COMPLETE; echo" 
+
+# Sort bam file using threads
+rule SortIndexBam:
+    input:
+        name+ "_raw.bam"
+    output:
+        bam = temp(name+ ".bam"),
+        bai = temp(name+ ".bai")
+    threads:
+        allThreads
+    log:
+        name+ "_SortIndex.log"
+    shell:
+        "{samtools} sort -m 4G -@ 8 -o {output.bam} {input} &> {log} && "
+        "{samtools} index -@ 8 {output.bam} {output.bai} &>> {log} && "
+        "echo [`date`] rule SortIndexBam: COMPLETE; echo" 
+
+
+############# Bam Filtering ##############
+
+
+# Remove duplicates
+rule RemoveDuplicates:
+    input:
+        bam = name+ ".bam",
+        bai = name+ ".bai"
+    output:
+        bam = temp(name+ ".mkdup.bam"),
+        bai = temp(name+ ".mkdup.bai"),
+        metrics = name+ "_RemoveDuplicatesMetrics.txt"
+    threads:
+        allThreads
+    log:
+        name+ "_RemoveDuplicates.log"
+    shell:
+        "{java8} -Xmx{allMemory} -jar {picard} MarkDuplicates "
+        "--REMOVE_DUPLICATES true --TMP_DIR ./ --VERBOSITY ERROR "
+        "--VALIDATION_STRINGENCY SILENT --MAX_RECORDS_IN_RAM 5000000 --CREATE_INDEX true "
+        "--OPTICAL_DUPLICATE_PIXEL_DISTANCE 2500 "
+        "--METRICS_FILE {output.metrics} --INPUT {input.bam} --OUTPUT {output.bam} &> {log} && "
+        "echo [`date`] rule RemoveDuplicates: COMPLETE; echo" 
+        
+############# Indel Realignment and Recalibration ##############
+
+# Base recalibration with GATK, target creator
+rule RecalibrateBases:
+    input:
+        bam = name+ ".mkdup.bam",
+        bai = name+ ".mkdup.bai"
+    output:
+        temp( name+ "_recalibration.grp")
+    threads:
+        allThreads    
+    log:
+        name+ "_RecalibrateBases.log"
+    shell:
+        "{java8} -Xmx{allMemory} -jar {gatk} -nct {threads} -T BaseRecalibrator "
+        "-jdk_deflater -jdk_inflater -R {indexFasta} "
+        "-knownSites {dbsnp} -knownSites {oneKIndels} -knownSites {goldIndels} "
+        "-I {input.bam} -o {output} &> {log} && "
+        "echo [`date`] rule RecalibrateBases: COMPLETE; echo" 
+
+# Write out recalibrated bam with GATK
+rule PrintRecalibratedBam:
+    input:
+        grp = name+ "_recalibration.grp",
+        bam = name+ ".mkdup.bam",
+        bai = name+ ".mkdup.bai"
+    output:
+        bam = name+ ".final.bam",
+        bai = name+ ".final.bai"
+    threads:
+        allThreads
+    log:
+        name+ "_PrintRecalibratedBam.log"
+    shell:
+        "{java8} -Xmx{allMemory} -jar {gatk} -nct {threads} -T PrintReads "
+        "-jdk_deflater -jdk_inflater -R {indexFasta} -I {input.bam} "
+        "-BQSR {input.grp} -o {output.bam} --filter_bases_not_stored &> {log} && "
+        "echo [`date`] rule PrintRecalibratedBam: COMPLETE; echo" 
+        
+        
+############# Alignment QC ##############
+
+# collect raw alignment metrics from the raw bam file before filtering
+rule PicardCollectAlignmentSummaryMetrics:
+    input:
+        bam = name+ ".bam",
+        bai = name+ ".bai"
+    output:
+        name+ ".alignmentSummaryMetrics.txt"
+    log:
+        name+ "_PicardCollectAlignmentSummaryMetrics.log"
+    shell:
+        "{java8} -Xmx8G -jar {picard} CollectAlignmentSummaryMetrics "
+        "-I {input.bam} -R {indexFasta} -O {output} "
+        "--VALIDATION_STRINGENCY SILENT --VERBOSITY WARNING &> {log} && "
+        "echo [`date`] rule PicardCollectAlignmentSummaryMetrics: COMPLETE; echo" 
+
+# collect insertion size metrics from final bam file
+rule PicardCollectInsertSizeMetrics:
+    input:
+        bam = name+ ".final.bam",
+        bai = name+ ".final.bai"
+    output:
+        text = name+ ".insertSizeMetrics.txt",
+        hist = name+ ".insertSizeMetrics.pdf"
+    log:
+        name+ "_PicardCollectInsertSizeMetrics.log"
+    shell:
+        "{java8} -Xmx8G -jar {picard} CollectInsertSizeMetrics "
+        "-I {input.bam} -O {output.text} -H {output.hist} -M 0.5 "
+        "--VALIDATION_STRINGENCY SILENT --VERBOSITY WARNING &> {log} && "
+        "echo [`date`] rule PicardCollectInsertSizeMetrics: COMPLETE; echo" 
+
+# collect hybrid selection metrics from final bam file
+# also clip overlapping reads
+rule PicardCollectHsMetrics:
+    input:
+        bam = name+ ".final.bam",
+        bai = name+ ".final.bai",
+        rc = name + ".coverage.intervalList",
+        ot = name + ".target.intervalList"
+    output:
+        name+ ".hsMetrics.txt"
+    log:
+        name+ "_PicardCollectHsMetrics.log"
+    shell:
+        "{java8} -Xmx16G -jar {picard} CollectHsMetrics "
+        "-I {input.bam} -O {output} -R {indexFasta} "
+        "--BAIT_INTERVALS {input.rc} --TARGET_INTERVALS {input.ot} "
+        "--CLIP_OVERLAPPING_READS TRUE --MINIMUM_MAPPING_QUALITY 13 "
+        "--MINIMUM_BASE_QUALITY 20 --VALIDATION_STRINGENCY SILENT "
+        "--VERBOSITY WARNING &> {log} && "
+        "echo [`date`] rule PicardCollectHsMetrics: COMPLETE; echo" 
+
+
+############# Generate Genomic VCF ##############
+
+# Call genomic variants for Haplotype calling later
+rule GatkHaplotypeCaller:
+    input:
+        bam = name+ ".final.bam",
+        bai = name+ ".final.bai",
+        ot = regionsForOnTarget
+    output:
+        name+ ".g.vcf.gz"
+    log:
+        name+ "_GatkHaplotypeCaller.log"
+    threads:
+        halfThreads
+    shell:
+        "{java8} -Xmx{allMemory} -jar {gatk} -nct {threads} -T HaplotypeCaller "
+        "-jdk_deflater -jdk_inflater -R {indexFasta} "
+        "--genotyping_mode DISCOVERY --emitRefConfidence GVCF -stand_call_conf 30.0 "
+        "--min_base_quality_score 20 "
+        "--intervals {input.ot} -I {input.bam} -o {output} &> {log} && "
+        "echo [`date`] rule GatkHaplotypeCaller: COMPLETE; echo" 

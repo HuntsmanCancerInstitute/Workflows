@@ -3,12 +3,13 @@
 These are best practice alignment pipelines developed by the HCI Bioinformatics 
 Shared Resource for exome sequence alignment. They are intended to be run at the 
 CHPC on the kingspeak or the redwood clusters. They use 
-[snakemake](https://bitbucket.org/snakemake/snakemake) as a workflow manager. They can 
+[snakemake](https://snakemake.readthedocs.io) as a workflow manager. They can 
 launched directly as a slurm job or through the HCI 
 job management system.
 
-For execution with the [pysano](https://healthcare.utah.edu/huntsmancancerinstitute/research/shared-resources/center-managed/bioinformatics/pysano/) 
-system from the HCI local linux servers, use the `pysano_cmd_template.txt`.
+For execution with the [pysano](https://uofuhealth.utah.edu/huntsman/shared-resources/gba/bioinformatics/infrastructure/pysano.php) 
+system from the HCI local linux servers, use the `pysano_cmd_template.txt`. Be sure to 
+make the necessary adjustments in file names.
 
 For direct slurm execution on the CHPC clusters, use the `slurm_template.sh` and edit 
 as appropriate.
