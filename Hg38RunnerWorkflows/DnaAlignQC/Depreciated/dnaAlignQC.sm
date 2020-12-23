@@ -1,5 +1,5 @@
 # Hg38 Exome Alignment and QC Workflow 
-# 27 July 2020
+# 11 Dec 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -52,6 +52,7 @@ rule AggregateQCStats:
         u= "Json/"+nameBuild+ "_Sam2USeq.json.gz",
         w= "QC/"+ nameBuild+ "_uniObReadCov.bw",
         v= "Vcfs/"+ nameBuild+ "_Haplo.g.vcf.gz.tbi",
+        i= "QC/"+nameBuild+ "_Pass.bed.gz.tbi",
         c= "Bam/"+ nameBuild+ "_final.cram.crai"
     output:
         "QC/"+ nameBuild+ "_AggQC"
@@ -277,6 +278,18 @@ rule Sam2USeq:
         "mv -f {nameBuild}_Pass.bed.gz QC/ && "
         "mv -f {nameBuild}_Fail.bed.gz QC/"
         
+# Tabix index all of the bed files
+rule BedTabix:
+    input:
+        "QC/"+nameBuild+ "_Pass.bed.gz"
+    output:
+        "QC/"+nameBuild+ "_Pass.bed.gz.tbi"
+    log:
+        "Logs/"+ nameBuild+ "_BedTabix.log"
+    shell:
+        "{java} {useq}/BedTabix -t {htsLib} -v QC/ &> {log}"
+
+
 # QC, Convert the uniOb read coverage track to something that will play nicely with IGV and the UCSC genome browsers
 rule USeq2UCSCBig:
     input:

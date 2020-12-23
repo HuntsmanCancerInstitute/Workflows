@@ -17,7 +17,7 @@ set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 #### Do just once ####
 
 # 1) Install Singularity (https://www.sylabs.io) or load via a module, place in your path
-module load singularity/3.5.1
+module load singularity/3.6.4
 
 # 2) Define a temporary directory physically on the node in which to copy over all the resources and job files.  This will be deleted and then recreated.
 tempDir=/scratch/local/TempDeleteMe_u0028003

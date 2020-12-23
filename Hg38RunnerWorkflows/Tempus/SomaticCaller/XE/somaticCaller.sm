@@ -1,5 +1,5 @@
 # Tumor - Normal Somatic Variant Calling Workflow 
-# 18 Feb 2020
+# 22 Dec 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -27,8 +27,8 @@ queryBedFileFilter = config["queryBedFileFilter"]
 
 # Apps in docker image
 useq = "/BioApps/USeq/Apps"
-strelka = "/BioApps/Strelka_2.9.3"
-manta = "/BioApps/Manta_1.4.0"
+strelka = "/BioApps/Strelka_2.9.10"
+manta = "/BioApps/Manta_1.6.0"
 htsLib = "/BioApps/HTSlib_1.3"
 java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
 

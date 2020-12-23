@@ -6,12 +6,11 @@
 
 set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 
-# 30 July 2020
+# 9 Nov 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
-# This fires the BamConcordance app from USeq to calculate sample concordance based on homozygous variants found present in bam files.  Use this with RNASeq and DNASeq datasets.
-
+# This fires the standard STAR-Fusion toolkit
 
 #### Do just once ####
 
@@ -25,15 +24,14 @@ myData=/scratch/general/pe-nfs1/u0028003
 # 3) Modify the workflow xxx.sing file setting the paths to the required resources. These must be within the mounts.
 
 # 4) Build the singularity container, and define the path to the xxx.sif file, do just once after each update.
-#singularity pull docker://hcibioinformatics/public:SnakeMakeBioApps_5
-container=/uufs/chpc.utah.edu/common/HIPAA/u0028003/HCINix/SingularityBuilds/public_SnakeMakeBioApps_5.sif
-
+# singularity pull docker://hcibioinformatics/public:StarFusion_1
+container=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/SingularityBuilds/public_StarFusion_1.sif
 
 #### Do for every run ####
 
-# 1) Create a folder named as you would like the analysis name to appear, this along with the genome build will be prepended onto all files, no spaces, change into it. This must reside in the mount paths.
+# 1) Create a folder named as you would like the analysis name to appear, this along with the genome build will be prepended onto all files, no spaces, change into it. This must reside somewhere in the myData mount path.
 
-# 2) Soft link all of your bam and matched bai files into the job directory.
+# 2) Soft link your two gzipped fastq RNASeq files into the job directory.
 
 # 3) Copy over the workflow docs: xxx.sing, xxx.README.sh, and xxx.sm into the job directory.
 
@@ -42,27 +40,27 @@ container=/uufs/chpc.utah.edu/common/HIPAA/u0028003/HCINix/SingularityBuilds/pub
 # 5) If the run fails, fix the issue and restart.  Snakemake should pick up where it left off.
 
 
-
 #### No need to modify anything below ####
 
 echo -e "\n---------- Starting -------- $((($(date +'%s') - $start)/60)) min"
 
-# Read out params
+# Read out params 
+shopt -s nullglob; fq=(*.gz)
+fq1=`realpath ${fq[0]}`
+fq2=`realpath ${fq[1]}`
 name=${PWD##*/}
-jobDir=`readlink -f .`
+jobDir=`realpath .`
 
-SINGULARITYENV_name=$name SINGULARITYENV_jobDir=$jobDir SINGULARITYENV_dataBundle=$dataBundle \
-singularity exec --containall --bind $dataBundle,$myData $container \
-bash $jobDir/*.sing
+SINGULARITYENV_name=$name SINGULARITYENV_jobDir=$jobDir SINGULARITYENV_fq1=$fq1 SINGULARITYENV_fq2=$fq2 SINGULARITYENV_dataBundle=$dataBundle \
+singularity exec --containall --bind $dataBundle,$myData $container bash $jobDir/*.sing
 
 echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min total"
 
+
 # Final cleanup
 mkdir -p RunScripts
-mv bamConcordance* RunScripts/
-mv -f *.log  Logs/ || true
+mv starFusion* RunScripts/
 mv -f slurm* Logs/ || true
 rm -rf .snakemake 
-rm -f FAILED STARTED DONE RESTART
+rm -f FAILED STARTED DONE RESTART*
 touch COMPLETE 
-

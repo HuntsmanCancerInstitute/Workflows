@@ -1,5 +1,5 @@
 # Bash script to run inside the container
-# 6 Aug 2019
+# 11 Dec 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -23,7 +23,7 @@ echo -n host"       : "; echo $(hostname); echo
 --snakefile *.sm \
 --config \
 genomeBuild=Hg38 \
-regionsForAnalysis=$dataBundle/Bed/AvatarMergedNimIdtBeds/hg38NimIdtMergedPad150bp.bed.gz \
+regionsForAnalysis=$dataBundle/Bed/AllExonHg38Bed8April2020/hg38AllGeneExonsPad175bp.bed.gz \
 indexFasta=$dataBundle/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
 queryDataDir=$dataBundle/GQuery/Data \
 queryIndexDir=$dataBundle/GQuery/Index \

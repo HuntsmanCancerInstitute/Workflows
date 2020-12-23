@@ -6,7 +6,7 @@
 
 set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 
-# 30 July 2020
+# 7 Dec 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -16,7 +16,7 @@ set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 #### Do just once ####
 
 # 1) Install Singularity (https://www.sylabs.io) or load via a module, place in your path
-module load singularity/3.5.1
+module load singularity/3.6.4
 
 # 2) Define file paths to "mount" in the container. The first is to the TNRunner data bundle downloaded and uncompressed from https://hci-bio-app.hci.utah.edu/gnomex/?analysisNumber=A5578 . The second is the path to your data.
 dataBundle=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner
@@ -25,9 +25,8 @@ myData=/scratch/general/pe-nfs1/u0028003
 # 3) Modify the workflow xxx.sing file setting the paths to the required resources. These must be within the mounts.
 
 # 4) Build the singularity container, and define the path to the xxx.sif file, do just once after each update.
-#singularity pull docker://hcibioinformatics/public:GatkPlus_2
-container=/uufs/chpc.utah.edu/common/HIPAA/u0028003/HCINix/SingularityBuilds/public_GatkPlus_2.sif
-
+#singularity pull docker://hcibioinformatics/public:GatkPlus_3
+container=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Containers/public_GatkPlus_3.sif
 
 #### Do for every run ####
 
@@ -64,9 +63,8 @@ echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min to
 # Final cleanup
 mkdir -p RunScripts
 mv -f copyAnalysis* RunScripts/
-mv -f *.log  Logs/ || true
 mv -f slurm* Logs/ || true
 rm -rf .snakemake 
-rm -f FAILED STARTED DONE RESTART
+rm -f FAILED STARTED DONE RESTART*
 touch COMPLETE 
 

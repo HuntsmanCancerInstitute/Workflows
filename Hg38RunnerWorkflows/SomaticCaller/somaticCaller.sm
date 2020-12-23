@@ -1,5 +1,5 @@
 # Tumor - Normal Somatic Variant Calling Workflow 
-# 18 Feb 2020
+# 22 Dec 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -21,14 +21,13 @@ indexFasta = config["indexFasta"]
 regions = config["regionsForAnalysis"]
 bpileup = config["bpileup"]
 queryDataDir = config["queryDataDir"]
-queryIndexDir = config["queryIndexDir"]
 queryVcfFileFilter = config["queryVcfFileFilter"]
 queryBedFileFilter = config["queryBedFileFilter"]
 
 # Apps in docker image
 useq = "/BioApps/USeq/Apps"
-strelka = "/BioApps/Strelka_2.9.3"
-manta = "/BioApps/Manta_1.4.0"
+strelka = "/BioApps/Strelka_2.9.10"
+manta = "/BioApps/Manta_1.6.0"
 htsLib = "/BioApps/HTSlib_1.3"
 java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
 
@@ -70,7 +69,7 @@ rule Manta:
     threads: 
         allThreads
     shell:
-        "rm -rf {output.dir} &>> {log} && "
+        "rm -rf {output.dir} &> {log} && "
         "source /BioApps/Miniconda3/bin/activate python2 &>> {log} && "
         "{manta}/bin/configManta.py --exome "
         "--normalBam={normalBam} --tumorBam={tumorBam} --referenceFasta={indexFasta} "
@@ -155,7 +154,7 @@ rule VCFCallFrequency:
         allThreads
     shell:
         "{java} {useq}/VCFCallFrequency -f {input.vcf} -s TempVCFCallFreq -v {queryVcfFileFilter} "
-        "-b {queryBedFileFilter}  -i {queryIndexDir} -d {queryDataDir} -m 0.075 &> {log} && "
+        "-b {queryBedFileFilter}  -d {queryDataDir} -m 0.075 &> {log} && "
         "mv -f TempVCFCallFreq/*.callFreq.vcf.gz {output} && rm -rf TempVCFCallFreq"
 
 # Find regions shared by the tumor and normal pass read coverage bed files, a relaxed estimate of 

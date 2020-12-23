@@ -1,0 +1,112 @@
+# Alignment and QC for RNASeq samples
+# 10 Nov 2020
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+############ No need to modify anything in this document #############
+
+# Base name to prepend on all files
+nameBuild = str(config["name"]) + "_Hg38"
+
+# Threads and memory
+allThreads = int(config["allThreads"])
+allRam = int(round(float(config["allRam"])))
+
+# Gzipped Fastq files
+fastqReadOne = config["fastqReadOne"]
+fastqReadTwo = config["fastqReadTwo"]
+
+# Apps in the docker container
+samtools       = "/usr/local/src/Samtools/1.11/bin/samtools"
+htslib         = "/usr/local/src/Htslib/1.11/bin"
+java           = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
+star           = "/usr/local/src/STAR-Fusion/STAR-Fusion"
+starGenLibDir  = config["starGenLibDir"]
+useq           = "/usr/local/src/USeq/Apps"
+
+# Use the SamAlignmentExtractor to pull alignments over the splice junctions 
+rule SamAlignmentExtractor:
+    input:
+        bam = nameBuild+ "_StarFusionOut/sortedAlign.bam",
+        bai = nameBuild+ "_StarFusionOut/sortedAlign.bam.bai",
+        bed = nameBuild+ ".sf.bed.gz"
+    output:
+        bam = "Visualizations/"+ nameBuild+ ".sf.bam",
+        bai = "Visualizations/"+ nameBuild+ ".sf.bai"
+    threads:
+        allThreads
+    log:
+        "Logs/"+ nameBuild+ "_SamAlignmentExtractor.log",
+    shell:
+        "{java} {useq}/SamAlignmentExtractor -x -w "
+        "-s {nameBuild}_SAE -b {input.bam} -r {input.bed} &> {log} && "
+        "mv {nameBuild}_SAE/*_passSAE.bam {output.bam} &>> {log} && "
+        "mv {nameBuild}_SAE/*_passSAE.bai {output.bai} &>> {log}  && "
+        "mkdir -p Visualizations Spreadsheets &>> {log} || true ; "
+        "mv -f {nameBuild}_StarFusionOut/*.tsv Spreadsheets/ &>> {log} || true ; "
+        "gzip Spreadsheets/*tsv &>> {log} || true ; "
+        "mv -f {nameBuild}_StarFusionOut/FusionInspector-validate Visualizations/{nameBuild}_FusionInspector &>> {log} || true ; "
+        "rm -rf Visualizations/{nameBuild}_FusionInspector/chckpts_dir/ Visualizations/{nameBuild}_FusionInspector/fi_workdir &>> {log} || true ; "
+        "zip -rq Visualizations/{nameBuild}_FusionInspector.zip Visualizations/{nameBuild}_FusionInspector &>> {log} || true ; "
+        "rm -rf Visualizations/{nameBuild}_FusionInspector {nameBuild}_SAE {nameBuild}_StarFusionOut || true ; "
+        "numFus=$(gunzip -c *.sf.bed.gz | wc -l) ; if [ $numFus = 2 ]; then rm -f *sf.bed*; fi ; "        
+
+# Run STAR-fusion to generate an RNASeq alignment optimized for fusions detection and annotated and filterd fusions
+# Python is a huge pain!
+rule StarFusion:
+    output:
+        bam = temp (nameBuild+ "_StarFusionOut/Aligned.out.bam"),
+        svg = nameBuild+ "_StarFusionOut/star-fusion.fusion_predictions.abridged.coding_effect.tsv"
+    threads:
+        allThreads
+    log:
+        "Logs/"+ nameBuild+ "_StarFusion.log",
+    shell:
+        "{star} --left_fq {fastqReadOne} --right_fq {fastqReadTwo} "
+        "--genome_lib_dir {starGenLibDir} -O {nameBuild}_StarFusionOut "
+        "--FusionInspector validate --examine_coding_effect "
+        "--denovo_reconstruct --CPU {threads} --extract_fusion_reads &> {log}"
+
+# Sort the star bam
+rule SamtoolsSort:
+    input:
+        nameBuild+ "_StarFusionOut/Aligned.out.bam"
+    output:
+        temp (nameBuild+ "_StarFusionOut/sortedAlign.bam")
+    threads:
+        allThreads
+    log:
+        "Logs/"+ nameBuild+ "_SamtoolsSort.log"
+    shell:
+        "{samtools} sort --threads {threads} -o {output} {input} &> {log}"
+                
+# Index the star bam
+rule SamtoolsIndex:
+    input:
+        nameBuild+ "_StarFusionOut/sortedAlign.bam"
+    output:
+        temp (nameBuild+ "_StarFusionOut/sortedAlign.bam.bai")
+    threads:
+        allThreads
+    log:
+        "Logs/"+ nameBuild+ "_SamtoolsIndex.log"
+    shell:
+        "{samtools} index -@ {threads} {input} &> {log}"
+
+# Parse the tsv file
+rule StarFusion2Bed:
+    input:
+        nameBuild+ "_StarFusionOut/star-fusion.fusion_predictions.abridged.coding_effect.tsv"
+    output:
+        nameBuild+ ".sf.bed.gz",
+        nameBuild+ ".sf.bed.gz.tbi"     
+    threads:
+        allThreads
+    log:
+        "Logs/"+ nameBuild+ "_StarFusion2Bed.log"
+    shell:
+        "{java} {useq}/StarFusion2Bed -s {input} -b {nameBuild}.sf.bed.gz &> {log} && "
+        "{java} {useq}/BedTabix -t {htslib} -v {nameBuild}.sf.bed.gz &>> {log}"
+
+onerror:
+    shell( "rm -f STARTED COMPLETE DONE; touch FAILED")
