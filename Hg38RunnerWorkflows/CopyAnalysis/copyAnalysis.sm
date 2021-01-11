@@ -1,5 +1,5 @@
 # GATK Copy Ratio Calling with USeq filtering
-# 20 April 2020
+# 7 Dec 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -27,7 +27,7 @@ geneTable = config["geneTable"]
 # Apps in the container
 java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
 useq = "/BioApps/USeq/Apps"
-ucsc = "/BioApps/UCSC_6Aug2018"
+ucsc = "/BioApps/UCSC/8Dec2020"
 htslib= "/BioApps/HTSlib/1.10.2/bin"
 
 ############# Rules ##############
@@ -39,7 +39,8 @@ rule OrganizeResults:
         "Results/"+ nameBuild+ ".normal.cr.bw",
         "Results/"+ nameBuild+ ".normal.af.bw",
         "ModelSegments/Plots/"+ nameBuild+ ".modeled.png",
-        "Results/"+nameBuild+ ".called.seg.xls"
+        "Results/"+nameBuild+ ".called.seg.xls",
+        "Results/"+nameBuild+ ".called.seg.pass.bed.gz.tbi"
     output:
         "DONE"
     shell:
@@ -287,6 +288,7 @@ rule GatkCalledSegmentAnnotator:
         nAf = nameBuild+ ".hets.normal.txt.gz"
     output:
         s = "Results/"+nameBuild+ ".called.anno.seg",
+        p = "Results/"+nameBuild+ ".called.seg.pass.bed",
         e = "Results/"+nameBuild+ ".called.seg.xls"
     threads:
         halfThreads
@@ -300,6 +302,17 @@ rule GatkCalledSegmentAnnotator:
         "{java} {useq}/GatkCalledSegmentAnnotator -r Results -s {input.seg} -t {input.tCr} "
         "-n {input.nCr} -u {input.tAf} -o {input.nAf} -x {params.max} -m "
         "{params.minR} -g {geneTable} -c {params.minT} &> {log} "
+
+# Tabix index all of the bed files
+rule BedTabix:
+    input:
+        "Results/"+nameBuild+ ".called.seg.pass.bed"
+    output:
+        "Results/"+nameBuild+ ".called.seg.pass.bed.gz.tbi"
+    log:
+        "Logs/"+ nameBuild+ "_BedTabix.log"
+    shell:
+        "{java} {useq}/BedTabix -t {htslib} -v Results/ &> {log}"
 
 
 onerror:

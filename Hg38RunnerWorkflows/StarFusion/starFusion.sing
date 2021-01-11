@@ -1,0 +1,36 @@
+# Bash script to run inside the container
+# 9 Nov 2020
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+set -e
+cd $jobDir
+
+# Read info
+allThreads=$(nproc)
+allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+
+# Print params
+echo -n jobDir"       : "; echo $jobDir
+echo -n name"         : "; echo $name
+echo -n dataBundle"   : "; echo $dataBundle
+echo -n threads"      : "; echo $allThreads
+echo -n ram"          : "; echo $allRam
+echo -n host"         : "; echo $(hostname)
+echo -n fastqReadOne" : "; echo $fq1
+echo -n fastqReadTwo" : "; echo $fq2; echo
+
+snakemake -p -T --cores $allThreads \
+--snakefile *.sm \
+--config \
+fastqReadOne=$fq1 \
+fastqReadTwo=$fq2 \
+starGenLibDir=$dataBundle/StarFusion/Version33/GRCh38_gencode_v33_CTAT_lib_Apr062020.plug-n-play/ctat_genome_lib_build_dir/ \
+name=$name \
+allThreads=$allThreads \
+allRam=$allRam
+
+
+# Replace first and last lines above with the following to get dag svg graph
+	# /BioApps/Miniconda3/bin/snakemake --dag \
+	# allRam=$allRam | dot -Tsvg > $name"_dag.svg"

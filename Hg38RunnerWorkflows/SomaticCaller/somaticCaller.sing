@@ -1,5 +1,5 @@
 # Bash script to run inside the container
-# 19 Feb 2020
+# 10 Dec 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -32,11 +32,10 @@ echo -n normalBed"  : "; echo $normalBed; echo
 --config \
 allThreads=$allThreads \
 allRam=$allRam \
-regionsForAnalysis=$dataBundle/Bed/AvatarMergedNimIdtBeds/hg38NimIdtMergedPad150bp.bed.gz \
+regionsForAnalysis=$dataBundle/Bed/hg38StdChromLengths.bed.gz \
 indexFasta=$dataBundle/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
-bpileup=$dataBundle/MpileupBkg/Hg38AvatarBkgnd/AvatarHA1.bp.txt.gz \
+bpileup=$dataBundle//MpileupBkg/Hg38AvatarBkgnd/Idt/avatarIdt.bp.txt.gz \
 queryDataDir=$dataBundle/GQuery/Data \
-queryIndexDir=$dataBundle/GQuery/Index \
 queryVcfFileFilter=Hg38/Somatic/Avatar/Vcf \
 queryBedFileFilter=Hg38/Somatic/Avatar/Bed \
 tumorBam=$tumorBam \

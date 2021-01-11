@@ -1,5 +1,5 @@
 # Bash script to run inside the container
-# 7 February 2019
+# 9 Dec 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -25,7 +25,7 @@ echo -n bam"          : "; echo $bam
 --cores $allThreads \
 --snakefile *.sm \
 --config \
-regionsForReadCoverage=$dataBundle/Bed/Foundation/hg38FoundationMergedCdxHemeOnePad50bp.bed.gz \
+regionsForReadCoverage=$dataBundle/Bed/Foundation/foundationOne_CDxHemeLiquid_CCDS_SharedCodingExons_9Dec2020.bed.gz \
 regionsForOnTarget=$dataBundle/Bed/Foundation/hg38FoundationMergedCdxHemeOnePad50bp.bed.gz \
 indexFasta=$dataBundle/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
 dbsnp=$dataBundle/Vcfs/dbsnp_146.hg38.vcf.gz \

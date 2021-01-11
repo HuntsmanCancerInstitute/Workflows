@@ -1,4 +1,4 @@
-# 19 Feb 2020
+# 10 Dec 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -17,17 +17,16 @@ tumorBam = config["tumorBam"]
 normalBam = config["normalBam"]
 indexFasta = config["indexFasta"]
 dbsnp = config["dbsnp"]
-regions = config["regionsForAnalysis"]
 bpileup = config["bpileup"]
 queryDataDir = config["queryDataDir"]
-queryIndexDir = config["queryIndexDir"]
 queryVcfFileFilter = config["queryVcfFileFilter"]
 queryBedFileFilter = config["queryBedFileFilter"]
 
 # Apps in docker image
 useq = "/BioApps/USeq/Apps"
-strelka = "/BioApps/Strelka_2.9.3"
-manta = "/BioApps/Manta_1.4.0"
+strelka = "/BioApps/Strelka_2.9.10"
+manta = "/BioApps/Manta_1.6.0"
+
 htsLib = "/BioApps/HTSlib_1.3"
 java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
 
@@ -92,7 +91,7 @@ rule Strelka:
         "rm -rf {output.dir} && source /BioApps/Miniconda3/bin/activate python2 &&"
         "{strelka}/bin/configureStrelkaSomaticWorkflow.py --exome --outputCallableRegions "
         "--normalBam={normalBam} --tumorBam={tumorBam} --referenceFasta={indexFasta} "
-        "--indelCandidates={input} --callRegions={regions} --runDir={output.dir} &> {log} && "
+        "--indelCandidates={input} --runDir={output.dir} &> {log} && "
         "{output.dir}/runWorkflow.py -m local -g {allRam} -j {threads} "
         "--quiet &>> {log} && source /BioApps/Miniconda3/bin/deactivate && "
         "mv {output.dir}/results/regions/somatic.callable.regions.bed.gz Bed/{nameBuild}_StrelkaCallableRegion.bed.gz && "
@@ -153,9 +152,8 @@ rule VCFCallFrequency:
         allThreads
     shell:
         "{java} {useq}/VCFCallFrequency -f {input.vcf} -s TempVCFCallFreq -v {queryVcfFileFilter} "
-        "-b {queryBedFileFilter}  -i {queryIndexDir} -d {queryDataDir} -m 0.075 &> {log} && "
+        "-b {queryBedFileFilter}  -d {queryDataDir} -m 0.075 &> {log} && "
         "mv -f TempVCFCallFreq/*.callFreq.vcf.gz {output} && rm -rf TempVCFCallFreq"
-
 
 onerror:
     shell( "rm -f STARTED COMPLETE; touch FAILED")

@@ -7,7 +7,7 @@
 set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 echo -e "\n---------- Starting -------- $((($(date +'%s') - $start)/60)) min"
 
-# 17 Aug 2020
+# 3 Nov 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -79,8 +79,9 @@ gSnp=$dataBundle/Vcfs/1000G_phase1.snps.high_confidence.hg38.vcf.gz \
 gIndel=$dataBundle/Vcfs/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz \
 useq=$dataBundle/BioApps/USeq/Apps \
 ucsc=$dataBundle/BioApps/UCSC/ \
+htslib=$dataBundle/BioApps/HTSlib/1.10.2/bin \
 useqSamAlignmentExtractor="-q 20 -a 0.65 -d -f -u" \
-useqSam2USeq="-v Hg38 -x 500 -r -w sam2USeq.config.txt" \
+useqSam2USeq="-v Hg38 -x 2500 -r -w sam2USeq.config.txt" \
 name=$name \
 fastqReadOne=$fq1 \
 fastqReadTwo=$fq2 \
@@ -100,7 +101,7 @@ mv -f slurm* Logs/ || true
 
 # Notes
 ## regionsForOnTarget - bgzipped bed file of regions to use in calculating on target capture rates, use chrXXXX naming. See bgzip and tabix from https://github.com/samtools/htslib .
-## regionsForReadCoverage - bgzipped bed file of regions to use in calculating unique observation read coverage uniformity metrics, ditto. Typically the prior +/- 150bp
+## regionsForReadCoverage - bgzipped bed file of regions to use in calculating unique observation read coverage uniformity metrics, ditto.
 ## indexFasta - the BWA mem fasta file with all the associated index files including xxx.fa.fai and xxx.dict files, see https://github.com/lh3/bwa/tree/master/bwakit
 ## gIndels - a bgzipped and tabix indexed vcf file of trusted indels from the 1000 Genomes project Hg38GATKBundle, see https://software.broadinstitute.org/gatk/download/bundle
 ## gSnps - ditto, 1000G high confidence snps from the Hg38 GATKBundle
