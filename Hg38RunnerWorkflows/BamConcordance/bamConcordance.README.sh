@@ -6,7 +6,7 @@
 
 set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 
-# 30 July 2020
+# 19 Feb 2021
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -26,8 +26,7 @@ myData=/scratch/general/pe-nfs1/u0028003
 
 # 4) Build the singularity container, and define the path to the xxx.sif file, do just once after each update.
 #singularity pull docker://hcibioinformatics/public:SnakeMakeBioApps_5
-container=/uufs/chpc.utah.edu/common/HIPAA/u0028003/HCINix/SingularityBuilds/public_SnakeMakeBioApps_5.sif
-
+container=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Containers/public_SnakeMakeBioApps_5.sif
 
 #### Do for every run ####
 

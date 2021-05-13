@@ -6,11 +6,11 @@
 
 set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 
-# 13 December 2019
+# 30 July 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
-# This workflow converts a Tempus json file to vcf, Crossmaps it to Hg38, and merges it with a recalled somatic variant vcf.
+# This fires a variety of apps that annotate a vcf with functional effect info using SnpEff, dbNSFP, ClinVar, and the VCFSpliceScanner.  It also generates a filtered vcf based on these annotations.
 
 
 #### Do just once ####
@@ -18,7 +18,7 @@ set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 # 1) Install Singularity (https://www.sylabs.io) or load via a module, place in your path
 module load singularity/3.6.4
 
-# 2) Define file paths to "mount" in the container. The first is to the TNRunner data bundle downloaded and uncompressed from https://hci-bio-app.hci.utah.edu/gnomex/gnomexFlex.jsp?analysisNumber=A5578 . The second is the path to your data.
+# 2) Define file paths to "mount" in the container. The first is to the TNRunner data bundle downloaded and uncompressed from https://hci-bio-app.hci.utah.edu/gnomex/?analysisNumber=A5578 . The second is the path to your data.
 dataBundle=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner
 myData=/scratch/general/pe-nfs1/u0028003
 
@@ -28,25 +28,29 @@ myData=/scratch/general/pe-nfs1/u0028003
 #singularity pull docker://hcibioinformatics/public:SnakeMakeBioApps_5
 container=/uufs/chpc.utah.edu/common/HIPAA/u0028003/HCINix/SingularityBuilds/public_SnakeMakeBioApps_5.sif
 
+# 5) Create a file called annotatedVcfParser.config.txt and provide params for the USeq AnnotatedVcfParser application, e.g. '-d 10 -m 0.2 -x 1 -p 0.01 -g D5S,D3S -n 5 -a HIGH -c Pathogenic,Likely_pathogenic -o -e Benign,Likely_benign' for germline or '-d 20 -f' for somatic.
+
+
 
 #### Do for every run ####
 
 # 1) Create a folder named as you would like the analysis name to appear, this along with the genome build will be prepended onto all files, no spaces, change into it. This must reside somewhere in the myData mount path.
 
-# 2) Soft link or move your TL-xxx.json and recalled somatic variant xxx.vcf.gz files into the job directory.
+# 2) Copy or soft link your gzipped vcf file to annotate into the job directory naming it anything ending in .vcf.gz
 
-# 3) Copy over the workflow docs: xxx.sing, xxx.README.sh, and xxx.sm into the job directory.
+# 3) Copy over the Annotator workflow docs: xxx.sing, xxx.README.sh, and xxx.sm as well as the annotatedVcfParser.config.txt into the job directory.
 
-# 4) Launch the xxx.README.sh via sbatch or run it on your local server.  
+# 4) Launch the xxx.README.sh via slurm's sbatch or run it on your local server.  
 
 # 5) If the run fails, fix the issue and restart.  Snakemake should pick up where it left off.
+
 
 
 #### No need to modify anything below ####
 
 echo -e "\n---------- Starting -------- $((($(date +'%s') - $start)/60)) min"
 
-# Read out params 
+# Read out params
 name=${PWD##*/}
 jobDir=`readlink -f .`
 
@@ -56,10 +60,9 @@ bash $jobDir/*.sing
 
 echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min total"
 
-
 # Final cleanup
 mkdir -p RunScripts
-mv tempusVcf* RunScripts/
+mv annotator* RunScripts/
 mv -f slurm* Logs/ || true
 rm -rf .snakemake 
 rm -f FAILED STARTED DONE RESTARTED

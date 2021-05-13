@@ -7,7 +7,7 @@
 set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 
 # 19 Feb 2020
-# David.Nix@Hci.Utah.Edu
+# David.Nix@hci.utah.edu
 # Huntsman Cancer Institute
 
 # This fires the BamConcordance app from USeq to calculate sample concordance based on homozygous variants found present in bam files.  Use this with RNASeq and DNASeq datasets.

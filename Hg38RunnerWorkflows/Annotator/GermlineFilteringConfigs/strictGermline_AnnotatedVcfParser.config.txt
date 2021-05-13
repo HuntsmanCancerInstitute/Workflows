@@ -1,0 +1,1 @@
+-d 20 -m 0.1 -q 0.1 -p 0.01 -g D5S,D3S -n 4.4 -a HIGH -l -c Pathogenic,Likely_pathogenic,Conflicting_interpretations_of_pathogenicity,Drug_response -t 0.51 -e Benign,Likely_benign -o -b 0.1 -z 3 -u RYR1

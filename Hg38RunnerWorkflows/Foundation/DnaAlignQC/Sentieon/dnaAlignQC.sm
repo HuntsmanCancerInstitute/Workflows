@@ -1,5 +1,5 @@
 # Hg38 Exome Alignment and QC Workflow 
-# 13 May 2021
+# 7 Jan 2021
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -13,14 +13,14 @@ allThreads = int(config["allThreads"])
 halfThreads = int(round(allThreads/2,0))
 allRam = int(round(float(config["allRam"])))
 
-# Gzipped Fastq files
-fastqReadOne = config["fastqReadOne"]
-fastqReadTwo = config["fastqReadTwo"]
+# Bam File
+bam = config["bam"]
 
 # Resources
 regionsForReadCoverage = config["regionsForReadCoverage"]
 regionsForOnTarget = config["regionsForOnTarget"]
 indexFasta = config["indexFasta"]
+indexFastaB37 = config["indexFastaB37"]
 gSnp = config["gSnp"]
 gIndel = config["gIndel"]
 dbsnp = config["dbsnp"]
@@ -40,37 +40,39 @@ htslib = config["htslib"]
 # Workflow trigger, pulls info from the json files into xls and html reports
 rule AggregateQCStats:
     input:
-        g=  nameBuild+ "_checkGzipFiles.complete",
         f= "Json/"+nameBuild+ "_FastqCount.json.gz",
         s= "Json/"+nameBuild+ "_SamAlignmentExtractor.json.gz",
         m= "Json/"+nameBuild+ "_MergePairedAlignments.json.gz",
         u= "Json/"+nameBuild+ "_Sam2USeq.json.gz",
         w= "QC/"+ nameBuild+ "_uniObReadCov.bw",
-        v= "Vcfs/"+ nameBuild+ "_Haplo.g.vcf.gz",
         d= "Json/"+ nameBuild+ "_RemoveDuplicates.json.gz",
         c= "Bam/"+ nameBuild+ "_final.cram.crai",
         t= "QC/"+ nameBuild+ "_Pass.bed.gz.tbi" 
     output:
-        d= directory( "QC/"+ nameBuild+ "_AggQC" ),
-        c= "COMPLETE"
+        directory( "QC/"+ nameBuild+ "_AggQC" )
     log:
         "Logs/"+ nameBuild+ "_AggregateQCStats.log",
     shell:
-        "{java} {useq}/AggregateQCStats -j Json -r {output.d} -p {nameBuild}_ &> {log} && "
-        "touch {output.c} && sleep 5s && "
-        "rm -rf *_dupFree.ba* *_sae.ba* *_unfiltered.ba* *_raw.bam *_MPA *_uniObReadCov.useq && "
-        "ls -1"
+        "{java} {useq}/AggregateQCStats -j Json -r {output} -p {nameBuild}_ &> {log} && "
+        "touch COMPLETE && "
+        "rm -rf *_dupFree.ba* *_sae.ba* *_unfiltered.ba* *_raw.bam *_MPA *_uniObReadCov.useq " 
         
 ############# Fastq and resources check ##############
 
-# Uses gunzip -t to check the integrity of the xxx.gz files in the working directory
-rule CheckGzipFiles:
+rule Sam2Fastq:
     output:
-        temp( nameBuild+ "_checkGzipFiles.complete")
+        f1 = temp (nameBuild+ "_1.fastq.gz"),
+        f2 = temp (nameBuild+ "_2.fastq.gz")
     log:
-        "Logs/"+ nameBuild+ "_CheckGzipFiles.log"
+        "Logs/"+ nameBuild+ "_Sam2Fastq.log"
+    threads:
+        allThreads
     shell:
-        "gunzip -tv {fastqReadOne} {fastqReadTwo} &> {log} && touch {output}"
+        "rm -f nameSorted.temp.bam && "
+        "samtools sort --threads {threads} -n -o nameSorted.temp.bam {bam} &> {log} && "
+        "samtools fastq --threads {threads} --reference {indexFastaB37} -1 {output.f1} "
+        "-2 {output.f2} -0 /dev/null -s /dev/null -n nameSorted.temp.bam &>> {log} && "
+        "rm -f nameSorted.temp.bam &>> {log} "
 
 # Count the number of fastq records
 rule CountFastq:
@@ -89,6 +91,9 @@ rule CountFastq:
 
 # Align to Hg38 with bwa mem and sort                                                                                                 
 rule AlignHg38:
+    input:
+        f1 = nameBuild+ "_1.fastq.gz",
+        f2 = nameBuild+ "_2.fastq.gz"
     output:
         bam = temp (nameBuild+ "_sorted.bam"),
         bai = temp (nameBuild+ "_sorted.bam.bai")
@@ -100,8 +105,8 @@ rule AlignHg38:
         allThreads
     shell:
         "rm -f {log} && "
-        "sentieon bwa mem -M -R {params.rg} -t {threads} -K 10000000 {indexFasta} {fastqReadOne} "
-        "{fastqReadTwo} 2>> {log} | sentieon util sort -r {indexFasta} -o {output.bam} -t {threads} --sam2bam -i - 2>> {log}"
+        "sentieon bwa mem -M -R {params.rg} -t {threads} -K 10000000 {indexFasta} {input.f2} "
+        "{input.f1} 2>> {log} | sentieon util sort -r {indexFasta} -o {output.bam} -t {threads} --sam2bam -i - 2>> {log}"
 
 # Use the SamAlignmentExtractor to remove poor quality alignments 
 rule SamAlignmentExtractor:
@@ -124,7 +129,7 @@ rule SamAlignmentExtractor:
         "mv {nameBuild}_SAE/*_passSAE.bai {output.bai} &>> {log} && "
         "rm -rf {nameBuild}_SAE"
         
-# Remove duplicates, set --optical_dup_pix_dist to 100 for HiSeq, and 2500 for NovaSeq
+# Remove duplicates
 rule RemoveDuplicates:
     input:
         bam = nameBuild+ "_sae.bam",
@@ -140,7 +145,7 @@ rule RemoveDuplicates:
     shell:
         "sentieon driver -t {threads} -i {input.bam} --algo LocusCollector --fun score_info score.txt &> {log} && "
         "sentieon driver -t {threads} -i {input.bam} --algo Dedup --rmdup --score_info score.txt "
-        "--optical_dup_pix_dist 100 --metrics {output.metrics} {output.bam} &>> {log} && "
+        "--metrics {output.metrics} {output.bam} &>> {log} && "
         "rm -f score.txt* "
 
 # Parse fraction duplicates into json
@@ -194,20 +199,6 @@ rule RecalibrateBases:
         "{output.bam} &>> {log} && "
         "mv Bam/{nameBuild}_final.bam.bai {output.bai} &>> {log} && rm -f recal_data.table* "
 
-# Run the Haplotype caller, needed for germline, not so much for somatic        
-rule HaplotypeCaller:
-    input:
-        bam = "Bam/"+ nameBuild+ "_final.bam",
-        bai = "Bam/"+ nameBuild+ "_final.bai"
-    output:
-        "Vcfs/"+ nameBuild+ "_Haplo.g.vcf.gz"
-    log:
-        "Logs/"+ nameBuild+ "_HaplotypeCaller.log"
-    threads: 
-        allThreads
-    shell:
-        "sentieon driver -r {indexFasta} -t {threads} -i {input.bam} --algo Haplotyper "
-        "--emit_mode gvcf {output} &> {log} && rm -f Vcfs/*idx"
 
 # Converts the bam to cram and then indexes the cram with samtools, must use 1.8, 1.9 is broken for cram conversion
 rule Bam2Cram:
@@ -288,5 +279,5 @@ rule USeq2UCSCBig:
         "mv -f {nameBuild}_uniObReadCov.bw {output} " 
 
 onerror:
-    shell( "rm -f STARTED COMPLETE DONE RESTART QUEUED; touch FAILED; echo shell_onerror_found")
+    shell( "rm -f STARTED COMPLETE; touch FAILED")
 

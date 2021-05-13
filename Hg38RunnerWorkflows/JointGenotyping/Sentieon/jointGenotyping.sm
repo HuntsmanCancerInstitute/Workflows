@@ -49,7 +49,7 @@ rule JointGenotypeVCFParser:
     input:
         nameBuild+ ".vcf.gz"
     output:
-        nameBuild+"_GenotypedVcfs"
+        directory(nameBuild+"_GenotypedVcfs")
     threads:
         halfThreads
     log:
@@ -70,12 +70,12 @@ rule GenotypeGVCFs:
     threads:
         allThreads
     shell:
-        "rm -rf /scratch/local/$USER/$SLURM_JOB_ID &> {log} && "
-        "mkdir -p /scratch/local/$USER/$SLURM_JOB_ID &>> {log} && "
+        "rm -rf /scratch/local/$USER/$SLURM_JOB_ID || true; "
+        "mkdir -p /scratch/local/$USER/$SLURM_JOB_ID || true; "
         "sentieon driver --temp_dir /scratch/local/$USER/$SLURM_JOB_ID -r {indexFasta} "
         "--interval {regionsForAnalysis} -t {threads} "
         "--algo GVCFtyper {output.vcf} ToGenotype/*.g.vcf.gz &>> {log} && "
-        "rm -rf /scratch/local/$USER/$SLURM_JOB_ID &>> {log} "
+        "rm -rf /scratch/local/$USER/$SLURM_JOB_ID || true &>> {log} "
 
 # Decompose the genotyped vcf with Vt
 rule VtDecompose:

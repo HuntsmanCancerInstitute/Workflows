@@ -22,10 +22,13 @@ echo -n host"       : "; echo $(hostname); echo
 --cores $allThreads \
 --snakefile *.sm \
 --config \
-regionsForAnalysis=$dataBundle/Bed/AllExonHg38Bed8April2020/hg38AllGeneExonsPad175bp.bed.gz \
+genomeBuild=Hg38 \
 indexFasta=$dataBundle/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
-dbsnp=$dataBundle/Bed/dbSNP_151.hg38Pad0bpG5.bed.gz \
+dataDir=$dataBundle/AnnotatorData \
+annoVcfParser="-m 0.05 -y annotatedVcfParser.config.txt" \
+regionsOfInterest=$dataBundle/Indexes/Star/Hg38/Gencode/gencode.v28.acmgExonsPad150bp.bed.gz \
 name=$name \
+vcf=$(ls *vcf.gz) \
 allThreads=$allThreads \
 allRam=$allRam
 

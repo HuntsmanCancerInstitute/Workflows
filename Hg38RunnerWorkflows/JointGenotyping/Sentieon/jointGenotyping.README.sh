@@ -6,7 +6,7 @@
 
 set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 
-# 14 Dec 2020
+# 11 May 2021
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -17,7 +17,7 @@ set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 
 # 1) Install and load sentieon and snakemake in your path, as modules
 module use /uufs/chpc.utah.edu/common/PE/proj_UCGD/modulefiles/$UUFSCELL &> /dev/null
-module load sentieon/201911.00 &> /dev/null
+module load sentieon/202010.02 &> /dev/null
 module load snakemake/5.6.0 &> /dev/null
 
 # 2) Define file path to the TNRunner data bundle downloaded and uncompressed from https://hci-bio-app.hci.utah.edu/gnomex/?analysisNumber=A5578 .

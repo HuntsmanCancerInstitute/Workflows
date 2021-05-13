@@ -6,11 +6,11 @@
 
 set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 
-# 30 July 2020
+# 13 May 2021
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
-# This fires a variety of apps that annotate a vcf with functional effect info using SnpEff, dbNSFP, ClinVar, and the VCFSpliceScanner.  It also generates a filtered vcf based on these annotations.
+# This fires a variety of apps that annotate a vcf with functional effect info using SnpEff 5.0e, ExAC AFs, ClinVar, and the VCFSpliceScanner.  It also generates a filtered vcf based on these annotations.
 
 
 #### Do just once ####
@@ -25,10 +25,10 @@ myData=/scratch/general/pe-nfs1/u0028003
 # 3) Modify the workflow xxx.sing file setting the paths to the required resources. These must be within the mounts.
 
 # 4) Build the singularity container, and define the path to the xxx.sif file, do just once after each update.
-#singularity pull docker://hcibioinformatics/public:SnakeMakeBioApps_5
-container=/uufs/chpc.utah.edu/common/HIPAA/u0028003/HCINix/SingularityBuilds/public_SnakeMakeBioApps_5.sif
+#singularity pull docker://hcibioinformatics/public:SnakeMakeBioApps_6
+container=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Containers/public_SnakeMakeBioApps_6.sif
 
-# 5) Create a file called annotatedVcfParser.config.txt and provide params for the USeq AnnotatedVcfParser application, e.g. '-d 10 -m 0.2 -x 1 -p 0.01 -g D5S,D3S -n 5 -a HIGH -c Pathogenic,Likely_pathogenic -o -e Benign,Likely_benign' for germline or '-d 20 -f' for somatic.
+# 5) Create a file called annotatedVcfParser.config.txt and provide params for the USeq AnnotatedVcfParser application, e.g. '-d 20 -m 0.1 -q 0.1 -p 0.01 -g D5S,D3S -n 4.4 -a HIGH -l -c Pathogenic,Likely_pathogenic,Conflicting_interpretations_of_pathogenicity,Drug_response -t 0.51 -e Benign,Likely_benign -o -b 0.1 -z 3 -u RYR1' for strict germline or '-d 20 -f' for somatic.
 
 
 
@@ -62,7 +62,7 @@ echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min to
 
 # Final cleanup
 mkdir -p RunScripts
-mv annotator* RunScripts/
+mv annotat* RunScripts/
 mv -f slurm* Logs/ || true
 rm -rf .snakemake 
 rm -f FAILED STARTED DONE RESTARTED

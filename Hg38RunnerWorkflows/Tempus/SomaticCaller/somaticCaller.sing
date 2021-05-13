@@ -26,6 +26,9 @@ echo -n normalBam"  : "; echo $normalBam
 echo -n tumorBed"   : "; echo $tumorBed
 echo -n normalBed"  : "; echo $normalBed; echo
 
+# Make sure required files are present
+ls $tumorBam $normalBam $tumorBed $normalBed > /dev/null
+
 /BioApps/Miniconda3/bin/snakemake -p -T \
 --cores $allThreads \
 --snakefile *.sm \
@@ -36,8 +39,8 @@ regionsForAnalysis=$dataBundle/Bed/hg38StdChromLengths.bed.gz \
 indexFasta=$dataBundle/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
 bpileup=$dataBundle//MpileupBkg/Hg38AvatarBkgnd/Idt/avatarIdt.bp.txt.gz \
 queryDataDir=$dataBundle/GQuery/Data \
-queryVcfFileFilter=Hg38/Somatic/Avatar/Vcf \
-queryBedFileFilter=Hg38/Somatic/Avatar/Bed \
+queryVcfFileFilter=Hg38/Somatic/Tempus/Vcf \
+queryBedFileFilter=Hg38/Somatic/Tempus/Bed \
 tumorBam=$tumorBam \
 normalBam=$normalBam \
 tumorBed=$tumorBed \
@@ -47,10 +50,10 @@ name=$name \
 minTumorAlignmentDepth=20 \
 minNormalAlignmentDepth=15 \
 minTumorAltCount=3 \
-minTumorAF=0.05 \
+minTumorAF=0.01 \
 maxNormalAF=0.05 \
 minTNRatio=3 \
-minTNDiff=0.05 \
+minTNDiff=0.01 \
 fdrTier=1 \
 minBKZ=3 
 

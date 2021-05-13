@@ -1,5 +1,5 @@
 # Bash script to run inside the container
-# 23 January 2019
+# 21 April 2021
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -26,7 +26,7 @@ genomeBuild=Hg38 \
 indexFasta=$dataBundle/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
 dataDir=$dataBundle/AnnotatorData \
 annoVcfParser="-m 0.05 -y annotatedVcfParser.config.txt" \
-regionsOfInterest=$dataBundle/Indexes/Star/Hg38/Gencode/gencode.v28.acmgExonsPad150bp.bed.gz \
+regionsOfInterest=$dataBundle/Bed/ACMG/hg38ACMGPlusPatho21Apr2021.bed.gz \
 name=$name \
 vcf=$(ls *vcf.gz) \
 allThreads=$allThreads \

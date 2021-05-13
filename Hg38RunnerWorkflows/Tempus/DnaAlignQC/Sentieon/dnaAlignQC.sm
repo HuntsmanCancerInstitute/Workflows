@@ -1,5 +1,5 @@
 # Hg38 Exome Alignment and QC Workflow 
-# 13 May 2021
+# 18 Aug 2020
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -33,7 +33,6 @@ useqSam2USeq = config["useqSam2USeq"]
 java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
 useq = config["useq"]
 ucsc = config["ucsc"]
-htslib = config["htslib"]
 
 ############# Rules ##############
 
@@ -48,18 +47,15 @@ rule AggregateQCStats:
         w= "QC/"+ nameBuild+ "_uniObReadCov.bw",
         v= "Vcfs/"+ nameBuild+ "_Haplo.g.vcf.gz",
         d= "Json/"+ nameBuild+ "_RemoveDuplicates.json.gz",
-        c= "Bam/"+ nameBuild+ "_final.cram.crai",
-        t= "QC/"+ nameBuild+ "_Pass.bed.gz.tbi" 
+        c= "Bam/"+ nameBuild+ "_final.cram.crai"
     output:
-        d= directory( "QC/"+ nameBuild+ "_AggQC" ),
-        c= "COMPLETE"
+        directory( "QC/"+ nameBuild+ "_AggQC" )
     log:
         "Logs/"+ nameBuild+ "_AggregateQCStats.log",
     shell:
-        "{java} {useq}/AggregateQCStats -j Json -r {output.d} -p {nameBuild}_ &> {log} && "
-        "touch {output.c} && sleep 5s && "
-        "rm -rf *_dupFree.ba* *_sae.ba* *_unfiltered.ba* *_raw.bam *_MPA *_uniObReadCov.useq && "
-        "ls -1"
+        "{java} {useq}/AggregateQCStats -j Json -r {output} -p {nameBuild}_ &> {log} && "
+        "touch COMPLETE && "
+        "rm -rf *_dupFree.ba* *_sae.ba* *_unfiltered.ba* *_raw.bam *_MPA *_uniObReadCov.useq " 
         
 ############# Fastq and resources check ##############
 
@@ -124,7 +120,7 @@ rule SamAlignmentExtractor:
         "mv {nameBuild}_SAE/*_passSAE.bai {output.bai} &>> {log} && "
         "rm -rf {nameBuild}_SAE"
         
-# Remove duplicates, set --optical_dup_pix_dist to 100 for HiSeq, and 2500 for NovaSeq
+# Remove duplicates
 rule RemoveDuplicates:
     input:
         bam = nameBuild+ "_sae.bam",
@@ -140,7 +136,7 @@ rule RemoveDuplicates:
     shell:
         "sentieon driver -t {threads} -i {input.bam} --algo LocusCollector --fun score_info score.txt &> {log} && "
         "sentieon driver -t {threads} -i {input.bam} --algo Dedup --rmdup --score_info score.txt "
-        "--optical_dup_pix_dist 100 --metrics {output.metrics} {output.bam} &>> {log} && "
+        "--metrics {output.metrics} {output.bam} &>> {log} && "
         "rm -f score.txt* "
 
 # Parse fraction duplicates into json
@@ -262,17 +258,6 @@ rule Sam2USeq:
         "cp {input.mpa}/*useq {output.useq} &>> {log} && "
         "mv -f {nameBuild}_Pass.bed.gz QC/ && "
         "mv -f {nameBuild}_Fail.bed.gz QC/"
-
-# Tabix index all of the bed files
-rule BedTabix:
-    input:
-        "QC/"+nameBuild+ "_Pass.bed.gz"
-    output:
-        "QC/"+nameBuild+ "_Pass.bed.gz.tbi"
-    log:
-        "Logs/"+ nameBuild+ "_BedTabix.log"
-    shell:
-        "{java} {useq}/BedTabix -t {htslib} -v QC/ &> {log}"
         
 # QC, Convert the uniOb read coverage track to something that will play nicely with IGV and the UCSC genome browsers
 rule USeq2UCSCBig:
@@ -288,5 +273,5 @@ rule USeq2UCSCBig:
         "mv -f {nameBuild}_uniObReadCov.bw {output} " 
 
 onerror:
-    shell( "rm -f STARTED COMPLETE DONE RESTART QUEUED; touch FAILED; echo shell_onerror_found")
+    shell( "rm -f STARTED COMPLETE; touch FAILED")
 

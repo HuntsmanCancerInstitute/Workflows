@@ -1,5 +1,5 @@
 # Hg38 Exome Alignment and QC Workflow 
-# 13 May 2021
+# 8 Feb 2021
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -51,15 +51,13 @@ rule AggregateQCStats:
         c= "Bam/"+ nameBuild+ "_final.cram.crai",
         t= "QC/"+ nameBuild+ "_Pass.bed.gz.tbi" 
     output:
-        d= directory( "QC/"+ nameBuild+ "_AggQC" ),
-        c= "COMPLETE"
+        directory( "QC/"+ nameBuild+ "_AggQC" )
     log:
         "Logs/"+ nameBuild+ "_AggregateQCStats.log",
     shell:
-        "{java} {useq}/AggregateQCStats -j Json -r {output.d} -p {nameBuild}_ &> {log} && "
-        "touch {output.c} && sleep 5s && "
-        "rm -rf *_dupFree.ba* *_sae.ba* *_unfiltered.ba* *_raw.bam *_MPA *_uniObReadCov.useq && "
-        "ls -1"
+        "{java} {useq}/AggregateQCStats -j Json -r {output} -p {nameBuild}_ &> {log} && "
+        "touch COMPLETE && "
+        "rm -rf *_dupFree.ba* *_sae.ba* *_unfiltered.ba* *_raw.bam *_MPA *_uniObReadCov.useq " 
         
 ############# Fastq and resources check ##############
 
@@ -288,5 +286,5 @@ rule USeq2UCSCBig:
         "mv -f {nameBuild}_uniObReadCov.bw {output} " 
 
 onerror:
-    shell( "rm -f STARTED COMPLETE DONE RESTART QUEUED; touch FAILED; echo shell_onerror_found")
+    shell( "rm -f STARTED COMPLETE; touch FAILED")
 
