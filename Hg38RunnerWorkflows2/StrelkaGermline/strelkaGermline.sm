@@ -1,0 +1,116 @@
+# Joint Genotyping of Haplotype called gVCFs
+# 9 Sept 2021
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+############ No need to modify anything in this document #############
+
+# Base name to prepend on all files
+nameBuild = str(config["name"]) + "_Hg38"
+
+# Threads and memory
+allThreads = int(config["allThreads"])
+halfThreads = int(round(allThreads/2,0))
+allRam = int(round(float(config["allRam"])))
+allRamMinFive = allRam - 5
+
+# Resources
+tmpDir = config["tmpDir"]
+jobDir = config["jobDir"]
+analysisRegions = config["analysisRegions"]
+indexFasta = config["indexFasta"]
+
+# Filtering params
+useqJointGenotypeVCFParser = config["useqJointGenotypeVCFParser"]
+
+strelka = "/BioApps/Strelka/2.9.10"
+vt = "/BioApps/Vt/9Sept2021/vt"
+htslib = "/BioApps/Htslib/1.13/bin/"
+
+############# Rules ##############
+
+# Workflow trigger
+rule VcfTabix:
+    input:
+         "Vcfs/DONE"
+    output:
+         "COMPLETE"
+    threads:
+         allThreads
+    log:
+         "Logs/"+ nameBuild+ "_VcfTabix.log"
+    shell:
+        "java -jar -Xmx{allRamMinFive}G /BioApps/USeq/Apps/VCFTabix -t {htslib} "
+        "-v Vcfs/ &> {log} && touch COMPLETE"
+
+# Create sample map of g.vcfs to genotype
+rule CreateSampleMap:
+    output:
+        temp (nameBuild+"_SampleMap.txt")
+    log:
+        "Logs/"+ nameBuild+ "_CreateSampleMap.log"
+    shell:
+        "rm -f {output}; cd {tmpDir}/ToGenotype; "
+        "for x in $(ls *cram); do name=$(echo $x | awk -F'.cram' '{{print $1}}'); "
+        "path=$(realpath $x); echo \"--bam \"$path >> {jobDir}/{output}; done; "
+        "cd {jobDir}; cat {output} > {log}; "
+
+# Joint Genotyping with Strelka
+rule Strelka:
+    input:
+        nameBuild+"_SampleMap.txt"
+    output:
+        jobDir+ "/Vcfs/"+ nameBuild+ "_Strelka.raw.vcf.gz"
+    log:
+        "Logs/"+ nameBuild+ "_Strelka.log"
+    threads:
+        allThreads
+    shell:
+        "{strelka}/bin/configureStrelkaGermlineWorkflow.py --callRegions={analysisRegions} "
+        "--exome $(cat {input}) --runDir {tmpDir}/StrelkaRun --referenceFasta={indexFasta} "
+        "&> {log} && "
+        "{tmpDir}/StrelkaRun/runWorkflow.py -m local -j {allThreads} -g {allRam} &>> {log} && "
+        "mv {tmpDir}/StrelkaRun/results/variants/variants.vcf.gz {output} &>> {log}"
+
+
+# Decompose the genotyped vcf with Vt
+rule VtDecompose:
+    input:
+        jobDir+ "/Vcfs/"+ nameBuild+ "_Strelka.raw.vcf.gz"
+    output:
+        temp (tmpDir+ "/"+ nameBuild+ ".vtDecom.vcf.gz")
+    log:
+        "Logs/"+ nameBuild+ "_VtDecompose.log"
+    threads:
+        allThreads
+    shell:
+        "{vt} decompose -s {input} -o {output} &> {log} "
+
+# Normalize the genotyped vcf with Vt
+rule VtNormalize:
+    input:
+        tmpDir+ "/"+ nameBuild+ ".vtDecom.vcf.gz"
+    output:
+        temp (tmpDir+ "/"+ nameBuild+ ".vt.vcf.gz")
+    log:
+        "Logs/"+ nameBuild+ "_VtNormalize.log"
+    threads:
+        allThreads
+    shell:
+        "{vt} normalize -m -n -o {output} -r {indexFasta} {input} &> {log} "
+
+rule JointGenotypeVCFParser:
+    input:
+        tmpDir+ "/"+ nameBuild+ ".vt.vcf.gz"
+    output:
+        temp ("Vcfs/DONE")
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_JointGenotypeVCFParserSplit.log"
+    shell:
+        "java -jar -Xmx{allRamMinFive}G /BioApps/USeq/Apps/JointGenotypeVCFParser -v {input} "
+        "-s {jobDir}/Vcfs {useqJointGenotypeVCFParser} &> {log} && touch {output} "
+
+onerror:
+    shell( "rm -f STARTED COMPLETE; touch FAILED")

@@ -1,0 +1,142 @@
+# Joint Genotyping of Haplotype called gVCFs
+# 1 Oct 2021
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+############ No need to modify anything in this document #############
+
+# Base name to prepend on all files
+nameBuild = str(config["name"]) + "_Hg38"
+
+# Threads and memory
+allThreads = int(config["allThreads"])
+halfThreads = int(round(allThreads/2,0))
+allRam = int(round(float(config["allRam"])))
+allRamMinFive = allRam - 5
+
+# Resources
+tmpDir = config["tmpDir"]
+jobDir = config["jobDir"]
+indexFasta = config["indexFasta"]
+
+# Filtering params
+useqJointGenotypeVCFParser = config["useqJointGenotypeVCFParser"]
+
+############# Rules ##############
+
+# Workflow trigger
+rule VcfTabix:
+    input:
+          "Vcfs/DONE"
+    output:
+         "COMPLETE"
+    threads:
+         halfThreads
+    log:
+         "Logs/"+ nameBuild+ "_VcfTabix.log"
+    shell:
+        "java -jar -Xmx{allRamMinFive}G /BioApps/USeq/Apps/VCFTabix -t /BioApps/Htslib/1.13/bin/ "
+        "-v Vcfs &> {log} && mv -f {nameBuild}.jg.vcf.gz Vcfs/ && "
+        "rm -rf {nameBuild}_GenotypedVcfsTmp {tmpDir} && touch COMPLETE"
+
+# Create sample map of g.vcfs to genotype
+rule CreateSampleMap:
+    output:
+        temp (nameBuild+"_SampleMap.txt")
+    log:
+        "Logs/"+ nameBuild+ "_CreateSampleMap.log"
+    shell:
+        "rm -f {output}; cd {tmpDir}/ToGenotype; "
+        "for x in $(ls *gz); do name=$(echo $x | awk -F'.g.vcf.gz' '{{print $1}}'); "
+        "path=$(realpath $x); echo -e $name\"\t\"$path >> {jobDir}/{output}; done; "
+        "cd {jobDir}; cat {output} > {log}; "
+
+# Joint Genotyping, splitting by chr to avoid memory issues with GenomicsDB
+# There is no chrM in IDT or NIM exome designs, if you add it, modify the GatherVcfs rule below as well.
+rule PerChrJointGenotyping:
+    input:
+        nameBuild+"_SampleMap.txt"
+    output:
+        tmpDir+ "/CalledChroms/DONE"
+    log:
+        "Logs/"+ nameBuild+ "_PerChrJointGenotyping.log"
+    threads:
+        allThreads
+    shell:
+        "rm -rf {tmpDir}/CalledChroms {log}; mkdir -p {tmpDir}/CalledChroms; "
+        "for x in {{1..22}} X Y;"
+        "do "
+        "rm -rf {tmpDir}/chr_gdb; "
+        "gatk --java-options -Xmx{allRamMinFive}G GenomicsDBImport"
+        " --genomicsdb-workspace-path {tmpDir}/chr_gdb"
+        " -R {indexFasta} --sample-name-map {input}"
+        " --reader-threads 5 --tmp-dir {tmpDir}"
+        " --max-num-intervals-to-import-in-parallel 5"
+        " --intervals chr$x &>> {log}; "
+        "gatk --java-options -Xmx{allRamMinFive}G GenotypeGVCFs -OVI "
+        " -R {indexFasta} --tmp-dir {tmpDir} "
+        " -V gendb://{tmpDir}/chr_gdb --allow-old-rms-mapping-quality-annotation-data "
+        " -O {tmpDir}/CalledChroms/chr$x'.vcf.gz' &>> {log}; "
+        "done ; touch {tmpDir}/CalledChroms/DONE "
+
+# Combine vcfs from the PerChrJointGenotyping
+rule GatherVcfs:
+    input:
+        tmpDir+ "/CalledChroms/DONE"
+    output:
+        nameBuild+ ".jg.vcf.gz"
+    log:
+        "Logs/"+ nameBuild+ "_GatherVcfs.log"
+    threads:
+        halfThreads
+    shell:
+        "cc={tmpDir}/CalledChroms; "
+        "gatk --java-options -Xmx{allRamMinFive}G GatherVcfs"
+        " --TMP_DIR {tmpDir}"
+        " -O {output}"
+        " -I $cc/chr1.vcf.gz -I $cc/chr2.vcf.gz -I $cc/chr3.vcf.gz -I $cc/chr4.vcf.gz -I $cc/chr5.vcf.gz -I $cc/chr6.vcf.gz -I $cc/chr7.vcf.gz"
+        " -I $cc/chr8.vcf.gz -I $cc/chr9.vcf.gz -I $cc/chr10.vcf.gz -I $cc/chr11.vcf.gz -I $cc/chr12.vcf.gz -I $cc/chr13.vcf.gz -I $cc/chr14.vcf.gz"
+        " -I $cc/chr15.vcf.gz -I $cc/chr16.vcf.gz -I $cc/chr17.vcf.gz -I $cc/chr18.vcf.gz -I $cc/chr19.vcf.gz -I $cc/chr20.vcf.gz -I $cc/chr21.vcf.gz"
+        " -I $cc/chr22.vcf.gz -I $cc/chrX.vcf.gz -I $cc/chrY.vcf.gz &> {log}"
+
+# Decompose the genotyped vcf with Vt
+rule VtDecompose:
+    input:
+        nameBuild+ ".jg.vcf.gz"
+    output:
+        temp (nameBuild+ ".vtDecom.vcf.gz")
+    log:
+        "Logs/"+ nameBuild+ "_VtDecompose.log"
+    threads:
+        allThreads
+    shell:
+        "/BioApps/Vt/1Sept2021/vt decompose -s {input} -o {output} &> {log} "
+
+# Normalize the genotyped vcf with Vt
+rule VtNormalize:
+    input:
+        nameBuild+ ".vtDecom.vcf.gz"
+    output:
+        temp (nameBuild+ ".vt.vcf.gz")
+    log:
+        "Logs/"+ nameBuild+ "_VtNormalize.log"
+    threads:
+        allThreads
+    shell:
+        "/BioApps/Vt/1Sept2021/vt normalize -m -n -o {output} -r {indexFasta} {input} &> {log} "
+
+rule JointGenotypeVCFParserSplit:
+    input:
+        nameBuild+ ".vt.vcf.gz"
+    output:
+        temp ("Vcfs/DONE")
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_JointGenotypeVCFParserSplit.log"
+    shell:
+        "rm -rf {output}/*; java -jar -Xmx{allRamMinFive}G /BioApps/USeq/Apps/JointGenotypeVCFParser -v {input} "
+        "-s Vcfs {useqJointGenotypeVCFParser} &> {log} && touch {output}"
+
+onerror:
+    shell( "rm -f STARTED COMPLETE; touch FAILED")

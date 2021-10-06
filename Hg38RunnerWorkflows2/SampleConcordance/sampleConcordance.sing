@@ -1,0 +1,36 @@
+# Bash script to run inside the container
+# 13 July 2021
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+set -e
+cd $jobDir
+
+# Read threads and ram
+allThreads=$(nproc)
+allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+gender=$(ls gender*)
+
+# Print params
+echo -n jobDir"     : "; echo $jobDir
+echo -n name"       : "; echo $name
+echo -n dataBundle" : "; echo $dataBundle
+echo -n gender"     : "; echo $gender
+echo -n threads"    : "; echo $allThreads
+echo -n ram"        : "; echo $allRam
+echo -n host"       : "; echo $(hostname); echo
+
+snakemake -p --cores $allThreads \
+--snakefile *.sm \
+--config \
+regionsForAnalysis=$dataBundle/Bed/AllExonHg38Bed8April2020/hg38AllGeneExonsPad175bp.bed.gz \
+indexFasta=$dataBundle/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
+dbsnp=$dataBundle/Bed/dbSNP_151.hg38Pad0bpG5.bed.gz \
+gender=$gender \
+name=$name \
+allThreads=$allThreads \
+allRam=$allRam
+
+
+# Replace first and last lines above with the following to get dag svg graph
+	# snakemake --dag allRam=$allRam | dot -Tsvg > $name"_dag.svg"

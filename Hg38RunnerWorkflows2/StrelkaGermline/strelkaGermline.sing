@@ -1,0 +1,44 @@
+# Bash script to run inside the container
+# 9 Sept 2021
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+set -e
+cd $jobDir
+
+# Resources
+allThreads=$(nproc)
+allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+rm -f COMPLETE FAIL
+name=${PWD##*/}
+
+# Print params
+echo -n jobDir"     : "; echo $jobDir
+echo -n tmpDir"     : "; echo $tmpDir
+echo -n name"       : "; echo $name
+echo -n dataBundle" : "; echo $dataBundle
+echo -n threads"    : "; echo $allThreads
+echo -n ram"        : "; echo $allRam
+echo -n host"       : "; echo $(hostname); echo
+
+# Launch snakemake with these settings
+snakemake -p --cores $allThreads \
+--stats $name"_Hg38_snakemake.stats.json" \
+--snakefile *.sm \
+--config \
+analysisRegions=$dataBundle/Bed/AvatarMergedNimIdtBeds/hg38NimIdtMergedPad150bp.bed.gz \
+indexFasta=$dataBundle/GATKResourceBundleAug2021/Homo_sapiens_assembly38.fasta \
+name=$name \
+dataBundle=$dataBundle \
+tmpDir=$tmpDir \
+jobDir=$jobDir \
+allThreads=$allThreads \
+allRam=$allRam \
+useqJointGenotypeVCFParser="-x -g 13 -q 20 -d 10 -a 0.05 -k NoPassedVariantGT"
+
+# Notes
+## regionsForAnalysis - bgzipped bed file of regions to use in calling genotypes, use chrXXXX naming for Hg38. See bgzip and tabix from https://github.com/samtools/htslib .
+## indexFasta - the indexed fasta file used for alignment including xxx.fa.fai and xxx.dict files, see https://github.com/lh3/bwa/tree/master/bwakit
+## query Data and Index dirs - are those created by the QueryIndexer App for use by the VCFCallFrequency USeq tool.
+## queryFileFilter - relative file path in the QueryData dir that determines what vcf and bed files to use in calculating each vcfCallFrequency.
+## useq - launch the JointGenotypeVCFParser USeq app to see cmd line options

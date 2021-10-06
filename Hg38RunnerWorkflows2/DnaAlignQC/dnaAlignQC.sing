@@ -1,0 +1,58 @@
+# Bash script to run inside the container
+# 30 August 2021
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+set -e
+
+cd $jobDir
+rm -f COMPLETE FAIL
+
+# Node resources
+name=${PWD##*/}
+shopt -s nullglob; fq=(*q.gz)
+fq1=`realpath ${fq[0]}`
+fq2=`realpath ${fq[1]}`
+allThreads=$(nproc)
+allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+
+# Print params
+echo -n jobDir"       : "; echo $jobDir
+echo -n name"         : "; echo $name
+echo -n dataBundle"   : "; echo $dataBundle
+echo -n threads"      : "; echo $allThreads
+echo -n ram"          : "; echo $allRam
+echo -n host"         : "; echo $(hostname)
+echo -n fastqReadOne" : "; echo $fq1
+echo -n fastqReadTwo" : "; echo $fq2; echo
+
+# Look for required files
+ls $dataBundle $fq1 $fq2 *.sm  > /dev/null
+
+# Launch snakemake with these settings
+snakemake -p --cores $allThreads \
+--snakefile *.sm \
+--config \
+uniObRCRegions=$dataBundle/Bed/AvatarMergedNimIdtBeds/hg38NimIdtCCDSShared.bed.gz \
+analysisRegions=$dataBundle/Bed/AvatarMergedNimIdtBeds/hg38NimIdtMergedPad150bp.bed.gz \
+adapterR1=AGATCGGAAGAGCACACGTCTGAACTCCAGTCA \
+adapterR2=AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT \
+opticalDistance=2500 \
+baseQuality=13 \
+mappingQuality=13 \
+passingReadDepth=12 \
+indexFasta=$dataBundle/GATKResourceBundleAug2021/Homo_sapiens_assembly38.fasta \
+name=$name \
+fastqReadOne=$fq1 \
+fastqReadTwo=$fq2 \
+allThreads=$allThreads \
+allRam=$allRam
+
+# Notes
+## uniObRCRegions - bgzipped bed file of regions to use in calculating unique observation read coverage uniformity metrics, ditto.
+## analysisRegions
+## indexFasta - the BWA mem2 fasta file with all the associated index files including xxx.fa.fai and xxx.dict files, see https://github.com/bwa-mem2/bwa-mem2
+
+# Replace first and last lines above with the following to get dag svg graph
+	# /BioApps/Miniconda3/bin/snakemake --dag \
+	# allRam=$allRam | dot -Tsvg > $name"_dag.svg"

@@ -1,0 +1,65 @@
+# Bam Sample file concordance, a test for mismatched samples and checking the reported gender
+# 1 October 2021
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+############ No need to modify anything in this document #############
+
+# Base name to prepend on all files
+name = str(config["name"]) 
+
+# Threads and memory
+allThreads = config["allThreads"]
+allRam = config["allRam"]
+
+# Resources
+regionsForAnalysis = config["regionsForAnalysis"]
+indexFasta = config["indexFasta"]
+dbsnp = config["dbsnp"]
+gender = config["gender"]
+
+# Apps in the docker container
+htslib = "/BioApps/Htslib/1.13/bin"
+useq = "/BioApps/USeq/Apps"
+java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
+
+rule SampleConcordance:
+    input:
+        bp = name + "_Hg38.bp.txt.gz",
+        ti = name + "_Hg38.bp.txt.gz.tbi"
+    output:
+        mm = "QC/"+ name + "_Hg38_MisMatch.bed.gz",
+        js = "QC/"+ name+ "_SampleConcordance.json.gz"
+    threads:
+        allThreads
+    log:
+        "Logs/"+ name+ "_SampleConcordance.log"
+    shell:
+        "{java} {useq}/SampleConcordance -r {regionsForAnalysis} -b {input.bp} -j {output.js} "
+        "-g {gender}  &> {log} && mv -f misMatch.bed.gz  {output.mm} "
+
+rule BamPileupMerger:
+    output:
+        bp = temp (name + "_Hg38.bp.txt.gz"),
+        ti = temp (name + "_Hg38.bp.txt.gz.tbi")
+    threads:
+        allThreads
+    log:
+        "Logs/"+ name+ "_BamPileupMerger.log"
+    shell:
+        "{java} {useq}/BamPileupMerger -s -d BamPileupFiles  -t {htslib} -p {output.bp}  &> {log} "
+
+# legacy not used
+rule BamPileup:
+    output:
+        bp = temp (name + "FromBams_Hg38.bp.txt.gz"),
+        ti = temp (name + "FromBams_Hg38.bp.txt.gz.tbi")
+    threads:
+        allThreads
+    log:
+        "Logs/"+ name+ "_BamPileup.log"
+    shell:
+        "{java} {useq}/BamPileup -f {indexFasta} -b . -r {regionsForAnalysis} -s {output.bp} -t {htslib} -q 20 -m 20  &> {log} "
+
+onerror:
+    shell( "rm -f STARTED COMPLETE DONE; touch FAILED")

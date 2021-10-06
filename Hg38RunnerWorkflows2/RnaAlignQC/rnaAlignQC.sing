@@ -1,0 +1,41 @@
+# Bash script to run inside the container
+# 13 Sept 2021
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+set -e
+cd $jobDir
+
+# Read info
+allThreads=$(nproc)
+allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+shopt -s nullglob; fq=(*q.gz)
+fq1=`realpath ${fq[0]}`
+fq2=`realpath ${fq[1]}`
+name=${PWD##*/}
+
+# Print params
+echo -n jobDir"       : "; echo $jobDir
+echo -n name"         : "; echo $name
+echo -n dataBundle"   : "; echo $dataBundle
+echo -n threads"      : "; echo $allThreads
+echo -n ram"          : "; echo $allRam
+echo -n host"         : "; echo $(hostname)
+echo -n fastqReadOne" : "; echo $fq1
+echo -n fastqReadTwo" : "; echo $fq2; echo
+
+snakemake -p --cores $allThreads \
+--stats $name"_Hg38_snakemake.stats.json" \
+--snakefile *.sm \
+--config \
+fastqReadOne=$fq1 \
+fastqReadTwo=$fq2 \
+dataBundle=$dataBundle \
+release="release104" \
+starIndex="star100" \
+name=$name \
+baseQuality=13 \
+mappingQuality=13 \
+allThreads=$allThreads \
+allRam=$allRam
+

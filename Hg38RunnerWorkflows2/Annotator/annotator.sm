@@ -1,0 +1,157 @@
+# Annotation of a vcf file with snpEff, splice, and prior call freq, followed by region and quality filtering
+# 10 Sept 2021
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+############ No need to modify anything in this document #############
+
+# To prepend on all output
+nameBuild = str(config["name"])+"_Hg38"
+
+# Threads and memory
+allThreads = int(config["allThreads"])
+halfThreads = int(round(allThreads/2,0))
+allRam = int(round(float(config["allRam"])))
+annoVcfParser = config["annoVcfParser"]
+vcfCallFreq = config["vcfCallFreq"]
+
+# Resources
+regionsOfInterest = config["regionsOfInterest"]
+indexFasta = config["indexFasta"]
+dataDir = config["dataDir"]
+
+# Apps in the docker container
+java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
+useq = "/BioApps/USeq/Apps"
+htslib = "/BioApps/Htslib/1.13/bin"
+snpEff = "/BioApps/SnpEff/5.0e"
+
+############# Rules ##############
+
+# Workflow trigger, writes human readable txt file from the INFO dense final vcf, useful for grepping.
+rule TxtOutput:
+    input:
+        vcf1 = "Vcfs/"+ nameBuild+ ".anno.filt.vcf.gz",
+        vcf2 = "Vcfs/ROI/" +nameBuild+ ".anno.filt.roi.vcf.gz",
+        index = "Vcfs/ROI/" +nameBuild+ ".anno.filt.roi.vcf.gz.tbi"
+    output:
+        txt1 = "Vcfs/"+ nameBuild+ ".anno.filt.txt.gz",
+        txt2 = "Vcfs/ROI/" +nameBuild+ ".anno.filt.roi.txt.gz"
+    shell:
+        "touch {output.txt1} {output.txt2}; "
+        "gunzip -c {input.vcf1} | {snpEff}/scripts/vcfInfoOnePerLine.pl | egrep "
+        "-v -e '.+dbNSFP.+\.$'  | gzip > {output.txt1} || true;  "
+        "gunzip -c {input.vcf2} | {snpEff}/scripts/vcfInfoOnePerLine.pl | egrep "
+        "-v -e '.+dbNSFP.+\.$'  | gzip > {output.txt2} || true"
+
+# Basic SnpEff Annotations
+rule SnpEff:
+    output:
+        temp (nameBuild+ ".snpEff.vcf")
+    threads:
+        allThreads
+    log:
+        "Logs/"+ nameBuild+ "_SnpEff.log"
+    shell:
+        "{java} {snpEff}/snpEff.jar -dataDir {dataDir} -v -strict GRCh38.p13.RefSeq *vcf.gz "
+        "> {output} 2> {log} && mv -f snpEff_* Logs/ "
+   		   
+# Clinvar
+rule Clinvar:
+    input:
+        nameBuild+ ".snpEff.vcf"
+    output:
+        temp (nameBuild+ ".snpEff.clinvar.vcf")
+    threads:
+        allThreads
+    log:
+        "Logs/"+ nameBuild+ "_Clinvar.log"
+    shell:
+        "{java} {snpEff}/SnpSift.jar annotate -v {dataDir}/Clinvar/clinvar.vcf.gz "
+        "{input} > {output} 2> {log} "
+
+# ExAC AFs
+rule ExAC:
+    input:
+        nameBuild+ ".snpEff.clinvar.vcf"
+    output:
+        temp (nameBuild+ ".snpEff.clinvar.exac.vcf")
+    threads:
+        allThreads
+    log:
+        "Logs/"+ nameBuild+ "_Exac.log"
+    shell:
+        "{java} {snpEff}/SnpSift.jar annotate -name ExAC_ -v {dataDir}/ExAC/exac.hg38.vcf.gz "
+        "{input} > {output} 2> {log} "
+
+# USeq Splice Scanner
+rule VCFSpliceScanner:
+    input:
+        nameBuild+ ".snpEff.clinvar.exac.vcf"
+    output:
+        temp ("Vcfs/"+ nameBuild+ ".splice.vcf.gz")
+    threads:
+        allThreads
+    log:
+        "Logs/"+ nameBuild+ "_VCFSpliceScanner.log"
+    shell:
+        "{java} {useq}/VCFSpliceScanner -u {dataDir}/UCSC/8Aug2018/hg38RefSeq8Aug2018.ucsc.zip "
+        "-m {dataDir}/SpliceModels -f {indexFasta} "
+        "-v {input} -r {output} &> {log}"
+
+rule VCFCallFrequency:
+    input:
+       "Vcfs/"+ nameBuild+ ".splice.vcf.gz"
+    output:
+       "Vcfs/"+ nameBuild+ ".anno.vcf.gz"
+    log:
+        "Logs/"+ nameBuild+ "_VCFCallFrequency.log"
+    threads:
+        allThreads
+    shell:
+        "{java} {useq}/VCFCallFrequency -f {input} -s TempVCFCallFreq {vcfCallFreq}  &> {log} && "
+        "mv -f TempVCFCallFreq/*.callFreq.vcf.gz {output} && rm -rf TempVCFCallFreq"
+
+# Filter the annotated vcf file 
+rule AnnotatedVcfParser:
+    input:
+        "Vcfs/"+ nameBuild+ ".anno.vcf.gz"
+    output:
+        "Vcfs/"+ nameBuild+ ".anno.filt.vcf.gz"
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_AnnotatedVcfParser.log"
+    shell:
+        "{java} {useq}/AnnotatedVcfParser -v {input} -s AnnoVcfParser {annoVcfParser} "
+	"&> {log} && mv -f AnnoVcfParser/*_Pass.vcf.gz {output} &>> {log} && rm -rf AnnoVcfParser "
+
+# Filter for select genomic regions, e.g. ACMG genes from the GC's
+rule VCFRegionFilter:
+    input:
+        "Vcfs/"+ nameBuild+ ".anno.filt.vcf.gz"
+    output:
+        "Vcfs/ROI/" +nameBuild+ ".anno.filt.roi.vcf.gz"
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_VCFRegionFilter.log"
+    shell:
+        "{java} {useq}/VCFRegionFilter -v {input} -b {regionsOfInterest} -s RegionParsedVcfs &> {log} && "
+        "mv -f RegionParsedVcfs/*_int.vcf.gz {output} &>> {log} && rm -rf RegionParsedVcfs "
+
+# Tabix index everything
+rule VcfTabix:
+    input:
+        "Vcfs/ROI/" +nameBuild+ ".anno.filt.roi.vcf.gz"
+    output:
+        "Vcfs/ROI/" +nameBuild+ ".anno.filt.roi.vcf.gz.tbi"
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_VcfTabix.log"
+    shell:
+        "{java} {useq}/VCFTabix -t {htslib} -v Vcfs/ &> {log}"
+
+onerror:
+    shell( "rm -f STARTED COMPLETE; touch FAILED")

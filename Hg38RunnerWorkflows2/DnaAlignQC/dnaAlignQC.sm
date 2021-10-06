@@ -1,0 +1,123 @@
+# Hg38 Exome Alignment and QC Workflow 
+# 28 Sept 2021
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+############ No need to modify anything in this document #############
+
+# Params from config, see xxx.sing for details
+nameBuild = str(config["name"]) + "_Hg38" 
+adapterR1=config["adapterR1"]
+adapterR2=config["adapterR2"]
+opticalDistance=config["opticalDistance"]
+mappingQuality=config["mappingQuality"]
+baseQuality=config["baseQuality"]
+passingReadDepth=config["passingReadDepth"]
+uniObRCRegions = config["uniObRCRegions"]
+analysisRegions = config["analysisRegions"]
+indexFasta = config["indexFasta"]
+fastqReadOne = config["fastqReadOne"]
+fastqReadTwo = config["fastqReadTwo"]
+
+# Threads and memory
+allRam = int(round(float(config["allRam"])))
+allThreads = int(config["allThreads"])
+tenPerThreads = int(round(allThreads*0.1))
+if tenPerThreads > 10:
+    tenPerThreads = 10
+else:
+    tenPerThreads = 5
+nintyPerThreads = allThreads - tenPerThreads
+thirdThreads = int(round(allThreads/3,0))
+twoThirdThreads = allThreads - thirdThreads
+halfThreads = int(round(allThreads/2,0)) - 1
+
+# Apps not in path
+bwa = "/BioApps/Bwa/bwa-mem2-2.2.1_x64-linux/bwa-mem2"
+samtools = "/BioApps/Samtools/1.13/bin/samtools"
+htslib = "/BioApps/Htslib/1.13/bin"
+useq = "/BioApps/USeq/Apps"
+java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
+
+############# Rules ##############
+
+# Workflow trigger, pulls info from the json files into xls and html reports
+rule AggregateQCStats:
+    input:
+        "QC/"+ nameBuild+ ".UniObRC.json.gz",
+        "QC/"+ nameBuild+ ".PassRC.bed.gz"    
+    output:
+        "COMPLETE"
+    shell:
+        "touch {output}"
+        
+############# Alignment and Pileup ###############
+
+# Alt aware align to Hg38 with bwa mem2, masks adapters, mark dups, sort. Removes unaligned, secondary alignments (fixmate -r), and those with a MQ < minimum (view -q). Delete these if calling structural variants. 
+rule AlignHg38:
+    output:
+        a = "Alignment/"+ nameBuild+ ".cram",
+        i = "Alignment/"+ nameBuild+ ".cram.crai"
+    log:
+        "Logs/"+ nameBuild+ "_AlignHg38.log"
+    params:
+        rg ="\"@RG\\tID:"+nameBuild+"\\tPL:ILLUMINA\\tLB:"+nameBuild+"\\tSM:"+nameBuild+ "\\tCN:HCI\\tPU:"+nameBuild+"\""
+    threads:
+        allThreads
+    shell:
+        "set -o pipefail && mkdir -p Tmp && "
+        "cutadapt -a {adapterR1} -A {adapterR2} --interleaved --action mask --cores={tenPerThreads} {fastqReadOne} {fastqReadTwo} 2>> {log} | " 
+        "{bwa} mem -t {nintyPerThreads} -R {params} -p {indexFasta} /dev/stdin 2>> {log} | "
+        "{samtools} fixmate -r -u -m - - 2>> {log} | "
+        "{samtools} sort -u -@ {thirdThreads} -T Tmp/sort - 2>> {log} | "
+        "{samtools} markdup -u -@ {twoThirdThreads} -r -f Logs/{nameBuild}_markdup.stats.txt -d {opticalDistance} - - 2>> {log} | "
+        "{samtools} view --with-header -@ {thirdThreads} --write-index --reference {indexFasta} -q {mappingQuality} -C -o {output.a} 2>> {log} && rm -rf Tmp "
+
+# BamPileup file for Read Coverage, Sample Concordance, and ultra sensitive somatic variant calling
+rule BamPileup:
+    input:
+        "Alignment/"+ nameBuild+ ".cram"
+    output:
+        bp = "Alignment/"+ nameBuild+ ".bp.txt.gz",
+        index = "Alignment/"+ nameBuild+ ".bp.txt.gz.tbi"
+    log:
+        "Logs/"+ nameBuild+ "_BamPileup.log"
+    threads:
+        allThreads
+    shell:
+        "{java} {useq}/BamPileup -b {input} -r {analysisRegions} -f {indexFasta} "
+        "-s {output.bp} -p {threads} -t {htslib} -q {baseQuality} -m {mappingQuality} &> {log} "
+        
+############################# QC ###############################
+
+# Calculate unique observation read coverage stats
+rule UniObRC:
+    input:
+        "Alignment/"+ nameBuild+ ".bp.txt.gz"
+    output:
+        "QC/"+ nameBuild+ ".UniObRC.json.gz"
+    log:
+        "Logs/"+ nameBuild+ "_UniObRC.log"
+    threads:
+        halfThreads
+    shell:
+        "{java} {useq}/UniObRC -u {input} -r {uniObRCRegions} -s QC/{nameBuild}.UniObRC.bed.gz "
+        "-d {passingReadDepth} -p {threads} -t {htslib} &> {log} && rm -f QC/{nameBuild}.UniObRC.bed.gz* "
+
+# Calculate passing bp read coverage bed
+rule ReadCoverageBed:
+    input:
+        "Alignment/"+ nameBuild+ ".bp.txt.gz"
+    output:
+         "QC/"+ nameBuild+ ".PassRC.bed.gz"
+    log:
+        "Logs/"+ nameBuild+ "_ReadCoverageBed.log"
+    threads:
+        halfThreads
+    shell:
+        "{java} {useq}/UniObRC -u {input} -r {analysisRegions} -s {output} "
+        "-d {passingReadDepth} -p {threads} -t {htslib} &> {log} && rm -f QC/{nameBuild}.PassRC.json* "
+
+onerror:
+    shell( "rm -f STARTED COMPLETE; touch FAILED")
+
