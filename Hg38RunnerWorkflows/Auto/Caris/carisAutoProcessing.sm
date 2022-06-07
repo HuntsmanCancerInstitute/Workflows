@@ -1,0 +1,240 @@
+# 31 May 2022 
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+# General Resources
+maxThreads = 20
+halfThreads = 10
+email = "david.nix@hci.utah.edu"
+tnRunner= "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner"
+tnRunnerWorkflows = tnRunner + "/Workflows"
+carisWorkflows = "/scratch/general/pe-nfs1/u0028003/Caris/Workflows"
+
+# S3 Resources
+carisBucket = "s3://hci-caris"
+patientMolRepo = "s3://hcibioinfo-patient-molecular-repo/Patients/"
+molRepoIndex = "s3://hcibioinfo-patient-lists/MolecularRepo/"
+deleteS3Objects = "" # Set to -d to delete the downloaded S3 objects, otherwise leave empty
+
+# GU Group
+guGroup="GU"
+guOp="Neeraj_Agarwal Benjamin_Maughan Manish_Kohli Umang_Swami Sumati_Gupta Jennifer_Lloyd Julia_Batten Tenzin_Phunrab Lindsay_Maxwell Jared Thorley"
+guEmail="david.nix@hci.utah.edu"
+   ##,Roberto.Nussenzveig@hci.utah.edu,u6038961@utah.edu"
+guBucket="s3://hcibioinfo-gu-patient-molecular-repo/Patients/"
+
+# PHI Resources
+subjectRegistry = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/PHI/Registry/"
+bkupSubjectRegistry = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/PHI/RegistryBackupDontUse/"
+carisPHIRepo = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/PHI/Caris/CarisXmlReports_PHI"
+
+# Apps, aws cli installed and in the path
+java = "java -jar -Djava.io.tmpdir=. -Xmx5G"
+useq = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps"
+htslib = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/HtsLib/1.15/bin"
+
+
+############# Rules ##############
+
+# Workflow trigger, final Rule, cleanup 
+rule FinalCleanup:
+    input:
+        "Status/BackupSubjectRegistry_COMPLETE",
+        "Status/UploadGUDatasets_COMPLETE"
+    output:
+        "Status/All_COMPLETE"
+    log:
+        "Logs/finalCleanup.log"
+    shell:
+        "touch {output} &> {log}"
+## "rm -rf CJobs/ &> {log}; touch {output}"
+##       "Status/MainRepoIndex_COMPLETE"
+##        "Status/BackupSubjectRegistry_COMPLETE"
+##        "Status/SyncPHIReports_COMPLETE"
+
+# Look for new Caris datasets to process, downloades them, uses the PHI to identify the patient in the registry
+# Set -d to delete these after successful download from AWS
+rule CarisDataWrangler:
+    output:
+        "Status/CarisDataWrangler_COMPLETE"
+    log:
+        "Logs/carisDataWrangler.log"
+    threads:
+        maxThreads
+    shell:
+        "{java} {useq}/CarisDataWrangler -b {carisBucket} -j CJobs -t 2 "
+        "-r CarisDataWrangler/CarisXmlReports_PHI "
+        "-s CarisDataWrangler/SubjectMatchMaker_PHI "
+        "-c {subjectRegistry} {deleteS3Objects}&> {log};"
+        "touch {output}"
+
+# Run TNRunner2, a tool for coordinating the execution of many containerized snakemake workflows to process the data
+rule TNRunner2:
+    input:
+       "Status/CarisDataWrangler_COMPLETE"
+    output:
+        "Status/TNRunner2_COMPLETE"
+    log:
+        "Logs/tnRunner2.log"
+    threads:
+        maxThreads
+    shell:
+        "{java} {useq}/TNRunner2 -p CJobs "
+        "-e {carisWorkflows}/DnaAlignQC "
+        "-t {carisWorkflows}/RnaAlignQC "
+        "-f {carisWorkflows}/StarFusion "
+        "-w {tnRunner}/Bam/Hg38Exome/NA12878 "
+        "-c {carisWorkflows}/SomaticCaller "
+        "-a {carisWorkflows}/Annotator "
+        "-b {tnRunnerWorkflows}/SampleConcordance "
+        "-v {tnRunnerWorkflows}/CarisVcf "
+        "-x 500 -l &> {log}; "
+        "touch {output}"
+
+# Copy files needed for GQuery
+rule GQuery:
+    input:
+        "Status/TNRunner2_COMPLETE"
+    output:
+        "Status/GQuery_COMPLETE"
+    log:
+        "Logs/gquery.log"
+    threads:
+        halfThreads
+    shell:
+        "mkdir -p ForGQuery/Data/Hg38/Somatic/Caris/Vcf ForGQuery/Data/Hg38/Somatic/Caris/Bed ForGQuery/Data/Hg38/Somatic/Caris/Fusion ForGQuery/Data/Hg38/Somatic/Caris/Cnv/ &> {log}; "
+        "for x in $(ls CJobs/*/Caris/*/SomaticVariantCalls/*_Anno/Vcfs/*.anno.vcf.gz* 2> /dev/null || true); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); [ -f $x ] && cp $x ForGQuery/Data/Hg38/Somatic/Caris/Vcf/$coreId'_'$fileName &>> {log}; done; "
+        "for x in $(ls CJobs/*/Caris/*/SomaticVariantCalls/*_Illumina/Bed/*CoveredRegion.bed.gz* 2> /dev/null || true); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); [ -f $x ] && cp $x ForGQuery/Data/Hg38/Somatic/Caris/Bed/$coreId'_'$fileName &>> {log}; done; "
+        "for x in $(ls CJobs/*/Caris/*/SomaticVariantCalls/*_ClinicalVars/ParsedCarisResults/*fusions.bed.gz* 2> /dev/null || true); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); [ -f $x ] && cp $x ForGQuery/Data/Hg38/Somatic/Caris/Fusion/$coreId'_'$fileName &>> {log}; done; "
+        "for x in $(ls CJobs/*/Caris/*/RNAAnalysis/*_STARFusion/*sf.bed.gz* 2> /dev/null || true); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); [ -f $x ] && cp $x ForGQuery/Data/Hg38/Somatic/Caris/Fusion/$coreId'_'$fileName &>> {log}; done; "
+        "for x in $(ls CJobs/*/Caris/*/SomaticVariantCalls/*_ClinicalVars/ParsedCarisResults/*cnv.bed.gz* 2> /dev/null || true); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); [ -f $x ] && cp $x ForGQuery/Data/Hg38/Somatic/Caris/Cnv/$coreId'_'$fileName &>> {log} ; done; "
+        "{java} {useq}/BedTabix -t {htslib} -e -v ForGQuery/Data/Hg38/Somatic/Caris/Fusion/ &>> {log}; "
+        "{java} {useq}/BedTabix -t {htslib} -e -v ForGQuery/Data/Hg38/Somatic/Caris/Cnv/ &>> {log}; "
+        "touch {output}"
+ 
+
+# Copy files needed for GQuery
+rule cBioPortal:
+    input:
+        "Status/TNRunner2_COMPLETE"
+    output:
+        "Status/CBioPortal_COMPLETE"
+    log:
+        "Logs/cBioPortal.log"
+    threads:
+        halfThreads
+    shell:
+        "mkdir -p ForCBioPortal/Cnv  ForCBioPortal/SomaticVariants ForCBioPortal/ClinicalReports &> {log}; "
+        "for x in $(ls CJobs/*/Caris/*/SomaticVariantCalls/*_Anno/Vcfs/*.anno.vcf.gz* 2> /dev/null || true); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); [ -f $x ] && cp $x ForCBioPortal/SomaticVariants/$coreId'_'$fileName &>> {log}; done; "
+        "for x in $(ls CJobs/*/Caris/*/SomaticVariantCalls/*_ClinicalVars/ParsedCarisResults/*cnv.bed.gz* 2> /dev/null || true); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); [ -f $x ] && cp $x ForCBioPortal/Cnv/$coreId'_'$fileName &>> {log}; done; "
+        "{java} {useq}/BedTabix -t ~/BioApps/HtsLib/1.15/bin/ -e -v ForCBioPortal/Cnv &>> {log}; "
+        "for x in $(ls CJobs/*/Caris/*/ClinicalReport/*xml 2> /dev/null || true); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); [ -f $x ] && cp $x ForCBioPortal/ClinicalReports/$coreId'_'$fileName &>> {log}; done; "
+        "for x in $(ls CJobs/*/Caris/*/ClinicalReport/*vcf 2> /dev/null || true); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); [ -f $x ] && cp $x ForCBioPortal/ClinicalReports/$coreId'_'$fileName &>> {log}; done; "
+        "{java} {useq}/CarisXmlVcfParser -k -d ForCBioPortal/ClinicalReports/ -s ForCBioPortal/ClinicalReports/ParsedReports/ -u /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/AnnotatorData/UCSC/9Dec2020/hg38RefSeq9Dec2020_MergedStdChr.ucsc.gz  &>> {log}; "
+        "mv ForCBioPortal/ClinicalReports/ParsedReports/aggregatePatientInfo.xls ForCBioPortal/ &>> {log}; "
+        "rm -rf ForCBioPortal/ClinicalReports &>> {log}; "
+        "touch {output}"
+
+# Clean up the job directories
+rule JobCleaner:
+    input:
+        "Status/CBioPortal_COMPLETE",
+        "Status/GQuery_COMPLETE"
+    output:
+        "Status/JobCleaner_COMPLETE"
+    log:
+        "Logs/jobCleaner.log"
+    threads:
+        maxThreads
+    shell:
+        "{java} {useq}/JobCleaner -r CJobs/ -e '.tbi,.crai,.bai,COMPLETE' -n 'Logs,RunScripts' &> {log}; "
+        "touch {output}"
+
+# Sync cleaned analysis with main mol bio repo
+rule SyncMainRepo:
+    input:
+         "Status/JobCleaner_COMPLETE"
+    output:
+        "Status/SyncMainRepo_COMPLETE"
+    log:
+        "Logs/syncMainRepo.log"
+    threads:
+        halfThreads
+    shell:
+        "aws s3 sync CJobs/ {patientMolRepo} --quiet &> {log}; "
+        "touch {output}"
+
+# Sync xml reports with PHI
+# Hold off on syncing PHI until we have the approved AWS PHI policies in place
+# aws s3 sync CarisDataWrangler/CarisXmlReports_PHI/ s3://hcibioinfo-patient-molecular-repo/PHI/Reports/Caris/ --quiet
+rule SyncPHIReports:
+    input:
+         "Status/SyncMainRepo_COMPLETE"
+    output:
+        "Status/SyncPHIReports_COMPLETE"
+    log:
+        "Logs/syncPHIReports.log"
+    threads:
+        halfThreads
+    shell:
+        "rsync -rtq CarisDataWrangler/CarisXmlReports_PHI/ {carisPHIRepo}/ &> {log}; "
+        "touch {output}"
+        
+# Backup subject registry with PHI
+# Hold off on syncing PHI until we have the approved AWS PHI policies in place
+# aws s3 sync /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/PHI/Registry/ \
+#     s3://hcibioinfo-patient-molecular-repo/PHI/Registry/ --quiet
+rule BackupSubjectRegistry:
+    input:
+         "Status/SyncMainRepo_COMPLETE"
+    output:
+        "Status/BackupSubjectRegistry_COMPLETE"
+    log:
+        "Logs/backupSubjectRegistry.log"
+    threads:
+        halfThreads
+    shell:
+        "rsync -rtq {subjectRegistry} {bkupSubjectRegistry} &> {log}; "
+        "touch {output}"
+        
+        
+# Create and upload a file catalog into a separate bucket for browsing, there's no PHI in this file list.
+rule MainRepoIndex:
+    input:
+         "Status/SyncMainRepo_COMPLETE"
+    output:
+        "Status/MainRepoIndex_COMPLETE"
+    log:
+        "Logs/mainRepoIndex.log"
+    threads:
+        halfThreads
+    shell:
+        "aws s3 ls --recursive {patientMolRepo} > Logs/patientMolecularRepoIndex.txt 2> {log}; "
+        "aws s3 cp Logs/patientMolecularRepoIndex.txt {molRepoIndex} --quiet &>> {log}; "
+        "touch {output}"
+
+rule UploadGUDatasets:
+    input:
+         "Status/SyncMainRepo_COMPLETE"
+    output:
+        "Status/UploadGUDatasets_COMPLETE"
+    log:
+        "Logs/uploadGUDatasets.log"
+    threads:
+        halfThreads
+    shell:
+        "rm -rf {guGroup}; mkdir {guGroup}; cd {guGroup};"
+        "for p in {guOp}; do for x in $(ls ../CJobs/*/Caris/*/ClinicalReport/*_deid_$p.xml 2> /dev/null || true); "
+        "do coreId=$(echo $x | cut -d'/' -f3); [ ! -L $coreId ] && ln -s ../CJobs/$coreId .; done; done;"
+        "cd ../;"
+        "d=$(date +'%m_%d_%Y');"
+        "phiLinks={guGroup}'_Caris_'$d'_PHI.txt';"
+        "head -n 1 {subjectRegistry}/currentRegistry_* > $phiLinks;"
+        "for x in $(ls {guGroup}/); do grep $x {subjectRegistry}/currentRegistry_* >> $phiLinks; done;"
+        "n=$(cat $phiLinks | wc -l);"
+        "if [[ $n -gt 1 ]]; then aws s3 sync {guGroup}/ {guBucket} --quiet --follow-symlinks "
+        "--profile {guGroup}; echo $n' new Caris patient datasets have been uploaded into {guBucket} "
+        "See and SAVE the attached file to associate coreIds with patient identifiers.' | "
+        "mailx -r noreply.bioinfo@hci.utah.edu -a $phiLinks -s 'PHI - New Caris Datasets '$d "
+        "{guEmail}; fi; "
+        "touch {output}"
