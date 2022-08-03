@@ -18,7 +18,7 @@ deleteS3Objects = "" # Set to -d to delete the downloaded S3 objects, otherwise 
 
 # GU Group
 guGroup="GU"
-guOp="Neeraj_Agarwal Benjamin_Maughan Manish_Kohli Umang_Swami Sumati_Gupta Jennifer_Lloyd Julia_Batten Tenzin_Phunrab Lindsay_Maxwell Jared Thorley"
+guOp="Neeraj_Agarwal Benjamin_Maughan Manish_Kohli Umang_Swami Sumati_Gupta Jennifer_Lloyd Julia_Batten Tenzin_Phunrab Lindsay_Maxwell Jared_Thorley"
 guEmail="david.nix@hci.utah.edu"
    ##,Roberto.Nussenzveig@hci.utah.edu,u6038961@utah.edu"
 guBucket="s3://hcibioinfo-gu-patient-molecular-repo/Patients/"
