@@ -1,0 +1,82 @@
+19 October 2021
+
+TNRunner is a USeq app that executes up to 7 dockerized snakemake workflows for processing paired tumor and normal capture DNA and tumor RNA human datasets. Each of these workflows can be launched individually, see the specific README file in the WorkflowDir.  Although TNRunner looks for all three datasets, it will execute what it can given the available fastq. Rerun repeatedly as new data becomes available.  See the TNRunner help menu for details.
+
+
+Default Filtering Parameters for the TNRunner workflows and the different output Vcf files:
+
+DNA Alignments
+	Samtools rmdup is used to remove PCR and Optical duplicates
+	Mapping Quality	>= 20
+        Only uniquely mapping primary alignments
+
+Strelka Somatic Variant Filtering
+	Read depth, tumor	>= 12
+	Read depth, normal	>= 12
+	Allele frequency (AF), tumor >= 0.025
+	AF, normal < 0.05
+	AF ratio tumor/normal	>= 3
+	AF difference tumor-normal	>= 0.025
+	Number of supporting tumor variant reads	>= 3
+	Background AF BKZ z-score >= 3
+	FDR based on tuned Strelka2 QSI/S scores ~0.09-0.15
+		*** Generates XXX_Illumina_Hg38_final.vcf.gz in the SomaticVariantCalls/XXX_Illumina/Vcfs/ folder
+
+Filtered annotated somatic variants	
+	20	: Minimum DP tumor read depth
+	0.05	: Minimum AF allele frequency
+	1.0	: Maximum AF allele frequency
+	0.1	: Maximum CF prior call frequency
+	0.01	: Maximum population AF from ExAC
+	0.1	: Maximum fraction of background samples with an AF >= observed AF
+	true	: Ignore transcripts labeled WARNING_TRANSCRIPT_XXX
+	true	: Only consider protein_coding transcripts
+	high,moderate	: ANN impact keys
+	false	: Further restrict ANN impacts to one of these effects: frameshift_variant, stop_gained, stop_lost, or start_lost.
+	conflicting_interpretations_of_pathogenicity,drug_response,likely_pathogenic,pathogenic,risk_factor	: CLINSIG keep keys
+	0.51	: Minimum fraction pathogenic when CLINSIG is Conflicting_interpretations_of_pathogenicity
+	benign,likely_benign	: CLINSIG exclude keys
+	RYR1	: CLINSIG drug_response restricted genes
+	D5S,D3S,G5S,G3S	: Splice junction types to scan
+	4.0	: Minimum difference in MaxEnt scan scores for a splice junction effect
+	foundation,tempus,caris	: VCF ID keys that if present pass it regardless of any filter settings
+		*** Generates XXX_Avatar_IlluminaAnno_Hg38.anno.filt.gz in the SomaticVariantCalls/XXX_Avatar_IlluminaAnno/Vcfs/ folder
+
+Copy number - ratio analysis
+        Min tumor copy ratio, 0.15
+        Max normal copy ratio, 0.5
+        Min TN ratio, 0.15
+                *** Generates key analysis files in the /Results dir including a detailed spreadsheet, IGV seg file, and 4 bw CR and AF data tracks.
+
+Germline variants
+	Read depth	>= 15
+	Variant haplotype caller/ joint genotyping GATK QUAL	>=20
+	Variant genotype quality GT	>=20
+	AF	>= 0.1
+		*** Generates XXX_NormalDNA_Hg38_JointGenotyping_Hg38.vcf.gz in the GermlineVariantCalling/XXX_Avatar_NormalDNA/ folder
+	
+Filtered annotated germline variants
+	15	: Minimum DP read depth
+	0.1	: Minimum AF allele frequency
+	1.0	: Maximum AF allele frequency
+	0.1	: Maximum CF prior call frequency
+	0.01	: Maximum population AF from ExAC
+	0.1	: Maximum fraction of background samples with an AF >= observed AF
+	3.0	: Minimum BKZ quality score
+	true	: Ignore transcripts labeled WARNING_TRANSCRIPT_XXX
+	true	: Only consider protein_coding transcripts
+	high	: ANN impact keys
+	true	: Further restrict ANN impacts to one of these effects: frameshift_variant, stop_gained, stop_lost, or start_lost.
+	conflicting_interpretations_of_pathogenicity,drug_response,likely_pathogenic,pathogenic	: CLINSIG keep keys
+	0.51	: Minimum fraction pathogenic when CLINSIG is Conflicting_interpretations_of_pathogenicity
+	benign,likely_benign	: CLINSIG exclude keys
+	RYR1	: CLINSIG drug_response restricted genes
+	D5S,D3S	: Splice junction types to scan
+	4.4	: Minimum difference in MaxEnt scan scores for a splice junction effect
+	true	: Require that only one need pass: ANN Impact or Clinvar or Splice Effect
+		*** Generates XXX_Avatar_NormalDNAAnno_Hg38.anno.filt.vcf.gz in the GermlineVariantCalling/XXX_Avatar_NormalDNAAnno/Vcfs/ folder
+
+Gene region restricted germline variants, additional filters for Genetic Counselors, ACMG+ list
+	Must fall within 15bp of an exon from	ACTA2,ACTC1,APC,APOB,ATM,ATP7B,BARD1,BMPR1A,BRCA1,BRCA2,BRIP1,CACNA1S,CDH1,CDK4,CDKN2A,CHEK2,COL3A1,DSC2,DSG2,DSP,EPCAM,FBN1,GLA,GREM1,KCNH2,KCNQ1,LDLR,LMNA,MEN1,MLH1,MSH2,MSH6,MUTYH,MYBPC3,MYH7,MYH11,MYL2,MYL3,NBN,NF2,OTC,PALB2,PCSK9,PKP2,PMS2,POLD1,POLE,PRKAG2,PTEN,RAD51C,RAD51D,RB1,RET,RYR1,RYR2,SCN5A,SDHAF2,SDHB,SDHC,SDHD,SMAD3,SMAD4,STK11,TGFBR1,TGFBR2,TMEM43,TNNI3,TNNT2,TP53,TPM1,TSC1,TSC2,VHL,WT1
+		*** Generates XXX_Avatar_NormalDNAAnno_Hg38.anno.filt.roi.vcf.gz in the GermlineVariantCalling/XXX_Avatar_NormalDNAAnno/Vcfs/ROI/ folder
+		

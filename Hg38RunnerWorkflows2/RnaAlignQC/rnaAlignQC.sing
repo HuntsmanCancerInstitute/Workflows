@@ -1,5 +1,5 @@
 # Bash script to run inside the container
-# 13 Sept 2021
+# 26 Oct 2021
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -32,10 +32,21 @@ fastqReadOne=$fq1 \
 fastqReadTwo=$fq2 \
 dataBundle=$dataBundle \
 release="release104" \
-starIndex="star100" \
+starIndex="star125" \
 name=$name \
+adapterR1=AGATCGGAAGAGCACACGTCTGAACTCCAGTCA \
+adapterR2=AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT \
 baseQuality=13 \
 mappingQuality=13 \
 allThreads=$allThreads \
 allRam=$allRam
+
+## Notes
+# release - match to the Ensembl release of interest, see /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/atlatl/data/Human/GRCh38, if you change this to a non human species also modify the file names in rnaAlignQC.sm
+# starIndex - set to the length equal to or immediately smaller than your read length, e.g. star125, star100, star50
+## R1 and R2 adapters - used by CutAdapt to trim adapter sequence in the fastq prior to alignment, use adapterR1=AGATCGGAAGAGCACACGTCTGAACTCCAGTCA, adapterR2=AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT for Illumina TruSeq
+
+## Svg DAG generation
+# Replace the top snakemake line with 'snakemake --dag'
+# Add onto the end '| dot -Tsvg > workflow.svg'
 

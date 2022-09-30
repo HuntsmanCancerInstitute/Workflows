@@ -1,0 +1,298 @@
+# Joint Genotyping of Haplotype called gVCFs
+# 3 Jan 2022
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+############ No need to modify anything in this document #############
+
+# Base name to prepend on all files
+nameBuild = str(config["name"]) + "_Hg38"
+
+# Threads and memory
+allThreads = int(config["allThreads"])
+halfThreads = int(round(allThreads/2,0))
+allRam = int(config["allRam"])
+halfRam = int(round(allRam/2,0))
+numGbJob = config["numGbJob"]
+
+# Resources
+jobDir = config["jobDir"]
+dataBundle = config["dataBundle"]
+analysisRegions = dataBundle+ "/"+ config["analysisRegions"]
+indexFasta = dataBundle+ "/"+ config["indexFasta"]
+tmpDir = config["tmpDir"]
+gatk = "/BioApps/GATK/gatk/gatk"
+tsfl = config["truthSensitivityFilterLevel"] 
+hapmapRef = dataBundle + "/GATKResourceBundleAug2021/hapmap_3.3.hg38.vcf.gz"
+omniRef = dataBundle + "/GATKResourceBundleAug2021/1000G_omni2.5.hg38.vcf.gz"
+phase1Ref = dataBundle + "/GATKResourceBundleAug2021/1000G_phase1.snps.high_confidence.hg38.vcf.gz"
+dbsnpRef = dataBundle + "/GATKResourceBundleAug2021/dbsnp_146.hg38.vcf.gz"
+millsGoldRef = dataBundle + "/GATKResourceBundleAug2021/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz"
+
+# Filtering params
+useqJointGenotypeVCFParser = config["useqJointGenotypeVCFParser"]
+
+############# Rules ##############
+
+# Workflow trigger
+rule VcfTabix:
+    input:
+          "Vcfs/DONE"
+    output:
+         "COMPLETE"
+    threads:
+         halfThreads
+    log:
+         "Logs/"+ nameBuild+ "_VcfTabix.log"
+    shell:
+        "java -jar -Xmx{allRam}G /BioApps/USeq/Apps/VCFTabix -t /BioApps/Htslib/1.13/bin/ "
+        "-v Vcfs &> {log} && touch COMPLETE"
+
+# Check for required files
+rule ResourceFileCheck:
+    output:
+         temp ("FILES_FOUND")
+    log:
+         "Logs/"+ nameBuild+ "_ResourceFileCheck.log"
+    shell:
+         "ls {indexFasta} {analysisRegions} {dataBundle} {hapmapRef} {omniRef} {phase1Ref} "
+         "{dbsnpRef} {millsGoldRef} &> {log} && touch FILES_FOUND"
+
+# Run the Joint Genotyper GATK4 wrapper to GenomicsDBImport and GenotypeGVCFs
+rule GatkJointGenotyper:
+    input:
+         "FILES_FOUND"
+    output:
+         temp ("Vcfs/"+ nameBuild+"_jg.all.vcf.gz")
+    threads:
+         allThreads
+    log:
+         "Logs/"+ nameBuild+ "_GatkJointGenotyper.log"
+    shell:
+        "java -jar -Xmx{allRam}G /BioApps/USeq/Apps/GatkJointGenotyper -b {analysisRegions} "
+        "-g ToGenotype -v {output} -t {tmpDir} -e {gatk} -f {indexFasta} -r {numGbJob} "
+        "&> {log} "
+
+# Remove variants not in the analysis regions
+rule VCFRegionFilter:
+    input: 
+         "Vcfs/"+ nameBuild+"_jg.all.vcf.gz"
+    output:
+         "Vcfs/"+ nameBuild+"_jg.raw.vcf.gz"
+    threads:
+         halfThreads
+    log:
+         "Logs/"+ nameBuild+ "_VCFRegionFilter.log"
+    shell:
+        "java -jar -Xmx{allRam}G /BioApps/USeq/Apps/VCFRegionFilter -b {analysisRegions} "
+        "-v {input} -s VCFRegionFilterTmp &> {log} && mv -f VCFRegionFilterTmp/*_int.vcf.gz "
+        "{output} &>> {log} && rm -rf VCFRegionFilterTmp "
+
+# index jg.vcf.gz per recalibration requirements
+rule JgVCFTabix:
+    input:
+        "Vcfs/"+ nameBuild+"_jg.raw.vcf.gz"
+    output:
+        "Vcfs/"+ nameBuild+"_jg.raw.vcf.gz.tbi"
+    threads:
+         halfThreads
+    log:
+         "Logs/"+ nameBuild+ "_JgVCFTabix.log"
+    shell:
+        "java -jar -Xmx{allRam}G /BioApps/USeq/Apps/VCFTabix -t /BioApps/Htslib/1.13/bin/ "
+        "-v {input} &> {log}"
+
+# Recalibrate joint genptyped SNPs
+# Had to remove inbreeding coefficient due to annotation not detected for ANY training variant in the input callset
+rule SnpVariantRecalibrator:
+    input:
+        gVCF = "Vcfs/"+ nameBuild+ "_jg.raw.vcf.gz",
+        gVCFindex = "Vcfs/"+ nameBuild+ "_jg.raw.vcf.gz.tbi"
+    output:
+        v= "Vcfs/"+ nameBuild+ "_jg.snpRecal.vcf.gz",
+        t= "Vcfs/"+ nameBuild+ "_tranches.snp"
+    log:
+        "Logs/"+ nameBuild+ "_SnpVariantRecalibrator.log"
+    threads:
+        halfThreads
+    shell:
+        "{gatk} --java-options -Xmx{halfRam}G VariantRecalibrator"
+        " -R {indexFasta} -V {input.gVCF}"
+        " --tmp-dir {tmpDir} "
+        " --resource:hapmap,known=false,training=true,truth=true,prior=15.0 {hapmapRef}"
+        " --resource:omni,known=false,training=true,truth=false,prior=12.0 {omniRef}"
+        " --resource:1000G,known=false,training=true,truth=false,prior=10.0 {phase1Ref}"
+        " --resource:dbsnp,known=true,training=false,truth=false,prior=2.0 {dbsnpRef}"
+        " -an DP -an QD -an MQRankSum -an ReadPosRankSum -an FS -an SOR"
+        " -mode SNP"
+        " -O {output.v} --tranches-file {output.t} &> {log}"
+
+# SNP ApplyVQSR
+rule SnpApplyVQSR:
+    input:
+        snpRecal = "Vcfs/"+ nameBuild+ "_jg.snpRecal.vcf.gz",
+        gVCF = "Vcfs/"+ nameBuild+ "_jg.raw.vcf.gz",
+        gVCFindex = "Vcfs/"+ nameBuild+ "_jg.raw.vcf.gz.tbi",
+        tranches = "Vcfs/"+ nameBuild+ "_tranches.snp"
+    output:
+        temp ("Vcfs/"+ nameBuild+ "_jg.snpAppRecal.vcf.gz")
+    log:
+        "Logs/"+ nameBuild+ "_SnpApplyVQSR.log"
+    threads:
+        halfThreads
+    shell:
+        "{gatk} --java-options -Xmx{halfRam}G ApplyVQSR"
+        " -R {indexFasta} -V {input.gVCF} --recal-file {input.snpRecal}"
+        " --tmp-dir {tmpDir}"
+        " --truth-sensitivity-filter-level {tsfl}"
+        " --tranches-file {input.tranches}"
+        " -mode SNP"
+        " --exclude-filtered true"
+        " -O {output} &> {log}"
+
+# Select just the VQSR filtered variants
+rule SelectSnps:
+    input:
+        "Vcfs/"+ nameBuild+ "_jg.snpAppRecal.vcf.gz"
+    output:
+        temp ("Vcfs/"+ nameBuild+ "_jg.justSnps.vcf.gz")
+    log:
+        "Logs/"+ nameBuild+ "_SelectSnps.log"
+    threads:
+        halfThreads
+    shell:
+        "{gatk} --java-options -Xmx{halfRam}G SelectVariants"
+        " -V {input}"
+        " -select-type SNP"
+        " -O {output} &> {log} && rm -f {output}.tbi"
+
+# Recalibrate joint genptyped Indels
+rule IndelVariantRecalibrator:
+    input:
+        gVCF = "Vcfs/"+ nameBuild+ "_jg.raw.vcf.gz",
+        gVCFindex = "Vcfs/"+ nameBuild+ "_jg.raw.vcf.gz.tbi"
+    output:
+        vcf = "Vcfs/"+ nameBuild+ "_jg.indelRecal.vcf.gz",
+        tranches = "Vcfs/"+ nameBuild+ "_tranches.indel"
+    log:
+        "Logs/"+ nameBuild+ "_IndelVariantRecalibrator.log"
+    threads:
+        halfThreads
+    shell:
+        "{gatk} --java-options -Xmx{halfRam}G VariantRecalibrator"
+        " -R {indexFasta} -V {input.gVCF}"
+        " --tmp-dir {tmpDir}"
+        " --resource:mills,known=false,training=true,truth=true,prior=12.0 {millsGoldRef}"
+        " --resource:dbsnp,known=true,training=false,truth=false,prior=2.0 {dbsnpRef}"
+        " -an DP -an QD -an MQRankSum -an ReadPosRankSum -an FS -an SOR"
+        " -mode INDEL"
+        " -O {output.vcf} --tranches-file {output.tranches} &> {log}"
+
+# Indel ApplyVQSR
+rule IndelApplyVQSR:
+    input:
+        indelRecal = "Vcfs/"+ nameBuild+ "_jg.indelRecal.vcf.gz",
+        gVCF = "Vcfs/"+ nameBuild+ "_jg.raw.vcf.gz",
+        gVCFindex = "Vcfs/"+ nameBuild+ "_jg.raw.vcf.gz.tbi",
+        tranches = "Vcfs/"+ nameBuild+ "_tranches.indel"
+    output:
+        temp ("Vcfs/"+ nameBuild+ "_jg.indelAppRecal.vcf.gz")
+    log:
+        "Logs/"+ nameBuild+ "_IndelApplyVQSR.log"
+    threads:
+        halfThreads
+    shell:
+        "{gatk} --java-options -Xmx{halfRam}G ApplyVQSR"
+        " -R {indexFasta} -V {input.gVCF} --recal-file {input.indelRecal}"
+        " --tmp-dir {tmpDir}"
+        " --truth-sensitivity-filter-level {tsfl}"
+        " --tranches-file {input.tranches}"
+        " -mode INDEL"
+        " --exclude-filtered true"
+        " -O {output} &> {log}"
+
+# Select just the VQSR filtered variants
+rule SelectIndels:
+    input:
+        "Vcfs/"+ nameBuild+ "_jg.indelAppRecal.vcf.gz"
+    output:
+        temp ("Vcfs/"+ nameBuild+ "_jg.justIndels.vcf.gz")
+    log:
+        "Logs/"+ nameBuild+ "_SelectIndels.log"
+    threads:
+        halfThreads
+    shell:
+        "{gatk} --java-options -Xmx{halfRam}G SelectVariants"
+        " -V {input}"
+        " -select-type INDEL"
+        " -select-type MIXED"
+        " -O {output} &> {log} && rm -f {output}.tbi"
+
+# Combine the two vcfs
+rule VtCat:
+    input:
+        s = "Vcfs/"+ nameBuild+ "_jg.justSnps.vcf.gz",
+        i = "Vcfs/"+ nameBuild+ "_jg.justIndels.vcf.gz"
+    output:
+        temp ("Vcfs/"+ nameBuild+ ".vtCat.bcf")
+    log:
+        "Logs/"+ nameBuild+ "_VtCat.log"
+    threads:
+        halfThreads
+    shell:
+        "/BioApps/Vt/1Sept2021/vt cat {input.s} {input.i} -o {output} &> {log} "
+        
+# Sort the combo
+rule VtSort:
+    input:
+        "Vcfs/"+ nameBuild+ ".vtCat.bcf"
+    output:
+        "Vcfs/"+ nameBuild+ "_jg.vqsrFilt.vcf.gz"
+    log:
+        "Logs/"+ nameBuild+ "_VtSort.log"
+    threads:
+        halfThreads
+    shell:
+        "/BioApps/Vt/1Sept2021/vt sort {input} -o {output} &> {log} "
+
+# Decompose the genotyped vcf with Vt
+rule VtDecompose:
+    input:
+        "Vcfs/"+ nameBuild+ "_jg.vqsrFilt.vcf.gz"
+    output:
+        temp ("Vcfs/"+ nameBuild+ ".vtDecom.vcf.gz")
+    log:
+        "Logs/"+ nameBuild+ "_VtDecompose.log"
+    threads:
+        allThreads
+    shell:
+        "/BioApps/Vt/1Sept2021/vt decompose -s {input} -o {output} &> {log} "
+
+# Normalize the genotyped vcf with Vt
+rule VtNormalize:
+    input:
+        "Vcfs/"+ nameBuild+ ".vtDecom.vcf.gz"
+    output:
+        temp ("Vcfs/"+ nameBuild+ ".vt.vcf.gz")
+    log:
+        "Logs/"+ nameBuild+ "_VtNormalize.log"
+    threads:
+        allThreads
+    shell:
+        "/BioApps/Vt/1Sept2021/vt normalize -m -n -o {output} -r {indexFasta} {input} &> {log} "
+
+rule JointGenotypeVCFParserSplit:
+    input:
+        "Vcfs/"+ nameBuild+ ".vt.vcf.gz"
+    output:
+        temp ("Vcfs/DONE")
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_JointGenotypeVCFParserSplit.log"
+    shell:
+        "rm -rf {output}/*; java -jar -Xmx{allRam}G /BioApps/USeq/Apps/JointGenotypeVCFParser -v {input} "
+        "-s Vcfs {useqJointGenotypeVCFParser} &> {log} && touch {output}"
+
+onerror:
+    shell( "rm -f STARTED COMPLETE; touch FAILED")

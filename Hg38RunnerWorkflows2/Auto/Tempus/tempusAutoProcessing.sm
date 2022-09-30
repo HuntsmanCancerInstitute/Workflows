@@ -1,4 +1,4 @@
-# 1 Aug 2022 
+# 18 Aug 2022 
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -13,19 +13,21 @@ tnRunnerWorkflows = tnRunner + "/Workflows"
 tempusBucket = "s3://tm-huntsman"
 patientMolRepo = "s3://hcibioinfo-patient-molecular-repo/Patients/"
 molRepoIndex = "s3://hcibioinfo-patient-lists/MolecularRepo/"
-deleteS3Objects = "" # Set to -d to delete the downloaded S3 objects, otherwise leave empty
 
 # GU Group
 guGroup="GU"
 guOp="Neeraj_Agarwal Benjamin_Maughan Manish_Kohli Umang_Swami Sumati_Gupta Jennifer_Lloyd Julia_Batten Tenzin_Phunrab Lindsay_Maxwell Jared_Thorley"
-guEmail="david.nix@hci.utah.edu"
-   ##,Roberto.Nussenzveig@hci.utah.edu,u6038961@utah.edu"
+guEmail="david.nix@hci.utah.edu,beverly.chigarira@hci.utah.edu,JongTaek.Kim@aruplab.com"
 guBucket="s3://hcibioinfo-gu-patient-molecular-repo/Patients/"
 
 # PHI Resources
 subjectRegistry = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/PHI/Registry/"
 bkupSubjectRegistry = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/PHI/RegistryBackupDontUse/"
 tempusPHIRepo = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/PHI/Tempus/TempusJsonReports_PHI"
+# subjectRegistry = "/scratch/general/pe-nfs1/u0028003/Tempus/SubMatchMaker/Registry/"
+# bkupSubjectRegistry = "/scratch/general/pe-nfs1/u0028003/Tempus/SubMatchMaker/Bkup/"
+
+
 
 # Apps, aws cli installed and in the path
 java = "java -jar -Djava.io.tmpdir=. -Xmx5G"
@@ -38,6 +40,7 @@ htslib = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/HtsLib/1.15/bin"
 # Workflow trigger, final Rule, cleanup 
 rule FinalCleanup:
     input:
+        "Status/TempusDataWrangler_COMPLETE",
         "Status/MainRepoIndex_COMPLETE",
         "Status/BackupSubjectRegistry_COMPLETE",
         "Status/UploadGUDatasets_COMPLETE"
@@ -50,7 +53,8 @@ rule FinalCleanup:
 ## "rm -rf TJobs/ &> {log}; touch {output}"
 
 # Look for new Tempus datasets to process, downloades them, uses the PHI to identify the patient in the registry
-# Set -d to delete these after successful download from AWS
+# Setting the time delay to 5 days since the RNASeq data posts a day or two after the DNA data
+# Can't modify all of the files in the bucket so no deletion or mv possible thus using a file to store processed test IDs to skip
 rule TempusDataWrangler:
     output:
         "Status/TempusDataWrangler_COMPLETE"
@@ -60,9 +64,9 @@ rule TempusDataWrangler:
         maxThreads
     shell:
         "{java} {useq}/TempusDataWrangler -b {tempusBucket} -j TJobs "
-        "-r {tempusPHIRepo} "
-        "-s Tmp "
-        "-c {subjectRegistry} {deleteS3Objects}&> {log};"
+        "-r {tempusPHIRepo} -p tempus -i tempusTestIds2Skip.txt "
+        "-s Tmp -t 48 "
+        "-c {subjectRegistry} &> {log};"
         "touch {output}"
 
 # Run TNRunner2, a tool for coordinating the execution of many containerized snakemake workflows to process the data
@@ -88,7 +92,7 @@ rule TNRunner2:
         "-j {tnRunnerWorkflows}/GATKGermline/JointGenotyping "
         "-w {tnRunner}/Bam/Hg38Exome/NA12878 "
         "-y {tnRunnerWorkflows}/CopyAnalysis "
-        "-k {tnRunner}CopyRatioBkgs/Tempus "
+        "-k {tnRunner}/CopyRatioBkgs/Tempus "
         "-P XO.V1 "
         "-B {tnRunner}/BamPileups/Tempus "
         "-c {tnRunnerWorkflows}/SomaticCaller "
@@ -227,6 +231,9 @@ rule JobCleaner:
         maxThreads
     shell:
         "{java} {useq}/JobCleaner -r TJobs/ -e '.tbi,.crai,.bai,COMPLETE,.tar.gz.unpacked' -n 'Logs,RunScripts' &> {log}; "
+        "mkdir -p GermlineGroupProcessing &>> {log}; " 
+        "mv -f TJobs/GATKJointGenotyping GermlineGroupProcessing/ &>> {log} || true ; "
+        "mv -f TJobs/IlluminaJointGenotyping* GermlineGroupProcessing/ &>> {log} || true ; "
         "touch {output}"
 
 # Sync cleaned analysis with main mol bio repo
@@ -238,7 +245,7 @@ rule SyncMainRepo:
     log:
         "Logs/syncMainRepo.log"
     threads:
-        halfThreads
+        maxThreads
     shell:
         "aws s3 sync TJobs/ {patientMolRepo} --quiet &> {log}; "
         "touch {output}"
@@ -265,7 +272,7 @@ rule SyncMainRepo:
 #     s3://hcibioinfo-patient-molecular-repo/PHI/Registry/ --quiet
 rule BackupSubjectRegistry:
     input:
-         "Status/SyncMainRepo_COMPLETE"
+         "Status/TempusDataWrangler_COMPLETE"
     output:
         "Status/BackupSubjectRegistry_COMPLETE"
     log:
@@ -286,7 +293,7 @@ rule MainRepoIndex:
     log:
         "Logs/mainRepoIndex.log"
     threads:
-        halfThreads
+        maxThreads
     shell:
         "aws s3 ls --recursive {patientMolRepo} > Logs/patientMolecularRepoIndex.txt 2> {log}; "
         "aws s3 cp Logs/patientMolecularRepoIndex.txt {molRepoIndex} --quiet &>> {log}; "
@@ -300,10 +307,10 @@ rule UploadGUDatasets:
     log:
         "Logs/uploadGUDatasets.log"
     threads:
-        halfThreads
+        maxThreads
     shell:
         "rm -rf {guGroup}; mkdir {guGroup}; cd {guGroup};"
-        "for p in {guOp}; do for x in $(ls ../TJobs/*/Tempus/*/ClinicalReport/*'_deid_'$p'_*json' 2> /dev/null || true); "
+        "for p in {guOp}; do for x in $(ls ../TJobs/*/Tempus/*/ClinicalReport/*'_deid_'$p'_'* 2> /dev/null || true); "
         "do coreId=$(echo $x | cut -d'/' -f3); [ ! -L $coreId ] && ln -s ../TJobs/$coreId .; done; done;"
         "cd ../;"
         "d=$(date +'%m_%d_%Y');"

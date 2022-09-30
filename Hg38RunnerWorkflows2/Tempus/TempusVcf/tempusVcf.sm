@@ -1,0 +1,150 @@
+# 7 Sept 2021
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+############ No need to modify anything in this document #############
+
+# Base name to prepend on all files
+name = str(config["name"])
+nameBuild = str(config["name"]) + "_Hg38" 
+
+# Threads and memory
+allThreads = int(config["allThreads"])
+allRam = int(round(float(config["allRam"])))
+
+# Input
+json = config["json"]
+somaticVcf = config["vcf"]
+
+# Resources
+b37Index = config["b37Index"]
+hg38Index = config["hg38Index"]
+chainFile = config["chain"]
+geneRegionBed = config["geneRegionBed"]
+
+# Apps in the docker container
+htsLib = "/BioApps/Htslib1.9/bin/"
+java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
+useq = "/BioApps/USeq/Apps"
+crossmap = "/BioApps/CrossMap_0.2.9/CrossMap"
+vt = "/BioApps/vt_2June2015/vt"
+
+############# Rules ##############
+
+# Workflow trigger, final Rule, cleanup and tabix index the vcfs 
+rule VcfTabix:
+    input:
+        "Vcfs/" + nameBuild+ "_final.vcf.gz"
+    output:
+        "Vcfs/" + nameBuild+ "_final.vcf.gz.tbi"
+    threads:
+        allThreads
+    log:
+        "Logs/"+ nameBuild+ "_VcfTabix.log"
+    shell:
+        "{java} {useq}/VCFTabix -t {htsLib} -v Vcfs/ &> {log} && "
+        "rm -rf *unmap "
+
+# Convert the Tempus json report to vcf
+rule TempusJson2Vcf:
+    output:
+        temp (name +"_NoNormTempus.vcf")
+    log:
+        "Logs/"+ name + "_TempusJson2Vcf.log"
+    threads:
+        allThreads
+    shell:
+        "{java} {useq}/TempusJson2Vcf -j {json} "
+        "-s {name}_Tempus -f {b37Index} -b {geneRegionBed} &> {log} && "
+        "mv -f {name}_Tempus/aggregatePatientInfo.xls {name}_AggregatePatientInfo.xls &> {log} && "
+        "gunzip -c {name}_Tempus/*vcf.gz > {output} 2>> {log} &&"
+        "rm -rf {name}_Tempus"
+
+# Normalize the Tempus vcf with Vt
+rule NormalizeVcf:
+    input:
+        name +"_NoNormTempus.vcf"
+    output:
+        "Vcfs/"+ name +"_B37_Tempus.vcf"
+    log:
+        "Logs/"+ name + "_NormalizeVcf.log"
+    threads:
+        allThreads
+    shell:
+        "{vt} normalize -r {b37Index} {input} -o tempTempus.vcf &> {log} && "
+        "{vt} decompose_blocksub tempTempus.vcf -o tempTempus.decomp.vcf &>> {log} && "
+        "grep '^#' tempTempus.decomp.vcf > tempTempus.vcf; "
+        "grep -v '^#' tempTempus.decomp.vcf > tempTempus.toSort.vcf || true; "
+        "sort -k1,1V -k2,2g tempTempus.toSort.vcf >> tempTempus.vcf; "
+        "mv -f tempTempus.vcf {output} && "
+        "rm -f tempTempus* "
+        
+# Convert the b37 coordinates to GRCh38
+rule CrossMap:
+    input:
+        "Vcfs/"+ name +"_B37_Tempus.vcf"
+    output:
+        temp (nameBuild+ "_TempusBadEnds.vcf")
+    log:
+        "Logs/"+ nameBuild+ "_CrossMap.log"
+    threads:
+        allThreads
+    shell:
+        "{crossmap} vcf {chainFile} {input} {hg38Index} {output} &> {log}"
+
+# Looks for, fixes, and integrates end= and mc= fields that CrossMap doesn't convert
+rule ConvertVcfEnds:
+    input:
+        nameBuild+ "_TempusBadEnds.vcf"
+    output:
+        temp ("Vcfs/"+ nameBuild+ "_Unsorted_Tempus.vcf.gz")
+    log:
+        "Logs/"+ nameBuild+ "_ConvertVcfEnds.log"
+    threads:
+        allThreads
+    shell:
+        "{java} {useq}/VCF2Bed -e -v {input} -s VCF2BedTemp &> {log}; "
+        "if [ -f VCF2BedTemp/{nameBuild}_TempusBadEndsPad0bp.bed.gz ]; "
+        "then {crossmap} bed {chainFile} VCF2BedTemp/{nameBuild}_TempusBadEndsPad0bp.bed.gz "
+        "VCF2BedTemp/{nameBuild}_TempusCorrEnds.bed &>> {log} && "
+        "{java} {useq}/CorrectVCFEnds -v {input} -b VCF2BedTemp/{nameBuild}_TempusCorrEnds.bed "
+        "-r Vcfs/{nameBuild}_Unsorted_Tempus.vcf &>> {log}; "
+        "else cp -f {input} Vcfs/{nameBuild}_Unsorted_Tempus.vcf &>> {log};"
+        "gzip Vcfs/{nameBuild}_Unsorted_Tempus.vcf &>> {log};"
+        "fi; "
+	"rm -rf VCF2BedTemp"
+
+# Sort the Tempus vcf, sometimes this is empty causing grep to throw errors
+rule SortVcf:
+    input:
+        "Vcfs/"+ nameBuild+ "_Unsorted_Tempus.vcf.gz"
+    output:
+        "Vcfs/"+ nameBuild+ "_Tempus.vcf.gz"
+    log:
+        "Logs/"+ name + "_SortVcf.log"
+    threads:
+        allThreads
+    shell:
+        "gunzip -c {input} | grep '^#' > temp.vcf; "
+        "gunzip -c {input} | grep -v '^#' > temp.toSort.vcf || true; " 
+        "sort -k1,1V -k2,2g temp.toSort.vcf >> temp.vcf; "
+        "rm -f temp.toSort.vcf; "
+        "gzip -f temp.vcf; "
+        "mv -f temp.vcf.gz {output}"
+             
+# Compare the Tempus vcf with the recalled vcf, this generates a merged vcf too
+rule TempusVcfComparator:
+    input:
+        "Vcfs/"+ nameBuild+ "_Tempus.vcf.gz"
+    output:
+        "Vcfs/"+ nameBuild+ "_final.vcf.gz"
+    log:
+        "Logs/"+ nameBuild+ "_TempusVcfComparator.log"
+    threads:
+        allThreads
+    shell:
+        "{java} {useq}/TempusVcfComparator -t {input} "
+        "-r {somaticVcf} -m {output} -g -c &> {log}"
+
+onerror:
+    shell( "rm -f STARTED COMPLETE; touch FAILED")

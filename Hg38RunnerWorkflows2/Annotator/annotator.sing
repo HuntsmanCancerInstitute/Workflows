@@ -1,10 +1,13 @@
 # Bash script to run inside the container
-# 21 April 2021
+# 7 March 2022
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
 set -e
 cd $jobDir
+start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
+
+echo -e "\n---------- Starting -------- $((($(date +'%s') - $start)/60)) min"
 
 # Read resources
 allThreads=$(nproc)
@@ -22,17 +25,18 @@ echo -n host"       : "; echo $(hostname); echo
 snakemake -p --cores $allThreads \
 --stats $name"_Hg38.snakemake.stats.json" \
 --snakefile *.sm \
+--configfile *.yaml \
 --config \
-indexFasta=$dataBundle/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
-dataDir=$dataBundle/AnnotatorData \
-annoVcfParser="-m 0.05 -y annotatedVcfParser.config.txt" \
-vcfCallFreq="-m 0.075 -c vcfCallFrequency.config.txt -d"' '$dataBundle/GQuery/Data \
-regionsOfInterest=$dataBundle/Bed/ACMG/hg38ACMGPlusPatho21Apr2021.bed.gz \
 name=$name \
 allThreads=$allThreads \
 allRam=$allRam
 
+echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min total"
 
-# Replace first and last lines above with the following to get dag svg graph
-	# /BioApps/Miniconda3/bin/snakemake --dag \
-	# allRam=$allRam | dot -Tsvg > $name"_dag.svg"
+## Params
+# See the USeq app menus for information related to AnnotatedVcfParser and VCFCallFrequence as well as the readme for this workflow
+
+
+## Svg DAG generation
+# Replace the top snakemake line with 'snakemake --dag'
+# Add onto the end '| dot -Tsvg > workflow.svg'

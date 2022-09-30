@@ -15,7 +15,7 @@ module load snakemake/6.4.1
 
 # make a work dir and change into it
 #wd="TempusRun_"$(date +'%m_%d_%Y'); mkdir $wd; cd $wd
-
+#--dry-run
 snakemake -p --cores all --snakefile tempusAutoProcessing.sm 
 
 echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min total"

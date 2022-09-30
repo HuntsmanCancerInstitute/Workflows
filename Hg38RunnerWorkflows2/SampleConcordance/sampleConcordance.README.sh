@@ -4,9 +4,9 @@
 #SBATCH -N 1
 #SBATCH -t 48:00:00
 
-set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
+set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED STARTED
 
-# 26 August 2021
+# 13 May 2022
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -16,7 +16,7 @@ set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 #### Do just once ####
 
 # 1) Install Singularity (https://www.sylabs.io) or load via a module, place in your path
-module load singularity/3.6.4
+module load singularity
 
 # 2) Define file paths to "mount" in the container. The first is to the TNRunner data bundle downloaded and uncompressed from https://hci-bio-app.hci.utah.edu/gnomex/?analysisNumber=A5578 . The second is the path to your data.
 dataBundle=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner
@@ -49,10 +49,9 @@ container=$dataBundle/Containers/public_SM_BWA_1.sif
 echo -e "\n---------- Starting -------- $((($(date +'%s') - $start)/60)) min"
 
 # Read out params
-name=${PWD##*/}
 jobDir=`readlink -f .`
 
-SINGULARITYENV_name=$name SINGULARITYENV_jobDir=$jobDir SINGULARITYENV_dataBundle=$dataBundle \
+SINGULARITYENV_jobDir=$jobDir SINGULARITYENV_dataBundle=$dataBundle \
 singularity exec --containall --bind $dataBundle,$myData $container \
 bash $jobDir/*.sing
 
@@ -60,10 +59,10 @@ echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min to
 
 # Final cleanup
 mkdir -p RunScripts
-mv sampleConcordance* gender* RunScripts/
-mv -f *.log  Logs/ || true
-mv -f slurm* Logs/ || true
-rm -rf .snakemake 
-rm -f FAILED STARTED DONE RESTART*
+mv -f sampleConcordance*  RunScripts/
+mv -f  *.yaml RunScripts/ &> /dev/null || true
+cp slurm* Logs/ &> /dev/null || true
+mv -f *snakemake.stats.json Logs/ &> /dev/null || true
+rm -rf .snakemake STARTED RESTART* QUEUED slurm*
 touch COMPLETE 
 

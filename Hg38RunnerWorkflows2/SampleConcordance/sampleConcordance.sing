@@ -1,15 +1,17 @@
 # Bash script to run inside the container
-# 13 July 2021
+# 13 May 2021
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
 set -e
 cd $jobDir
+touch STARTED
 
 # Read threads and ram
 allThreads=$(nproc)
 allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
 gender=$(ls gender*)
+name=${PWD##*/}
 
 # Print params
 echo -n jobDir"     : "; echo $jobDir
@@ -21,16 +23,17 @@ echo -n ram"        : "; echo $allRam
 echo -n host"       : "; echo $(hostname); echo
 
 snakemake -p --cores $allThreads \
+--stats $name"_Hg38_snakemake.stats.json" \
 --snakefile *.sm \
 --config \
 regionsForAnalysis=$dataBundle/Bed/AllExonHg38Bed8April2020/hg38AllGeneExonsPad175bp.bed.gz \
-indexFasta=$dataBundle/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
+indexFasta=$dataBundle/GATKResourceBundleAug2021/Homo_sapiens_assembly38.fasta \
 dbsnp=$dataBundle/Bed/dbSNP_151.hg38Pad0bpG5.bed.gz \
 gender=$gender \
 name=$name \
 allThreads=$allThreads \
 allRam=$allRam
 
-
-# Replace first and last lines above with the following to get dag svg graph
-	# snakemake --dag allRam=$allRam | dot -Tsvg > $name"_dag.svg"
+## Svg DAG generation
+# Replace the top snakemake line with 'snakemake --dag'
+# Add onto the end '| dot -Tsvg > workflow.svg'

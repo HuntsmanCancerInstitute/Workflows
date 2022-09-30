@@ -1,5 +1,5 @@
 # Hg38 Exome Alignment and QC Workflow 
-# 28 Sept 2021
+# 6 Apr 2022
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -13,11 +13,11 @@ opticalDistance=config["opticalDistance"]
 mappingQuality=config["mappingQuality"]
 baseQuality=config["baseQuality"]
 passingReadDepth=config["passingReadDepth"]
-uniObRCRegions = config["uniObRCRegions"]
-analysisRegions = config["analysisRegions"]
-indexFasta = config["indexFasta"]
-fastqReadOne = config["fastqReadOne"]
-fastqReadTwo = config["fastqReadTwo"]
+db = config["dataBundle"] + "/"
+uniObRCRegions = db + config["uniObRCRegions"]
+analysisRegions = db + config["analysisRegions"]
+indexFasta = db + config["indexFasta"]
+cramIndexFasta = db + config["cramIndexFasta"]
 
 # Threads and memory
 allRam = int(round(float(config["allRam"])))
@@ -42,19 +42,53 @@ java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
 ############# Rules ##############
 
 # Workflow trigger, pulls info from the json files into xls and html reports
-rule AggregateQCStats:
+## If you don't want the QC metrics or bam pileup file, replace the input with '"Alignment/"+ nameBuild+ ".cram.crai"', this will speed up the processing
+rule CleanupDirs:
     input:
         "QC/"+ nameBuild+ ".UniObRC.json.gz",
         "QC/"+ nameBuild+ ".PassRC.bed.gz"    
     output:
         "COMPLETE"
     shell:
-        "touch {output}"
+        "rm -rf TempFastq/; touch {output}"
         
 ############# Alignment and Pileup ###############
 
+# If fastq aren't present look for a cram and convert it to fastq otherwise uncompresses the paired fastq into the TempFastq dir. The uncompression is needed since cutadapt often throws gzip errors yet gunzip -t shows no issues, arrg.
+rule Fastq:
+    output:
+        fq1 = temp ("TempFastq/"+ nameBuild+ ".1.fq"),
+        fq2 = temp ("TempFastq/"+ nameBuild+ ".2.fq")
+    log:
+        "Logs/"+ nameBuild+ "_Fastq.log"
+    threads:
+        20
+    shell:
+        "echo 'Attempting to find two fastq files ending in q.gz or a cram file that can be converted to fastq...' &> {log};"
+        "rm -rf TempFastq; mkdir TempFastq; shopt -s nullglob; fq=(*q.gz); len=${{#fq[@]}}; "
+        "if [ $len -eq 2 ]; then "
+        "echo 'Two fastq.gz files found, uncompressing into TempFastq/' &>> {log}; "
+        "echo -n 'Fastq1: ' &>> {log}; realpath ${{fq[0]}} &>> {log}; "
+        "echo -n 'Fastq2: ' &>> {log}; realpath ${{fq[1]}} &>> {log}; "
+        "gunzip -c ${{fq[0]}} > {output.fq1} 2>> {log}; "
+        "gunzip -c ${{fq[1]}} > {output.fq2} 2>> {log}; "
+        "else "
+        "echo 'Fastq files not found, attempting to find cram file for conversion...' &>> {log}; "
+        "echo -n 'Cram: ' &>> {log}; realpath *cram &>> {log} && "        
+        "echo 'Sorting cram file by name...' &>> {log} && "
+        "{samtools} sort --threads {threads} -u -m 1G -n -o TempFastq/sorted.tmp.bam -T TempFastq/{nameBuild}_ --reference {cramIndexFasta} *.cram &>> {log} && "
+        "echo 'Saving fastq...' &>> {log} && "
+        "{samtools} fastq --threads {threads} --reference {cramIndexFasta} -1 {output.fq1} -2 {output.fq2} -0 /dev/null -s /dev/null -n TempFastq/sorted.tmp.bam &>> {log}; "
+        "fi && "
+        "rm -f TempFastq/sorted.tmp.bam && "
+        "echo -n 'fastqReadOne : ' &>> {log} && realpath {output.fq1} &>> {log} && "
+        "echo -n 'fastqReadTwo : ' &>> {log} && realpath {output.fq2} &>> {log} "
+
 # Alt aware align to Hg38 with bwa mem2, masks adapters, mark dups, sort. Removes unaligned, secondary alignments (fixmate -r), and those with a MQ < minimum (view -q). Delete these if calling structural variants. 
 rule AlignHg38:
+    input:
+        fq1 = "TempFastq/"+ nameBuild+ ".1.fq",
+        fq2 = "TempFastq/"+ nameBuild+ ".2.fq"
     output:
         a = "Alignment/"+ nameBuild+ ".cram",
         i = "Alignment/"+ nameBuild+ ".cram.crai"
@@ -66,12 +100,13 @@ rule AlignHg38:
         allThreads
     shell:
         "set -o pipefail && mkdir -p Tmp && "
-        "cutadapt -a {adapterR1} -A {adapterR2} --interleaved --action mask --cores={tenPerThreads} {fastqReadOne} {fastqReadTwo} 2>> {log} | " 
+        "cutadapt -a {adapterR1} -A {adapterR2} --interleaved --action mask --cores={tenPerThreads} {input.fq1} {input.fq2} 2>> {log} | " 
         "{bwa} mem -t {nintyPerThreads} -R {params} -p {indexFasta} /dev/stdin 2>> {log} | "
         "{samtools} fixmate -r -u -m - - 2>> {log} | "
+        "{samtools} view --with-header -@ {tenPerThreads} -u -q {mappingQuality} - 2>> {log} | "
         "{samtools} sort -u -@ {thirdThreads} -T Tmp/sort - 2>> {log} | "
-        "{samtools} markdup -u -@ {twoThirdThreads} -r -f Logs/{nameBuild}_markdup.stats.txt -d {opticalDistance} - - 2>> {log} | "
-        "{samtools} view --with-header -@ {thirdThreads} --write-index --reference {indexFasta} -q {mappingQuality} -C -o {output.a} 2>> {log} && rm -rf Tmp "
+        "{samtools} markdup -@ {twoThirdThreads} -r -f Logs/{nameBuild}_Markdup.log --write-index -d {opticalDistance} "
+        "     --reference {indexFasta} - {output.a} 2>> {log} && rm -rf Tmp "
 
 # BamPileup file for Read Coverage, Sample Concordance, and ultra sensitive somatic variant calling
 rule BamPileup:

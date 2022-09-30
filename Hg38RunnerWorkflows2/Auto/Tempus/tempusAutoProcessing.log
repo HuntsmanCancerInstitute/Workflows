@@ -1,0 +1,84 @@
+nohup: ignoring input
+
+---------- Starting -------- 0 min
+
+The following have been reloaded with a version change:
+  1) gcc/10.2.0 => gcc/5.4.0     2) python/3.9.7 => python/3.7.3
+
+Building DAG of jobs...
+Using shell: /usr/bin/bash
+Provided cores: 56
+Rules claiming more threads will be scaled down.
+Job counts:
+	count	jobs
+	1	FinalCleanup
+	1	GQuery
+	1	JobCleaner
+	1	MainRepoIndex
+	1	SyncMainRepo
+	1	TNRunner2
+	1	UploadGUDatasets
+	1	cBioPortal
+	8
+
+[Thu Aug 11 14:30:57 2022]
+rule TNRunner2:
+    input: Status/TempusDataWrangler_COMPLETE
+    output: Status/TNRunner2_COMPLETE
+    log: Logs/tnRunner2.log
+    jobid: 5
+    threads: 20
+
+java -jar -Djava.io.tmpdir=. -Xmx5G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps/TNRunner2  -p TJobs  -e /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Workflows/DnaAlignQC -t /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Workflows/RnaAlignQC -f /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Workflows/StarFusion -m /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Workflows/Msi -a /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Workflows/Annotator -q /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Workflows/IlluminaGermline -h /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Workflows/GATKGermline/HaplotypeCalling -j /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Workflows/GATKGermline/JointGenotyping -w /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Bam/Hg38Exome/NA12878 -y /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Workflows/CopyAnalysis -k /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/CopyRatioBkgs/Tempus -P XO.V1 -B /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/BamPileups/Tempus -c /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Workflows/SomaticCaller -v /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Workflows/Tempus/TempusVcf -b /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Workflows/SampleConcordance -x 100 -l  &> Logs/tnRunner2.log; touch Status/TNRunner2_COMPLETE 
+[Thu Aug 11 14:31:07 2022]
+Finished job 5.
+1 of 8 steps (12%) done
+
+[Thu Aug 11 14:31:07 2022]
+rule GQuery:
+    input: Status/TNRunner2_COMPLETE
+    output: Status/GQuery_COMPLETE
+    log: Logs/gquery.log
+    jobid: 7
+    threads: 10
+
+rm -rf ForGQuery; mkdir -p  ForGQuery/Data/Hg38/Somatic/Tempus/Vcf  ForGQuery/Data/Hg38/Somatic/Tempus/Bed  ForGQuery/Data/Hg38/Somatic/Tempus/Cnv  ForGQuery/Data/Hg38/Somatic/Tempus/Fusion  ForGQuery/Data/Hg38/Germline/Tempus/Vcf  ForGQuery/Data/Hg38/Germline/Tempus/Bed  &> Logs/gquery.log; for x in $(ls TJobs/*/Tempus/*/SomaticVariantCalls/*_Anno/Vcfs/*.anno.vcf.gz* 2> /dev/null || true); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); [ -f $x ] && cp $x ForGQuery/Data/Hg38/Somatic/Tempus/Vcf/$coreId'_'$fileName &>> Logs/gquery.log; done; for x in $(ls TJobs/*/Tempus/*/SomaticVariantCalls/*_Illumina/Bed/*CoveredRegion.bed.gz* 2> /dev/null || true); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); [ -f $x ] && cp $x ForGQuery/Data/Hg38/Somatic/Tempus/Bed/$coreId'_'$fileName &>> Logs/gquery.log; done; for x in $(ls TJobs/*/Tempus/*/RNAAnalysis/*_STARFusion/*sf.bed.gz* 2> /dev/null || true); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); [ -f $x ] && cp $x ForGQuery/Data/Hg38/Somatic/Tempus/Fusion/$coreId'_'$fileName &>> Logs/gquery.log; done; for x in $(ls  TJobs/*/Tempus/*/CopyAnalysis/*CopyRatio/Results/*seg.pass.bed.gz* 2> /dev/null || true); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); [ -f $x ] && cp $x ForGQuery/Data/Hg38/Somatic/Tempus/Cnv/$coreId'_'$fileName &>> Logs/gquery.log; done; for x in $(ls  TJobs/*/Tempus/*/GermlineVariantCalling/*_GATK_Anno/Vcfs/*_Anno_Hg38.anno.vcf.gz* 2> /dev/null || true); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); [ -f $x ] && cp $x ForGQuery/Data/Hg38/Germline/Tempus/Vcf/$coreId'_'$fileName &>> Logs/gquery.log; done; for x in $(ls  TJobs/*/Tempus/*/Alignment/*NormalDNA/QC/*bed.gz* 2> /dev/null || true); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); [ -f $x ] && cp $x ForGQuery/Data/Hg38/Germline/Tempus/Bed/$coreId'_'$fileName &>> Logs/gquery.log; done; touch Status/GQuery_COMPLETE 
+
+[Thu Aug 11 14:31:07 2022]
+rule cBioPortal:
+    input: Status/TNRunner2_COMPLETE
+    output: Status/CBioPortal_COMPLETE
+    log: Logs/cBioPortal.log
+    jobid: 4
+    threads: 10
+
+rm -rf ForCBioPortal; mkdir -p  ForCBioPortal/Data/Hg38/Somatic/Tempus/Vcf  ForCBioPortal/Data/Hg38/Somatic/Tempus/Cnv  ForCBioPortal/Data/Hg38/Somatic/Tempus/Fusion  ForCBioPortal/Data/Hg38/Germline/Tempus/Vcf  ForCBioPortal/ClinicalReports &> Logs/cBioPortal.log; for x in $(ls TJobs/*/Tempus/*/SomaticVariantCalls/*_Anno/Vcfs/*.anno.vcf.gz* 2> /dev/null || true); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); [ -f $x ] && cp $x ForCBioPortal/Data/Hg38/Somatic/Tempus/Vcf/$coreId'_'$fileName &>> Logs/cBioPortal.log; done; for x in $(ls TJobs/*/Tempus/*/RNAAnalysis/*_STARFusion/*sf.bed.gz* 2> /dev/null || true); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); [ -f $x ] && cp $x ForCBioPortal/Data/Hg38/Somatic/Tempus/Fusion/$coreId'_'$fileName &>> Logs/cBioPortal.log; done; for x in $(ls  TJobs/*/Tempus/*/CopyAnalysis/*CopyRatio/Results/*seg.pass.bed.gz* 2> /dev/null || true); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); [ -f $x ] && cp $x ForCBioPortal/Data/Hg38/Somatic/Tempus/Cnv/$coreId'_'$fileName &>> Logs/cBioPortal.log; done; for x in $(ls  TJobs/*/Tempus/*/GermlineVariantCalling/*_GATK_Anno/Vcfs/*_Anno_Hg38.anno.vcf.gz* 2> /dev/null || true); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); [ -f $x ] && cp $x ForCBioPortal/Data/Hg38/Germline/Tempus/Vcf/$coreId'_'$fileName &>> Logs/cBioPortal.log; done; for x in $(ls TJobs/*/Tempus/*/ClinicalReport/*json 2> /dev/null || true); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); [ -f $x ] && cp $x ForCBioPortal/ClinicalReports/$coreId'_'$fileName &>> Logs/cBioPortal.log; done; java -jar -Djava.io.tmpdir=. -Xmx5G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps/TempusJson2Vcf -j ForCBioPortal/ClinicalReports -s ForCBioPortal/ClinicalReports/ParsedReports/ -f /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Indexes/B37/human_g1k_v37_decoy_phiXAdaptr.fasta -b /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Bed/Tempus/gencode.v19.annotation.genes.bed.gz &>> Logs/cBioPortal.log; mv ForCBioPortal/ClinicalReports/ParsedReports/aggregatePatientInfo.xls ForCBioPortal/ &>> Logs/cBioPortal.log; rm -rf ForCBioPortal/ClinicalReports/ &>> Logs/cBioPortal.log; touch Status/CBioPortal_COMPLETE 
+[Thu Aug 11 14:31:16 2022]
+Finished job 7.
+2 of 8 steps (25%) done
+[Thu Aug 11 14:31:49 2022]
+Finished job 4.
+3 of 8 steps (38%) done
+
+[Thu Aug 11 14:31:49 2022]
+rule JobCleaner:
+    input: Status/CBioPortal_COMPLETE, Status/GQuery_COMPLETE
+    output: Status/JobCleaner_COMPLETE
+    log: Logs/jobCleaner.log
+    jobid: 3
+    threads: 20
+
+java -jar -Djava.io.tmpdir=. -Xmx5G /uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps/JobCleaner -r TJobs/ -e '.tbi,.crai,.bai,COMPLETE,.tar.gz.unpacked' -n 'Logs,RunScripts' &> Logs/jobCleaner.log; touch Status/JobCleaner_COMPLETE
+[Thu Aug 11 14:32:35 2022]
+Finished job 3.
+4 of 8 steps (50%) done
+
+[Thu Aug 11 14:32:35 2022]
+rule SyncMainRepo:
+    input: Status/JobCleaner_COMPLETE
+    output: Status/SyncMainRepo_COMPLETE
+    log: Logs/syncMainRepo.log
+    jobid: 2
+    threads: 20
+
+aws s3 sync TJobs/ s3://hcibioinfo-patient-molecular-repo/Patients/ --quiet &> Logs/syncMainRepo.log; touch Status/SyncMainRepo_COMPLETE

@@ -6,7 +6,7 @@
 
 set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 
-# 13 Sept 2021
+# 4 Jan	2022
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -16,7 +16,7 @@ set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 #### Do just once ####
 
 # 1) Install Singularity (https://www.sylabs.io) or load via a module, place in your path
-module load singularity/3.6.4
+module load singularity
 
 # 2) Define file paths to "mount" in the container. The first is to the data bundle mirrored on BSR servers. The second is the path to your data.
 dataBundle=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/atlatl/data
@@ -58,7 +58,9 @@ echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min to
 
 # Final cleanup
 mkdir -p RunScripts
-mv rnaAlignQC* RunScripts/
-mv -f slurm* *snakemake.stats.json Logs/ &> /dev/null || true
-rm -rf .snakemake FAILED STARTED DONE QUEUED RESTART*
+mv -f rnaAlignQC*  RunScripts/
+#mv -f  *.yaml RunScripts/ &> /dev/null || true
+cp slurm* Logs/ &> /dev/null || true
+mv -f *snakemake.stats.json Logs/ &> /dev/null || true
+rm -rf .snakemake STARTED RESTART* QUEUED slurm*
 

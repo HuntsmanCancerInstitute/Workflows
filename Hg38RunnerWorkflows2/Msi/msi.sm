@@ -1,5 +1,5 @@
 # MSI Calling Workflow 
-# 21 Sept 2021
+# 20 Jan 2022
 # David.Nix@hci.utah.edu
 # Aaron.Atkinson@Hci.Utah.Edu
 # Huntsman Cancer Institute
@@ -7,20 +7,26 @@
 ############ No need to modify anything in this document #############
 
 # Base name to prepend on all files
-nameBuild = str(config["name"]) + "_" + config["genomeBuild"]
+nameBuild = str(config["name"]) + "_Hg38"
 
 # Threads and memory
 allThreads = int(config["allThreads"])
+halfThreads = int(round(allThreads/2,0)) - 1
+if allThreads < 10:
+    tenThreads = allThreads
+else:
+    tenThreads = 10
+
 allRam = int(round(float(config["allRam"])))
 
 # Resources
-tumorBam = config["tumorBam"]
-normalBam = config["normalBam"]
-indexFasta = config["indexFasta"]
-regions = config["regions"]
+db = config["dataBundle"] + "/"
+indexFasta = db + config["indexFasta"]
+regions = db + config["msiRegions"]
 
 # Apps in docker image
 mantis = "/BioApps/Mantis/MANTIS-1.0.5/mantis.py"
+samtools = "/BioApps/Samtools/1.13/bin/samtools"
 
 # Filtering params
 mrq = config["mrq"]
@@ -28,16 +34,64 @@ mlq = config["mlq"]
 mlc = config["mlc"]
 mrr = config["mrr"]
 
+# Launch rule
+rule Launcher:
+    output:
+         "COMPLETE"
+    input:
+         nameBuild+ "_Mantis.txt"
+    shell:
+         "touch {output}"
+
+# Convert normal.cram to normal.bam
+rule Cram2BamNormal:
+    output:
+        "TmpBams/normal.bam"
+    log:
+        "Logs/"+nameBuild+ "_Cram2BamNormal.log"
+    threads:
+        halfThreads
+    shell:
+        "if [ -f normal.bam ]; "
+        "then echo 'normal.bam exists, skipping cram conversion' &>>{log}; "
+        "ln -s $(realpath normal.bam) TmpBams/normal.bam &>>{log}; "
+        "ln -s $(realpath normal.bai) TmpBams/normal.bai &>>{log}; "
+        "else echo 'Converting normal.cram to bam' &>>{log}; "
+        "{samtools} view -@ {halfThreads} -T {indexFasta} -b -o "
+        "TmpBams/normal.bam##idx##TmpBams/normal.bai "
+        "--write-index normal.cram &>>{log}; fi "
+
+# Convert tumor.cram to tumor.bam
+rule Cram2BamTumor:
+    output:
+        "TmpBams/tumor.bam"
+    log:
+        "Logs/"+nameBuild+ "_Cram2BamTumor.log"
+    threads:
+        halfThreads
+    shell:
+        "if [ -f tumor.bam ]; "
+        "then echo 'tumor.bam exists, skipping cram conversion' &>>{log}; "
+        "ln -s $(realpath tumor.bam) TmpBams/tumor.bam &>>{log}; "
+        "ln -s $(realpath tumor.bai) TmpBams/tumor.bai &>>{log}; "
+        "else echo 'Converting tumor.cram to bam' &>>{log}; "
+        "{samtools} view -@ {halfThreads} -T {indexFasta} -b -o "
+        "TmpBams/tumor.bam##idx##TmpBams/tumor.bai "
+        "--write-index tumor.cram &>>{log}; fi "
+
 # Calls Mantis
 rule Mantis:
+    input:
+        nbam = "TmpBams/normal.bam",
+        tbam = "TmpBams/tumor.bam"
     output:
         nameBuild+ "_Mantis.txt"
     log:
         "Logs/"+ nameBuild+ "_Mantis.log"
     threads: 
-        10
+        tenThreads
     shell:
-        "python3 {mantis} -b {regions} -n {normalBam} -t {tumorBam} -o {output} --threads {threads} "
+        "python3 {mantis} -b {regions} -n {input.nbam} -t {input.tbam} -o {output} --threads {threads} "
         "-mrq {mrq} -mlq {mlq} -mlc {mlc} -mrr {mrr} --genome {indexFasta} &>> {log} && "
         "mv -f {output}.status {output} &>> {log} && rm -f *kmer_counts.txt *kmer_counts_filtered.txt &>> {log}" 
 

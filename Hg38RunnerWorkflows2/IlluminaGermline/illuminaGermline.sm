@@ -1,0 +1,134 @@
+# Joint Genotyping of Haplotype called gVCFs
+# 11 Nov 2021
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+############ No need to modify anything in this document #############
+
+# Base name to prepend on all files
+nameBuild = str(config["name"]) + "_Hg38"
+
+# Threads and memory
+allThreads = int(config["allThreads"])
+halfThreads = int(round(allThreads/2,0))
+allRam = int(round(float(config["allRam"])))
+allRamMinFive = allRam - 5
+
+# Resources
+analysisRegions = config["analysisRegions"]
+indexFasta = config["indexFasta"]
+
+# Filtering params
+useqJointGenotypeVCFParser = config["useqJointGenotypeVCFParser"]
+
+strelka = "/BioApps/Strelka/2.9.10"
+manta = "/BioApps/Manta/1.6.0"
+vt = "/BioApps/Vt/9Sept2021/vt"
+htslib = "/BioApps/Htslib/1.13/bin/"
+
+############# Rules ##############
+
+# Workflow trigger
+rule VcfTabix:
+    input:
+         "Vcfs/DONE"
+    output:
+         "COMPLETE"
+    threads:
+         allThreads
+    log:
+         "Logs/"+ nameBuild+ "_VcfTabix.log"
+    shell:
+        "java -jar -Xmx{allRamMinFive}G /BioApps/USeq/Apps/VCFTabix -t {htslib} "
+        "-v Vcfs/ &> {log} && touch COMPLETE"
+
+# Create sample map of g.vcfs to genotype
+rule CreateSampleMap:
+    output:
+        temp (nameBuild+"_SampleMap.txt")
+    log:
+        "Logs/"+ nameBuild+ "_CreateSampleMap.log"
+    shell:
+        "rm -f {output}; cd ToGenotype; "
+        "for x in $(ls *cram); do name=$(echo $x | awk -F'.cram' '{{print $1}}'); "
+        "path=$(realpath $x); echo \"--bam \"$path >> ../{output}; done; cd ../; "
+        "cat {output} > {log} "
+
+# Call Manta to identify larger indel candidates
+rule Manta:
+    input:
+        nameBuild+"_SampleMap.txt"
+    output:
+        "Manta/variants/candidateSmallIndels.vcf.gz"
+    log:
+        "Logs/"+ nameBuild+ "_Manta.log"
+    threads:
+        allThreads
+    shell:
+        "rm -rf Manta/ MantaRun/ ; {manta}/bin/configManta.py --callRegions={analysisRegions} "
+        "--exome $(cat {input}) --runDir MantaRun --referenceFasta={indexFasta} "
+        "&> {log} && "
+        "MantaRun/runWorkflow.py -m local -j {allThreads} -g {allRam} --quiet &>> {log} && "
+        "echo SUCCESS >> {log} && mv MantaRun/results/ Manta &>> {log} && rm -rf MantaRun &>> {log}"
+
+# Joint Genotyping with Strelka
+rule Strelka:
+    input:
+        sm = nameBuild+"_SampleMap.txt",
+        mt = "Manta/variants/candidateSmallIndels.vcf.gz"
+    output:
+        "Strelka/variants/variants.vcf.gz"
+    log:
+        "Logs/"+ nameBuild+ "_Strelka.log"
+    threads:
+        allThreads
+    shell:
+        "rm -rf Strelka/ StrelkaRun/; {strelka}/bin/configureStrelkaGermlineWorkflow.py --callRegions={analysisRegions} "
+        "--exome $(cat {input.sm}) --runDir StrelkaRun --referenceFasta={indexFasta} "
+        "--indelCandidates {input.mt} &> {log} && "
+        "StrelkaRun/runWorkflow.py -m local -j {allThreads} -g {allRam} --quiet &>> {log} && "
+        "echo SUCCESS >> {log} && mv StrelkaRun/results Strelka && rm -rf StrelkaRun &>> {log}"
+
+
+# Decompose the raw Strelka vcf with Vt
+rule VtDecompose:
+    input:
+        "Strelka/variants/variants.vcf.gz"
+    output:
+        temp ( nameBuild+ ".vtDecom.vcf.gz")
+    log:
+        "Logs/"+ nameBuild+ "_VtDecompose.log"
+    threads:
+        allThreads
+    shell:
+        "{vt} decompose -s {input} -o {output} &> {log} "
+
+# Normalize the decomposed vcf with Vt
+rule VtNormalize:
+    input:
+        nameBuild+ ".vtDecom.vcf.gz"
+    output:
+        temp (nameBuild+ ".vt.vcf.gz")
+    log:
+        "Logs/"+ nameBuild+ "_VtNormalize.log"
+    threads:
+        allThreads
+    shell:
+        "{vt} normalize -m -n -o {output} -r {indexFasta} {input} &> {log} "
+
+# Filter the variant calls
+rule JointGenotypeVCFParser:
+    input:
+        nameBuild+ ".vt.vcf.gz"
+    output:
+        temp ("Vcfs/DONE")
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_JointGenotypeVCFParserSplit.log"
+    shell:
+        "java -jar -Xmx{allRamMinFive}G /BioApps/USeq/Apps/JointGenotypeVCFParser -v {input} "
+        "-s Vcfs {useqJointGenotypeVCFParser} &> {log} && touch {output} "
+
+onerror:
+    shell( "rm -f STARTED COMPLETE; touch FAILED")

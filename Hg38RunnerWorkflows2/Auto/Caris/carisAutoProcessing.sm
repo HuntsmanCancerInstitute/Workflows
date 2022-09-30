@@ -1,4 +1,4 @@
-# 31 May 2022 
+# 25 Aug 2022 
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -9,6 +9,7 @@ email = "david.nix@hci.utah.edu"
 tnRunner= "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner"
 tnRunnerWorkflows = tnRunner + "/Workflows"
 carisWorkflows = "/scratch/general/pe-nfs1/u0028003/Caris/Workflows"
+bamPileUp = tnRunner + "/MpileupBkg/Hg38AvatarBkgnd/Idt"
 
 # S3 Resources
 carisBucket = "s3://hci-caris"
@@ -63,7 +64,7 @@ rule CarisDataWrangler:
         maxThreads
     shell:
         "{java} {useq}/CarisDataWrangler -b {carisBucket} -j CJobs -t 2 "
-        "-r CarisDataWrangler/CarisXmlReports_PHI "
+        "-r {carisPHIRepo} "
         "-s CarisDataWrangler/SubjectMatchMaker_PHI "
         "-c {subjectRegistry} {deleteS3Objects}&> {log};"
         "touch {output}"
@@ -85,6 +86,7 @@ rule TNRunner2:
         "-f {carisWorkflows}/StarFusion "
         "-w {tnRunner}/Bam/Hg38Exome/NA12878 "
         "-c {carisWorkflows}/SomaticCaller "
+        "-B {bamPileUp} "
         "-a {carisWorkflows}/Annotator "
         "-b {tnRunnerWorkflows}/SampleConcordance "
         "-v {tnRunnerWorkflows}/CarisVcf "

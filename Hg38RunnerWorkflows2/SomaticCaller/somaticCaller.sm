@@ -1,12 +1,12 @@
 # Tumor - Normal Somatic Variant Calling Workflow 
-# 12 May 2021
+# 6 July 2022
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
 ############ No need to modify anything in this document #############
 
 # Base name to prepend on all files
-nameBuild = str(config["name"]) + "_" + config["genomeBuild"]
+nameBuild = str(config["name"]) + "_Hg38"
 
 # Threads and memory
 allThreads = int(config["allThreads"])
@@ -17,8 +17,9 @@ tumorBam = config["tumorBam"]
 normalBam = config["normalBam"]
 tumorBed = config["tumorBed"]
 normalBed = config["normalBed"]
-indexFasta = config["indexFasta"]
-regions = config["regionsForAnalysis"]
+db = config["dataBundle"] + "/"
+indexFasta = db + config["indexFasta"]
+regions = db + config["analysisRegions"]
 bpileup = config["bpileup"]
 
 # Apps in docker image
@@ -69,7 +70,7 @@ rule Manta:
         "rm -rf {output.dir} &> {log} && "
         "{manta}/bin/configManta.py --exome "
         "--normalBam={normalBam} --tumorBam={tumorBam} --referenceFasta={indexFasta} "
-        "--runDir={output.dir} &>> {log} && "
+        "--callRegions={regions} --runDir={output.dir} &>> {log} && "
         "{output.dir}/runWorkflow.py -m local -g {allRam} -j {threads} "
         "--quiet &>> {log}"
 

@@ -1,39 +1,21 @@
 # MSI Calling Workflow
-# 21 Sept 2021
+# 10 March 2022
 # David.Nix@hci.utah.edu
 # Aaron.Atkinson@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
 set -e
 cd $jobDir
+start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
+
+echo -e "\n---------- Starting -------- $((($(date +'%s') - $start)/60)) min"
 
 # Read params and files
 allThreads=$(nproc)
 allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
-fasta=$dataBundle/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa
 
-# Convert cram files? Mantis only works with bam files.
-echo 'Looking for unconverted cram files...'
-for x in $(ls *cram)
-do
-echo
-name=$(echo $x | awk -F'.cram' '{print $1}')
-bam=$name.bam
-bai=$name.bai
-cram=$name.cram
-if [ -f $bam ]; then
-   echo "'$bam' exists, skipping cram conversion"
-else
-   echo "'$bam' not found, converting cram"
-   /BioApps/Samtools/1.13/bin/samtools view -@ $allThreads -T $fasta -b -o $bam"##idx##"$bai --write-index $cram
-fi
-done
-echo
-
-tumorBam="tumor.bam"
-normalBam="normal.bam"
-tumorRP=`realpath tumor.bam`
-normalRP=`realpath normal.bam`
+tumorRP=`realpath tumor.*`
+normalRP=`realpath normal.*`
 name=${PWD##*/}
 
 # Print params
@@ -48,22 +30,17 @@ echo -n normalBam"  : "; echo $normalRP
 
 snakemake -p \
 --cores $allThreads \
+--stats $name"_Hg38_snakemake.stats.json" \
 --snakefile *.sm \
+--configfile *.yaml \
 --config \
-allThreads=$allThreads \
-allRam=$allRam \
-regions=$dataBundle/Bed/Msi/MSI6.sorted.bed \
-indexFasta=$fasta \
-tumorBam=$tumorBam \
-normalBam=$normalBam \
-genomeBuild=Hg38 \
 name=$name \
-mrq=20.0 \
-mlq=25.0 \
-mlc=20 \
-mrr=1
+allThreads=$allThreads \
+allRam=$allRam
 
-# Notes
-## regions - a sorted, bgzipped, and tabix indexed bed file of regions to call MSI status.
-## indexFasta - the same fasta file used in sample alignment. Also needed are the index xxx.fa.fai and xxx.dict files.
+echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min total"
+
+## Svg DAG generation
+# Replace the top snakemake line with 'snakemake --dag'
+# Add onto the end '| dot -Tsvg > workflow.svg'
 

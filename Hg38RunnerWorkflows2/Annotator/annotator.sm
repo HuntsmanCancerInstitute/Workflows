@@ -1,5 +1,5 @@
 # Annotation of a vcf file with snpEff, splice, and prior call freq, followed by region and quality filtering
-# 10 Sept 2021
+# 20 Dec 2021
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -16,9 +16,10 @@ annoVcfParser = config["annoVcfParser"]
 vcfCallFreq = config["vcfCallFreq"]
 
 # Resources
-regionsOfInterest = config["regionsOfInterest"]
-indexFasta = config["indexFasta"]
-dataDir = config["dataDir"]
+regionsOfInterest = config["dataBundle"] +"/"+ config["regionsOfInterest"]
+indexFasta = config["dataBundle"] +"/"+ config["indexFasta"]
+dataDir = config["dataBundle"] + "/AnnotatorData"
+gQueryData = config["dataBundle"] + "/GQuery/Data"
 
 # Apps in the docker container
 java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
@@ -89,7 +90,7 @@ rule VCFSpliceScanner:
     input:
         nameBuild+ ".snpEff.clinvar.exac.vcf"
     output:
-        temp ("Vcfs/"+ nameBuild+ ".splice.vcf.gz")
+        "Vcfs/"+ nameBuild+ ".anno.vcf.gz"
     threads:
         allThreads
     log:
@@ -99,25 +100,12 @@ rule VCFSpliceScanner:
         "-m {dataDir}/SpliceModels -f {indexFasta} "
         "-v {input} -r {output} &> {log}"
 
-rule VCFCallFrequency:
-    input:
-       "Vcfs/"+ nameBuild+ ".splice.vcf.gz"
-    output:
-       "Vcfs/"+ nameBuild+ ".anno.vcf.gz"
-    log:
-        "Logs/"+ nameBuild+ "_VCFCallFrequency.log"
-    threads:
-        allThreads
-    shell:
-        "{java} {useq}/VCFCallFrequency -f {input} -s TempVCFCallFreq {vcfCallFreq}  &> {log} && "
-        "mv -f TempVCFCallFreq/*.callFreq.vcf.gz {output} && rm -rf TempVCFCallFreq"
-
 # Filter the annotated vcf file 
 rule AnnotatedVcfParser:
     input:
         "Vcfs/"+ nameBuild+ ".anno.vcf.gz"
     output:
-        "Vcfs/"+ nameBuild+ ".anno.filt.vcf.gz"
+        temp ("Vcfs/"+ nameBuild+ ".annoNoCF.filt.vcf.gz")
     threads:
         halfThreads
     log:
@@ -125,6 +113,20 @@ rule AnnotatedVcfParser:
     shell:
         "{java} {useq}/AnnotatedVcfParser -v {input} -s AnnoVcfParser {annoVcfParser} "
 	"&> {log} && mv -f AnnoVcfParser/*_Pass.vcf.gz {output} &>> {log} && rm -rf AnnoVcfParser "
+
+# Adding in after anno filt to cut down on processing time
+rule VCFCallFrequency:
+    input:
+       "Vcfs/"+ nameBuild+ ".annoNoCF.filt.vcf.gz"
+    output:
+       "Vcfs/"+ nameBuild+ ".anno.filt.vcf.gz"
+    log:
+        "Logs/"+ nameBuild+ "_VCFCallFrequency.log"
+    threads:
+        allThreads
+    shell:
+        "{java} {useq}/VCFCallFrequency -f {input} -s TempVCFCallFreq {vcfCallFreq} -d {gQueryData}  &> {log} && "
+        "mv -f TempVCFCallFreq/*.callFreq.vcf.gz {output} && rm -rf TempVCFCallFreq"
 
 # Filter for select genomic regions, e.g. ACMG genes from the GC's
 rule VCFRegionFilter:

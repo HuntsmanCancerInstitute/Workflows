@@ -1,0 +1,84 @@
+# 27 Sept 2022 
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+# General Resources
+maxThreads = 20
+halfThreads = 10
+email = "david.nix@hci.utah.edu"
+tnRunner= "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner"
+tnRunnerWorkflows = tnRunner + "/Workflows"
+
+# Cloud Resources
+patientMolRepo = "s3://hcibioinfo-patient-molecular-repo/Patients/"
+molRepoIndex = "s3://hcibioinfo-patient-lists/MolecularRepo/"
+dxToken = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/DNAnexus/token"
+
+# GU Group
+guGroup="GU"
+guEmail="david.nix@hci.utah.edu,beverly.chigarira@hci.utah.edu,JongTaek.Kim@aruplab.com"
+guBucket="s3://hcibioinfo-gu-patient-molecular-repo/Patients/"
+
+# PHI Resources
+#subjectRegistry = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/PHI/Registry/"
+#bkupSubjectRegistry = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/PHI/RegistryBackupDontUse/"
+subjectRegistry = "/scratch/general/pe-nfs1/u0028003/Avatar/Auto/SMM_PHI/Registry/"
+bkupSubjectRegistry = "/scratch/general/pe-nfs1/u0028003/Avatar/Auto/SMM_PHI/Registry/Bkup/"
+
+# Apps, aws cli installed and in the path
+java = "java -jar -Djava.io.tmpdir=. -Xmx5G"
+useq = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps"
+htslib = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/HtsLib/1.15/bin"
+
+
+############# Rules ##############
+
+# Workflow trigger, final Rule, cleanup 
+rule FinalCleanup:
+    input:
+        "Status/FetchResourceFiles_COMPLETE",
+        "Status/AvatarDataWrangler_COMPLETE"
+        #"Status/MainRepoIndex_COMPLETE",
+        #"Status/BackupSubjectRegistry_COMPLETE",
+        #"Status/UploadGUDatasets_COMPLETE"
+    output:
+        "Status/All_COMPLETE"
+    log:
+        "Logs/finalCleanup.log"
+    shell:
+        "touch {output} &> {log}"
+## "rm -rf TJobs/ &> {log}; touch {output}"
+
+rule FetchResourceFiles:
+    output:
+        "Status/FetchResourceFiles_COMPLETE"
+    log:
+        "Logs/fetchResourceFiles.log"
+    threads:
+        maxThreads
+    shell:
+        "dx login --token $(cat {dxToken}) &> {log}; "
+        "rm -rf ResourceFiles &>> {log}; "
+        "mkdir ResourceFiles &>> {log};"
+        "dx download -f --no-progress HCI_Molecular_Data:/Avatar_MolecularData_hg38/Manifests_and_QC_Files/*_HCI_ClinicalMolLinkage_V4.csv -o ResourceFiles/ &>> {log};"
+        "dx download -f --no-progress HCI_Molecular_Data:/Avatar_MolecularData_hg38/Manifests_and_QC_Files/*_HCI_WES_QC_Metrics.csv -o ResourceFiles/ &>> {log};"
+        "dx ls HCI_ORIEN_AVATAR_MOLECULAR_DATA:/Whole_Exome/alignment_crams/*cram | sort | uniq > ResourceFiles/avatar_WesCramList.txt 2>> {log};"
+        "dx ls HCI_ORIEN_AVATAR_MOLECULAR_DATA:/RNAseq/alignment_crams/*cram | sort | uniq > ResourceFiles/avatar_RNACramList.txt 2>> {log};"
+        "aws s3 ls {patientMolRepo} --recursive > ResourceFiles/hci_AWSRepoList.txt 2>> {log};"
+        "touch {output}"
+
+# Look for new Avatar datasets to process, uses the PHI to identify the patient in the registry
+rule avatarDataWrangler:
+    input:
+        "Status/FetchResourceFiles_COMPLETE"
+    output:
+        c = "Status/AvatarDataWrangler_COMPLETE",
+        d = "ResourceFiles/dxDwnldCmds.txt"
+    log:
+        "Logs/avatarDataWrangler.log"
+    threads:
+        halfThreads
+    shell:
+        "{java} {useq}/avatarDataWrangler -r ResourceFiles -j AJobs "
+        "-s {subjectRegistry} -d {output.d} -t SMM_PHI_Tmp &> {log};"
+        "touch {output.c}"

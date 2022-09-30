@@ -1,0 +1,56 @@
+# Bash script to run inside the container
+# 8 Jul 2021
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+set -e
+cd $jobDir
+start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
+echo -e "\n---------- Starting -------- $((($(date +'%s') - $start)/60)) min"
+
+# Resources
+name=${PWD##*/}
+allThreads=$(nproc)
+allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+alignmentFile=$(ls *.cram)
+
+# Print params
+echo -n jobDir"       : "; echo $jobDir
+echo -n name"         : "; echo $name
+echo -n alignment"    : "; echo $alignmentFile
+echo -n dataBundle"   : "; echo $dataBundle
+echo -n tmpDir"       : "; echo $tmpDir
+echo -n threads"      : "; echo $allThreads
+echo -n ram"          : "; echo $allRam
+echo -n host"         : "; echo $(hostname); echo
+
+# Look for required files
+ls $dataBundle $alignmentFile *.sm *.yaml  > /dev/null
+
+# Launch snakemake with these settings
+snakemake -p --cores $allThreads \
+--stats $name"_Hg38_snakemake.stats.json" \
+--snakefile *.sm \
+--configfile *.yaml \
+--config \
+name=$name \
+alignmentFile=$alignmentFile \
+dataBundle=$dataBundle \
+tmpDir=$tmpDir \
+allThreads=$allThreads \
+allRam=$allRam
+
+echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min total"
+
+# Final cleanup
+mkdir -p RunScripts
+mv -f haplotypeCalling*  RunScripts/
+mv -f  *.yaml RunScripts/ &> /dev/null || true
+cp slurm* Logs/ &> /dev/null || true
+mv -f *snakemake.stats.json Logs/ &> /dev/null || true
+rm -rf .snakemake STARTED RESTART* QUEUED slurm* $tmpDir
+
+
+# Replace first and last lines above with the following to get dag svg graph
+	# snakemake --dag \
+	# allRam=$allRam | dot -Tsvg > $name"_dag.svg"

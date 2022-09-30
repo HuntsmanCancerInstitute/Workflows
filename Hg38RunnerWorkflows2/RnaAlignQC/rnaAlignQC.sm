@@ -1,9 +1,7 @@
 # Alignment and QC for RNASeq samples
-# 27 Sept 2021
+# 18 July 2022
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
-
-############ No need to modify anything in this document #############
 
 # Base name to prepend on all files
 nameBuild = str(config["name"]) + "_Hg38"
@@ -19,6 +17,8 @@ fastqReadOne = config["fastqReadOne"]
 fastqReadTwo = config["fastqReadTwo"]
 
 # Resources
+adapterR1=config["adapterR1"]
+adapterR2=config["adapterR2"]
 dataBundle = config["dataBundle"]+ "/Human/GRCh38"
 chrom = dataBundle + "/chrom.sizes"
 db = dataBundle + "/" + config["release"]
@@ -28,8 +28,8 @@ gtf= db + "/Homo_sapiens.GRCh38.104.gtf"
 refflat = db + "/Homo_sapiens.GRCh38.104.refflat"
 riboint = db + "/Homo_sapiens.GRCh38.104.rRNA.interval"
 rsemIndex = db + "/rsem/RSEM"
-fqsConfig = config["dataBundle"]+ "/FastQ_Screen_Genomes/tnRunner_fastq_screen.conf"
-analysisRegions = config["dataBundle"] +"/Human/Hg38/TNRunner/hg38NimIdtMergedPad150bp.bed.gz"
+fqsConfig = config["dataBundle"]+ "/FastQ_Screen_Genomes/redwood_fastq_screen.conf"
+analysisRegions = config["dataBundle"] +"/Human/Hg38/TNRunner/hg38AllGeneExonsPad175bp.bed.gz"
 mappingQuality=config["mappingQuality"]
 baseQuality=config["baseQuality"]
 
@@ -88,7 +88,7 @@ rule Cutadapt:
         "Logs/"+ nameBuild+ "_Cutadapt.log"
     shell:
         "cutadapt -j {threads} -O 6 -m 20 -o {output.fq1} -p {output.fq2} "
-        "-a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA -A AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT "
+        "-a {adapterR1} -A {adapterR2} "
         "{fastqReadOne} {fastqReadTwo} &> {log}"
 
 # Look for contaminants
