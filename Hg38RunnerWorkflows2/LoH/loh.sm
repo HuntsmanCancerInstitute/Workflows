@@ -1,0 +1,96 @@
+# GATK Copy Ratio Calling with USeq filtering
+# 22 July 2022
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+############ No need to modify anything in this document #############
+
+# Input files
+tumor = config["tumor"]
+normal = config["normal"]
+vcf = config["vcf"]
+copyRatio = config["copyRatio"]
+
+nameBuild = str(config["name"])+"_Hg38"
+
+# Threads and memory
+allThreads = int(config["allThreads"])
+halfThreads = int(round(allThreads/2,0))
+allRam = int(round(float(config["allRam"])))
+halfRam = int(round(allRam/2,0))
+
+# Resources
+geneTable = config["dataBundle"] +"/"+ config["geneTableLoH"]
+
+# Apps in the container
+java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
+useq = "/BioApps/USeq/Apps"
+htslib= "/BioApps/Htslib/1.15.1/bin"
+
+############# Rules ##############
+
+# Workflow trigger
+rule OrganizeResults:
+    input:
+        "Results/"+ nameBuild+ ".loh.vcf.gz.tbi",
+        "Results/"+ nameBuild+ ".anno.loh.bed.gz.tbi"
+    output:
+        "COMPLETE"
+    shell:
+        "touch {output}"
+
+# Run the USeq LoH tool to find significant LoH events, just uses all of the default thresholds
+rule LoH:
+    output:
+        v = "Results/"+ nameBuild+ ".loh.vcf.gz",
+        b = temp ("Results/"+ nameBuild+ ".loh.bed.gz")
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_LoH.log"
+    shell:
+        "{java} {useq}/LoH -v {vcf} -g {normal} -s {tumor} -c {copyRatio} -o Results &> {log}; "
+        "mv Results/loh.vcf.gz {output.v} &>> {log}; "
+        "mv Results/loh.bed.gz {output.b} &>> {log}; "
+
+# Intersect the LoH regions with gene models
+rule BedAnnotator:
+    input:
+        "Results/"+ nameBuild+ ".loh.bed.gz"
+    output:
+        "Results/"+ nameBuild+ ".anno.loh.bed.gz"
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_AnnotateBedWithGenes.log"
+    shell:
+        "{java} {useq}/AnnotateBedWithGenes -u {geneTable} -b {input} -r {output} -g -f &> {log}; "
+
+# Tabix index all of the bed files
+rule BedTabix:
+    input:
+        "Results/"+ nameBuild+ ".anno.loh.bed.gz"
+    output:
+        "Results/"+ nameBuild+ ".anno.loh.bed.gz.tbi"
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_BedTabix.log"
+    shell:
+        "{java} {useq}/BedTabix -t {htslib} -v Results/ &> {log}"
+
+# Tabix index all of the vcf files
+rule VcfTabix:
+    input:
+        "Results/"+ nameBuild+ ".loh.vcf.gz"
+    output:
+        "Results/"+ nameBuild+ ".loh.vcf.gz.tbi"
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_VcfTabix.log"
+    shell:
+        "{java} {useq}/VCFTabix -t {htslib} -v Results/ &> {log}"
+
+onerror:
+    shell( "rm -f STARTED COMPLETE; touch FAILED")
