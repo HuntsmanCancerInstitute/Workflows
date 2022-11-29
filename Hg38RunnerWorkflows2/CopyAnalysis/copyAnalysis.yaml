@@ -1,5 +1,5 @@
 ---
-# Last edit 2 March 2022
+# Last edit 13 July 2022
 # Look below for the workflows you are running and modify the params as needed
 
 ############# For All #############
@@ -91,10 +91,6 @@ minBKZ: 3
 
 ############# Somatic Copy Analysis #############
 
-# Matched to the gender specific PoN
-intervals: CNV/AVATAR/Somatic/NIM/mergedSeqCap_EZ_Exome_v3_hg38_capture_primary_targets_pad150bp.preprocessed.interval_list
-#intervals: CNV/AVATAR/Somatic/IDT/hg38IdtProbesPad150bp.processed.interval_list
-
 # Needed for the GATK plot segments app
 dictFasta: GATKResourceBundleAug2021/Homo_sapiens_assembly38.dict
 
@@ -103,11 +99,6 @@ geneTable: AnnotatorData/UCSC/8Aug2018/hg38RefSeq8Aug2018_Merged.ucsc.gz
 minTumorCopyRatio: 0.15
 maxNormalCopyRatio: 0.5
 minTNCRRatio: 0.15
-
-
-############# LoH #############
-# To provide annotations to the bed file output
-geneTableLoH: AnnotatorData/UCSC/8Aug2018/hg38RefSeq8Aug2018_Merged.ucsc.gz
 
 
 ############# MSI Analysis #############

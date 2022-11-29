@@ -6,7 +6,9 @@
 
 set -e
 cd $jobDir
-rm -f FAILED COMPLETE QUEUED; touch STARTED
+start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
+
+echo -e "\n---------- Starting -------- $((($(date +'%s') - $start)/60)) min"
 
 # Node resources
 name=${PWD##*/}
@@ -34,10 +36,13 @@ name=$name \
 allThreads=$allThreads \
 allRam=$allRam
 
+echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min total"
+
 # Final cleanup
 mkdir -p RunScripts
 mv -f dnaAlign*  RunScripts/
 mv -f  *.yaml RunScripts/ &> /dev/null || true
+cp slurm* Logs/ &> /dev/null || true
 mv -f *snakemake.stats.json Logs/ &> /dev/null || true
 rm -rf .snakemake STARTED RESTART* QUEUED slurm*
 

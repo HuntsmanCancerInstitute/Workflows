@@ -1,10 +1,11 @@
 # Bash script to run inside the container
-# 26 Oct 2021
+# 8 Nov 2022
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
 set -e
 cd $jobDir
+rm -f FAILED COMPLETE QUEUED; touch STARTED
 
 # Read info
 allThreads=$(nproc)
@@ -31,8 +32,6 @@ snakemake -p --cores $allThreads \
 fastqReadOne=$fq1 \
 fastqReadTwo=$fq2 \
 dataBundle=$dataBundle \
-release="release104" \
-starIndex="star125" \
 name=$name \
 adapterR1=AGATCGGAAGAGCACACGTCTGAACTCCAGTCA \
 adapterR2=AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT \
@@ -41,9 +40,12 @@ mappingQuality=13 \
 allThreads=$allThreads \
 allRam=$allRam
 
+mkdir -p RunScripts
+mv -f rnaAlignQC*  RunScripts/ 
+mv -f *snakemake.stats.json Logs/ &> /dev/null || true
+rm -rf .snakemake STARTED RESTART* QUEUED FAIL*
+
 ## Notes
-# release - match to the Ensembl release of interest, see /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/atlatl/data/Human/GRCh38, if you change this to a non human species also modify the file names in rnaAlignQC.sm
-# starIndex - set to the length equal to or immediately smaller than your read length, e.g. star125, star100, star50
 ## R1 and R2 adapters - used by CutAdapt to trim adapter sequence in the fastq prior to alignment, use adapterR1=AGATCGGAAGAGCACACGTCTGAACTCCAGTCA, adapterR2=AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT for Illumina TruSeq
 
 ## Svg DAG generation

@@ -1,5 +1,5 @@
-# GATK Copy Ratio Calling with USeq filtering
-# 22 July 2022
+# USeq LoH detection and annotation
+# 23 Oct 2022
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -42,7 +42,8 @@ rule OrganizeResults:
 # Run the USeq LoH tool to find significant LoH events, just uses all of the default thresholds
 rule LoH:
     output:
-        v = "Results/"+ nameBuild+ ".loh.vcf.gz",
+        v1 = "Results/"+ nameBuild+ ".loh.vcf.gz",
+        v2 = "Results/"+ nameBuild+ ".nonPassQCHetAndHom.vcf.gz",        
         b = temp ("Results/"+ nameBuild+ ".loh.bed.gz")
     threads:
         halfThreads
@@ -50,7 +51,8 @@ rule LoH:
         "Logs/"+ nameBuild+ "_LoH.log"
     shell:
         "{java} {useq}/LoH -v {vcf} -g {normal} -s {tumor} -c {copyRatio} -o Results &> {log}; "
-        "mv Results/loh.vcf.gz {output.v} &>> {log}; "
+        "mv Results/loh.vcf.gz {output.v1} &>> {log}; "
+        "mv Results/nonPassQCHetAndHom.vcf.gz {output.v2} &>> {log}; "
         "mv Results/loh.bed.gz {output.b} &>> {log}; "
 
 # Intersect the LoH regions with gene models

@@ -4,7 +4,9 @@
 #SBATCH -N 1
 #SBATCH -t 96:00:00
 
-# 8 Nov 2022
+set -e
+
+# 4 Jan 2022
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -48,46 +50,8 @@ container=$dataBundle/Containers/public_SM_BWA_1.sif
 
 
 #### No need to modify anything below ####
-set -e
-start=$(date +'%s')
+
+# Launch the container
 jobDir=$(realpath .)
-name=${PWD##*/}
-
-# Define a temporary directory physically on the node in which to copy over all the job files.  This will be deleted and then recreated.
-tempDir=/scratch/local/$USER/$SLURM_JOB_ID
-rm -rf $tempDir &> /dev/null || true; mkdir -p $tempDir/$name || true
-
-echo -e "\n---------- Copying job files to tempDir -------- $((($(date +'%s') - $start)/60)) min"
-rsync -rtL --exclude 'slurm-*' $jobDir/ $tempDir/$name/ && echo CopyOverOK || echo CopyOverFAILED
-
-# Execute the sing file in the container from the tempDir, always return true, even if it fails so one can copy all back
-echo -e "\n---------- Launching container -------- $((($(date +'%s') - $start)/60)) min"
-cd $tempDir/$name
-SINGULARITYENV_dataBundle=$dataBundle SINGULARITYENV_jobDir=$tempDir/$name \
-  singularity exec --containall --bind $dataBundle,$tempDir/$name $container bash $tempDir/$name/*.sing || true
-
-echo -e "\n---------- Files In Temp -------- $((($(date +'%s') - $start)/60)) min"
-ls -1 $tempDir/$name
-
-# Copy back job files regardless of success or failure, disable exit on error, exclude the cram and fastq files
-echo -e "\n---------- Copying back results -------- $((($(date +'%s') - $start)/60)) min"
-set +e
-rm -f $tempDir/$name/*cram* &> /dev/null
-rsync $tempDir/$name/COMPLETE $jobDir/ &> /dev/null
-rsync -rtL --exclude '*q.gz' $tempDir/$name/ $jobDir/ && echo CopyBackOK || { echo CopyBackFAILED; rm -f COMPLETE; }
-
-echo -e "\n---------- Files In JobDir -------- $((($(date +'%s') - $start)/60)) min"
-ls -1 $jobDir; cd $jobDir; rm -rf $tempDir &> /dev/null 
-
-# OK?
-if [ -f COMPLETE ];
-then
-  echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min total"
-  mv -f slurm* Logs/ 
-  rm -f dnaAlignQC.* QUEUED
-else
-  echo -e "\n---------- FAILED! -------- $((($(date +'%s') - $start)/60)) min total"
-  touch FAILED
-fi
-
+SINGULARITYENV_dataBundle=$dataBundle SINGULARITYENV_jobDir=$jobDir singularity exec --containall --bind $dataBundle,$jobDir $container bash $jobDir/*.sing
 

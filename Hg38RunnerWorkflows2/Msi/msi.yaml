@@ -105,6 +105,11 @@ maxNormalCopyRatio: 0.5
 minTNCRRatio: 0.15
 
 
+############# LoH #############
+# To provide annotations to the bed file output
+geneTableLoH: AnnotatorData/UCSC/8Aug2018/hg38RefSeq8Aug2018_Merged.ucsc.gz
+
+
 ############# MSI Analysis #############
 
 #Regions containing microsatellites

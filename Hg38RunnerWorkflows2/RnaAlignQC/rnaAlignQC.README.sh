@@ -4,9 +4,7 @@
 #SBATCH -N 1
 #SBATCH -t 96:00:00
 
-set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
-
-# 4 Jan	2022
+# 8 Nov	2022
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -18,9 +16,8 @@ set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 # 1) Install Singularity (https://www.sylabs.io) or load via a module, place in your path
 module load singularity
 
-# 2) Define file paths to "mount" in the container. The first is to the data bundle mirrored on BSR servers. The second is the path to your data.
+# 2) Define file paths to "mount" in the container. The first is to the data bundle mirrored on BSR servers. 
 dataBundle=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/atlatl/data
-myData=/scratch/general/pe-nfs1/u0028003
 
 # 3) Modify the workflow xxx.sing file setting the paths to the required resources. These must be within the mounts.
 
@@ -44,23 +41,44 @@ container=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Containers/
 
 #### No need to modify anything below ####
 
-echo -e "\n---------- Starting -------- $((($(date +'%s') - $start)/60)) min"
+set -e
+start=$(date +'%s')
+jobDir=$(realpath .)
+name=${PWD##*/}
 
-# Read out params 
-jobDir=`readlink -f .`
+# Define a temporary directory physically on the node in which to copy over all the job files.  This will be deleted and then recreated.
+tempDir=/scratch/local/$USER/$SLURM_JOB_ID
+rm -rf $tempDir &> /dev/null || true; mkdir -p $tempDir/$name || true
 
-SINGULARITYENV_jobDir=$jobDir SINGULARITYENV_dataBundle=$dataBundle \
-singularity exec --containall --bind $dataBundle,$myData $container \
-bash $jobDir/*.sing
+echo -e "\n---------- Copying job files to tempDir -------- $((($(date +'%s') - $start)/60)) min"
+rsync -rtL --exclude 'slurm-*' $jobDir/ $tempDir/$name/ && echo CopyOverOK || echo CopyOverFAILED
 
-echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min total"
+# Execute the sing file in the container from the tempDir, always return true, even if it fails so one can copy all back
+echo -e "\n---------- Launching container -------- $((($(date +'%s') - $start)/60)) min"
+cd $tempDir/$name
+SINGULARITYENV_jobDir=$tempDir/$name SINGULARITYENV_dataBundle=$dataBundle \
+  singularity exec --containall --bind $dataBundle,$tempDir/$name $container \
+  bash $tempDir/$name/*.sing
 
+echo -e "\n---------- Files In Temp -------- $((($(date +'%s') - $start)/60)) min"
+ls -1 $tempDir/$name
 
-# Final cleanup
-mkdir -p RunScripts
-mv -f rnaAlignQC*  RunScripts/
-#mv -f  *.yaml RunScripts/ &> /dev/null || true
-cp slurm* Logs/ &> /dev/null || true
-mv -f *snakemake.stats.json Logs/ &> /dev/null || true
-rm -rf .snakemake STARTED RESTART* QUEUED slurm*
+# Copy back job files regardless of success or failure, disable exit on error, exclude the fastqs
+echo -e "\n---------- Copying back results -------- $((($(date +'%s') - $start)/60)) min"
+set +e
+rsync -rtL --exclude '*q.gz' $tempDir/$name/ $jobDir/ && echo CopyBackOK || { echo CopyBackFAILED; rm -f COMPLETE; }
+
+echo -e "\n---------- Files In JobDir -------- $((($(date +'%s') - $start)/60)) min"
+ls -1 $jobDir; cd $jobDir; rm -rf $tempDir &> /dev/null || true
+
+# OK?
+if [ -f COMPLETE ];
+then
+  echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min total"
+  mv -f slurm* Logs/ 
+  rm -f rnaAlignQC.* QUEUED
+else
+  echo -e "\n---------- FAILED! -------- $((($(date +'%s') - $start)/60)) min total"
+  touch FAILED
+fi
 

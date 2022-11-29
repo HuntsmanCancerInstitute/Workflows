@@ -1,5 +1,5 @@
 # Bash script to run inside the container
-# 9 Nov 2020
+# 8 Nov 2022
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -9,6 +9,10 @@ cd $jobDir
 # Read info
 allThreads=$(nproc)
 allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+shopt -s nullglob; fq=(*.gz)
+fq1=`realpath ${fq[0]}`
+fq2=`realpath ${fq[1]}`
+name=${PWD##*/}
 
 # Print params
 echo -n jobDir"       : "; echo $jobDir
@@ -30,6 +34,10 @@ name=$name \
 allThreads=$allThreads \
 allRam=$allRam
 
+mkdir -p RunScripts
+mv -f starFusion* RunScripts/
+rm -rf .snakemake FAILED STARTED DONE RESTART* QUEUED
+touch COMPLETE
 
 # Replace first and last lines above with the following to get dag svg graph
 	# /BioApps/Miniconda3/bin/snakemake --dag \

@@ -1,5 +1,5 @@
 # Alignment and QC for RNASeq samples
-# 18 July 2022
+# 4 Nov 2022
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -19,17 +19,23 @@ fastqReadTwo = config["fastqReadTwo"]
 # Resources
 adapterR1=config["adapterR1"]
 adapterR2=config["adapterR2"]
+
+#dataBundle from config =/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/atlatl/data
 dataBundle = config["dataBundle"]+ "/Human/GRCh38"
 chrom = dataBundle + "/chrom.sizes"
-db = dataBundle + "/" + config["release"]
-starIndex = db + "/"+ config["starIndex"]
-fastaIndex = dataBundle + "/Homo_sapiens.GRCh38.dna.primary_assembly.fa"
-gtf= db + "/Homo_sapiens.GRCh38.104.gtf"
-refflat = db + "/Homo_sapiens.GRCh38.104.refflat"
-riboint = db + "/Homo_sapiens.GRCh38.104.rRNA.interval"
-rsemIndex = db + "/rsem/RSEM"
-fqsConfig = config["dataBundle"]+ "/FastQ_Screen_Genomes/redwood_fastq_screen.conf"
+
+fqsConfig = config["dataBundle"] +"/Human/Hg38/TNRunner/redwood_fastq_screen_rRNA.conf"
 analysisRegions = config["dataBundle"] +"/Human/Hg38/TNRunner/hg38AllGeneExonsPad175bp.bed.gz"
+
+# for release 106 and 100bp
+# use 100bp for reads at and over 100bp, use the star50 for short reads
+starIndex = dataBundle+ "/release106/star100"
+gtf= dataBundle +"/release106/Homo_sapiens.GRCh38.106.gtf"
+refflat = dataBundle +"/release106/Homo_sapiens.GRCh38.106.refflat"
+riboint = dataBundle +"/release106/Homo_sapiens.GRCh38.106.rRNA.interval"
+rsemIndex = dataBundle +"/release106/rsem/RSEM"
+
+fastaIndex = dataBundle + "/Homo_sapiens.GRCh38.dna.primary_assembly.fa"
 mappingQuality=config["mappingQuality"]
 baseQuality=config["baseQuality"]
 
@@ -62,7 +68,6 @@ rule CheckFiles:
     shell:
         "echo dataBundle: &> {log} && ls {dataBundle} &>> {log} && "
         "echo chrom: &>> {log} && ls {chrom} &>> {log} && "
-        "echo db: &>> {log} && ls {db} &>> {log} && "
         "echo starIndex: &>> {log} && ls {starIndex} &>> {log} && "
         "echo fastaIndex: &>> {log} && ls {fastaIndex} &>> {log} && "
         "echo analysisRegions: &>> {log} && ls {analysisRegions} &>> {log} && "
@@ -201,8 +206,8 @@ rule FeatureCounts:
     log:
         "Logs/"+ nameBuild+ "_FeatureCounts.log"
     shell:
-        "featureCounts -T {threads} -p -s 2 --largestOverlap -a {gtf} -o {output.c} {input.bam} &> {log} && "
-        "featureCounts -T {threads} -p -s 2 --largestOverlap -a {gtf} -o {output.b} -g gene_biotype "
+        "featureCounts -T {threads} -p --countReadPairs -s 2 --largestOverlap -a {gtf} -o {output.c} {input.bam} &> {log} && "
+        "featureCounts -T {threads} -p --countReadPairs -s 2 --largestOverlap -a {gtf} -o {output.b} -g gene_biotype "
         "{input.bam} &>> {log}"
 
 # QC metrics from Picard

@@ -1,13 +1,14 @@
-19 October 2021
+28 November 2022
 
-TNRunner is a USeq app that executes up to 7 dockerized snakemake workflows for processing paired tumor and normal capture DNA and tumor RNA human datasets. Each of these workflows can be launched individually, see the specific README file in the WorkflowDir.  Although TNRunner looks for all three datasets, it will execute what it can given the available fastq. Rerun repeatedly as new data becomes available.  See the TNRunner help menu for details.
+TNRunner2 is a USeq app that executes up to 12 dockerized snakemake workflows for processing paired tumor and normal capture DNA and tumor RNA human datasets. 
+Each of these workflows can be launched individually, see the specific README file in the WorkflowDir.  Although TNRunner2 looks for all three datasets, it 
+will execute what it can given the available fastq. Rerun repeatedly as new data becomes available.  See the TNRunner2 help menu for details.
 
-
-Default Filtering Parameters for the TNRunner workflows and the different output Vcf files:
+Default Filtering Parameters for the TNRunner2 workflows and the different output Vcf files:
 
 DNA Alignments
 	Samtools rmdup is used to remove PCR and Optical duplicates
-	Mapping Quality	>= 20
+	Mapping Quality	>= 13
         Only uniquely mapping primary alignments
 
 Strelka Somatic Variant Filtering
@@ -20,14 +21,15 @@ Strelka Somatic Variant Filtering
 	Number of supporting tumor variant reads	>= 3
 	Background AF BKZ z-score >= 3
 	FDR based on tuned Strelka2 QSI/S scores ~0.09-0.15
-		*** Generates XXX_Illumina_Hg38_final.vcf.gz in the SomaticVariantCalls/XXX_Illumina/Vcfs/ folder
+		*** Generates XXX_Illumina_Hg38_final.vcf.gz in the SomaticVariantCalls/XXX_Illumina/Vcfs/ folder, also available are the raw unfiltered Manta/Strelka vcf calls.
 
 Filtered annotated somatic variants	
-	20	: Minimum DP tumor read depth
-	0.05	: Minimum AF allele frequency
+	12	: Minimum DP read depth
+	3.0	: Minimum ALT observations
+	0.025	: Minimum AF allele frequency
 	1.0	: Maximum AF allele frequency
 	0.1	: Maximum CF prior call frequency
-	0.01	: Maximum population AF from ExAC
+	0.01	: Maximum population AF from dbNSFP_ExAC_AF or dbNSFP_1000Gp3_AF
 	0.1	: Maximum fraction of background samples with an AF >= observed AF
 	true	: Ignore transcripts labeled WARNING_TRANSCRIPT_XXX
 	true	: Only consider protein_coding transcripts
@@ -40,7 +42,7 @@ Filtered annotated somatic variants
 	D5S,D3S,G5S,G3S	: Splice junction types to scan
 	4.0	: Minimum difference in MaxEnt scan scores for a splice junction effect
 	foundation,tempus,caris	: VCF ID keys that if present pass it regardless of any filter settings
-		*** Generates XXX_Avatar_IlluminaAnno_Hg38.anno.filt.gz in the SomaticVariantCalls/XXX_Avatar_IlluminaAnno/Vcfs/ folder
+		*** Generates _Hg38.anno.vcf.gz in the SomaticVariantCalls/XXX_Anno/Vcfs/ folder
 
 Copy number - ratio analysis
         Min tumor copy ratio, 0.15
@@ -48,19 +50,17 @@ Copy number - ratio analysis
         Min TN ratio, 0.15
                 *** Generates key analysis files in the /Results dir including a detailed spreadsheet, IGV seg file, and 4 bw CR and AF data tracks.
 
-Germline variants
-	Read depth	>= 15
-	Variant haplotype caller/ joint genotyping GATK QUAL	>=20
-	Variant genotype quality GT	>=20
-	AF	>= 0.1
-		*** Generates XXX_NormalDNA_Hg38_JointGenotyping_Hg38.vcf.gz in the GermlineVariantCalling/XXX_Avatar_NormalDNA/ folder
+Germline variants for Joint Genotyping, both GATK and Illumina
+	GATK	-q QUAL, -d DP, -a AF, -g GT, -c uniObAlts: -q 20 -d 10 -a 0.05 -g 20 -c 3
+	GATK	truth sensitivity: 99.9
+	Illu	-g 13 -q 13 -d 10 -c 2 -a 0.05 -k NoPassedVariantGT
 	
 Filtered annotated germline variants
-	15	: Minimum DP read depth
-	0.1	: Minimum AF allele frequency
+	12	: Minimum DP read depth
+	0.075	: Minimum AF allele frequency
 	1.0	: Maximum AF allele frequency
 	0.1	: Maximum CF prior call frequency
-	0.01	: Maximum population AF from ExAC
+	0.01	: Maximum population AF from dbNSFP_ExAC_AF or dbNSFP_1000Gp3_AF
 	0.1	: Maximum fraction of background samples with an AF >= observed AF
 	3.0	: Minimum BKZ quality score
 	true	: Ignore transcripts labeled WARNING_TRANSCRIPT_XXX
@@ -74,9 +74,6 @@ Filtered annotated germline variants
 	D5S,D3S	: Splice junction types to scan
 	4.4	: Minimum difference in MaxEnt scan scores for a splice junction effect
 	true	: Require that only one need pass: ANN Impact or Clinvar or Splice Effect
-		*** Generates XXX_Avatar_NormalDNAAnno_Hg38.anno.filt.vcf.gz in the GermlineVariantCalling/XXX_Avatar_NormalDNAAnno/Vcfs/ folder
+		*** Generates _Hg38.anno.vcf.gz in the GermlineVariantCalling/xxx_GATK_Anno/ and xxx_Illumina_Anno/ folder
 
-Gene region restricted germline variants, additional filters for Genetic Counselors, ACMG+ list
-	Must fall within 15bp of an exon from	ACTA2,ACTC1,APC,APOB,ATM,ATP7B,BARD1,BMPR1A,BRCA1,BRCA2,BRIP1,CACNA1S,CDH1,CDK4,CDKN2A,CHEK2,COL3A1,DSC2,DSG2,DSP,EPCAM,FBN1,GLA,GREM1,KCNH2,KCNQ1,LDLR,LMNA,MEN1,MLH1,MSH2,MSH6,MUTYH,MYBPC3,MYH7,MYH11,MYL2,MYL3,NBN,NF2,OTC,PALB2,PCSK9,PKP2,PMS2,POLD1,POLE,PRKAG2,PTEN,RAD51C,RAD51D,RB1,RET,RYR1,RYR2,SCN5A,SDHAF2,SDHB,SDHC,SDHD,SMAD3,SMAD4,STK11,TGFBR1,TGFBR2,TMEM43,TNNI3,TNNT2,TP53,TPM1,TSC1,TSC2,VHL,WT1
-		*** Generates XXX_Avatar_NormalDNAAnno_Hg38.anno.filt.roi.vcf.gz in the GermlineVariantCalling/XXX_Avatar_NormalDNAAnno/Vcfs/ROI/ folder
-		
+
