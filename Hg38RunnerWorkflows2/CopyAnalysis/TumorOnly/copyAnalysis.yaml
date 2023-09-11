@@ -1,5 +1,5 @@
 ---
-# Last edit 2 March 2022
+# Last edit 13 July 2022
 # Look below for the workflows you are running and modify the params as needed
 
 ############# For All #############
@@ -32,7 +32,7 @@ uniObRCRegions: Bed/AvatarMergedNimIdtBeds/hg38NimIdtCCDSShared.bed.gz
 adapterR1: AGATCGGAAGAGCACACGTCTGAACTCCAGTCA
 adapterR2: AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT
 
-# Set this to 2500 for NovaSeq/NextSeq datasets, set it to 100 for HiSeq/MiSeq datasets, set to 0 for fastq from SRA to disable
+# Set this to 2500 for NovaSeq/NextSeq datasets, set it to 100 for HiSeq/MiSeq datasets
 opticalDistance: 2500
 
 # Base and alignment quality score minimums
@@ -89,31 +89,7 @@ fdrTier: 1
 # Minimum VCFBkz score
 minBKZ: 3 
 
-############# Mutect #############
-
-# Bam Pileup panel of normals, match to your platform, IDT vs NIM
-mutectBpileup: MpileupBkg/Hg38AvatarBkgnd/Idt/avatarIdt.bp.txt.gz
-
-# Regions to call variants
-mutectRegions: Bed/AvatarNimIdtTwstBeds/mergedNimV1IdtV1-2TwistV2Pad175bp8March2023.bed
-
-# PoN for mutect, see mutect.README.sh for info on how to create this
-mutectPoN: MutectResources/avatar50MixedPoN.vcf.gz
-
-# Germline resource and common vars, see https://console.cloud.google.com/storage/browser/gatk-best-practices/somatic-hg38;tab=objects?prefix
-mutectGermline: MutectResources/af-only-gnomad.hg38.vcf.gz
-mutectCommon: MutectResources/small_exac_common_3.hg38.vcf.gz
-
-# FDRs, minimum tumor allele fraction, minimum unique alt observations, to threshold at with FilterMutectCalls
-mutectFdrs: "0.05 0.2 0.7 0.8 0.9"
-mutectMinAF: 0.025
-mutectMinAlt: 3
-
 ############# Somatic Copy Analysis #############
-
-# Matched to the gender specific PoN
-intervals: CNV/AVATAR/Somatic/NIM/mergedSeqCap_EZ_Exome_v3_hg38_capture_primary_targets_pad150bp.preprocessed.interval_list
-#intervals: CNV/AVATAR/Somatic/IDT/hg38IdtProbesPad150bp.processed.interval_list
 
 # Needed for the GATK plot segments app
 dictFasta: GATKResourceBundleAug2021/Homo_sapiens_assembly38.dict
@@ -123,11 +99,6 @@ geneTable: AnnotatorData/UCSC/8Aug2018/hg38RefSeq8Aug2018_Merged.ucsc.gz
 minTumorCopyRatio: 0.15
 maxNormalCopyRatio: 0.5
 minTNCRRatio: 0.15
-
-
-############# LoH #############
-# To provide annotations to the bed file output
-geneTableLoH: AnnotatorData/UCSC/8Aug2018/hg38RefSeq8Aug2018_Merged.ucsc.gz
 
 
 ############# MSI Analysis #############

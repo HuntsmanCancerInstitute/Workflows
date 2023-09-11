@@ -1,11 +1,10 @@
-# 1 June 2023 
+# 31 March 2023 
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
 # General Resources
-maxThreads = 50
-halfThreads = 25
-thirdThreads = 16
+maxThreads = 20
+halfThreads = 10
 email = "david.nix@hci.utah.edu"
 tnRunner= "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner"
 tnRunnerWorkflows = tnRunner + "/Workflows"
@@ -17,16 +16,15 @@ molRepoIndex = "s3://hcibioinfo-patient-lists/MolecularRepo/"
 dxToken = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/DNAnexus/token"
 
 # GU Group
-guEmail = "david.nix@hci.utah.edu,beverly.chigarira@hci.utah.edu,JongTaek.Kim@aruplab.com"
-guBucket = "s3://hcibioinfo-gu-patient-molecular-repo/Patients/"
-
-# HEM Group
-hemEmail = "david.nix@hci.utah.edu"
-hemPath = "/uufs/chpc.utah.edu/common/HIPAA/IRB_00088405-2/AVATAR/SourceData/"
+guGroup="GU"
+guEmail="david.nix@hci.utah.edu,beverly.chigarira@hci.utah.edu,JongTaek.Kim@aruplab.com"
+guBucket="s3://hcibioinfo-gu-patient-molecular-repo/Patients/"
 
 # PHI Resources
-subjectRegistry = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/PHI/Registry/"
-bkupSubjectRegistry = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/PHI/RegistryBackupDontUse/"
+#subjectRegistry = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/PHI/Registry/"
+#bkupSubjectRegistry = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/PHI/RegistryBackupDontUse/"
+subjectRegistry = "/scratch/general/pe-nfs1/u0028003/Avatar/Auto/SMM_PHI/Registry/"
+bkupSubjectRegistry = "/scratch/general/pe-nfs1/u0028003/Avatar/Auto/SMM_PHI/Registry/Bkup/"
 
 # Apps, aws cli installed and in the path
 java = "java -jar -Djava.io.tmpdir=. -Xmx5G"
@@ -42,17 +40,19 @@ rule FinalCleanup:
         "Status/FetchResourceFiles_COMPLETE",
         "Status/AvatarDataWrangler_COMPLETE",
         "Status/DownloadCramFiles_COMPLETE",
-        "Status/SyncMainRepo_COMPLETE",
-        "Status/UploadGUDatasets_COMPLETE",
-        "Status/BackupSubjectRegistry_COMPLETE",
-        "Status/CopyHemDatasets_COMPLETE"
+        "Status/GQuery_COMPLETE",
+        "Status/CBioPortal_COMPLETE",
+        "Status/GeneticCounselors_COMPLETE"
+        #"Status/MainRepoIndex_COMPLETE",
+        #"Status/BackupSubjectRegistry_COMPLETE",
+        #"Status/UploadGUDatasets_COMPLETE"
     output:
         "Status/ALL_COMPLETE"
     log:
         "Logs/finalCleanup.log"
     shell:
         "touch {output} &> {log}"
-        # "rm -rf AJobs/ &> {log}; touch {output}"
+## "rm -rf TJobs/ &> {log}; touch {output}"
 
 rule FetchResourceFiles:
     output:
@@ -222,115 +222,3 @@ rule GeneticCounselors:
         "rm -rf ForGeneticCounselors/GermlineROI/CoCalled ForGeneticCounselors/GermlineROI/AllCrams ForGeneticCounselors/GermlineROI/GatkVcf/ ForGeneticCounselors/GermlineROI/IlluminaVcf/  &>> {log}; "
         "touch {output} &>> {log}; "
 
-# Generate aggregate QC data
-rule AggregateQC:
-    input:
-        "Status/TNRunner2_COMPLETE"
-    output:
-        "Status/AggregateQC_COMPLETE"
-    log:
-        "Logs/aggregateQC.log"
-    shell:
-        "{java} {useq}/AggregateQCStats2 -s AggregateQC/ -j AJobs/ &> {log}; "
-        "touch {output}"
-
-# Clean up the job directories
-rule JobCleaner:
-    input:
-        "Status/CBioPortal_COMPLETE",
-        "Status/GQuery_COMPLETE",
-        "Status/GeneticCounselors_COMPLETE",
-        "Status/AggregateQC_COMPLETE"
-    output:
-        "Status/JobCleaner_COMPLETE"
-    log:
-        "Logs/jobCleaner.log"
-    threads:
-        halfThreads
-    shell:
-        "{java} {useq}/JobCleaner -r AJobs/ -e '.tbi,.crai,.bai,COMPLETE' -n 'Logs,RunScripts' &> {log}; "
-        "touch {output}"
-
-# Sync cleaned analysis with main mol bio repo
-rule SyncMainRepo:
-    input:
-         "Status/JobCleaner_COMPLETE"
-    output:
-        "Status/SyncMainRepo_COMPLETE"
-    log:
-        "Logs/syncMainRepo.log"
-    threads:
-        thirdThreads
-    shell:
-        "echo STARTING &> {log};"
-        "aws s3 sync --only-show-errors AJobs/ {patientMolRepo} &>> {log}; "
-        "touch {output}; echo COMPLETE &>> {log};"
-
-rule UploadGUDatasets:
-    input:
-         "Status/JobCleaner_COMPLETE"
-    output:
-        "Status/UploadGUDatasets_COMPLETE"
-    log:
-        "Logs/uploadGUDatasets.log"
-    threads:
-        thirdThreads
-    shell:
-        "echo STARTING &> {log}; rm -rf ForGUGroup; mkdir ForGUGroup; cd ForGUGroup;"
-        "for x in $(ls ../AJobs/*/Avatar/*/ClinicalReport/*_GU_*.json 2> /dev/null || true); "
-        "do coreId=$(echo $x | cut -d'/' -f3); [ ! -L $coreId ] && ln -s ../AJobs/$coreId .; done;"
-        "cd ../;"
-        "d=$(date +'%m_%d_%Y');"
-        "phiLinks=GU_Avatar_$d'_PHI.txt';"
-        "head -n 1 {subjectRegistry}/currentRegistry_* > $phiLinks;"
-        "for x in $(ls ForGUGroup/); do grep $x {subjectRegistry}/currentRegistry_* >> $phiLinks; done;"
-        "n=$(cat $phiLinks | wc -l);"
-        "if [[ $n -gt 0 ]]; then aws s3 sync ForGUGroup/ {guBucket} --only-show-errors --follow-symlinks "
-        "--profile GU &>> {log}; echo $n' new Avatar patient datasets have been uploaded into {guBucket} "
-        "See and SAVE the attached file to associate coreIds with patient identifiers.' | "
-        "mailx -r noreply.bioinfo@hci.utah.edu -a $phiLinks -s 'PHI - New Avatar Datasets '$d "
-        "{guEmail}; fi; "
-        "touch {output}; echo COMPLETE &>> {log}"
-
-# Backup subject registry with PHI
-# Hold off on syncing PHI until we have the approved AWS PHI policies in place
-# aws s3 sync /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/PHI/Registry/ \
-#     s3://hcibioinfo-patient-molecular-repo/PHI/Registry/ --quiet
-rule BackupSubjectRegistry:
-    input:
-         "Status/SyncMainRepo_COMPLETE"
-    output:
-        "Status/BackupSubjectRegistry_COMPLETE"
-    log:
-        "Logs/backupSubjectRegistry.log"
-    shell:
-        "rsync -rtq {subjectRegistry} {bkupSubjectRegistry} &> {log}; "
-        "touch {output}"
-
-rule CopyHemDatasets:
-    input:
-         "Status/JobCleaner_COMPLETE",
-         "Status/AggregateQC_COMPLETE"
-    output:
-        "Status/CopyHemDatasets_COMPLETE"
-    log:
-        "Logs/copyHemDatasets.log"
-    threads:
-        halfThreads
-    shell:
-        "rm -rf ForHemGroup; mkdir ForHemGroup; cd ForHemGroup;"
-        "for x in $(ls ../AJobs/*/Avatar/*/ClinicalReport/*_HEM_*.json 2> /dev/null || true); "
-        "do coreId=$(echo $x | cut -d'/' -f3); [ ! -L $coreId ] && ln -s ../AJobs/$coreId .; done;"
-        "cd ../;"
-        "d=$(date +'%m_%d_%Y');"
-        "phiLinks=HEM_Avatar_$d'_PHI.txt';"
-        "head -n 1 {subjectRegistry}/currentRegistry_* > $phiLinks;"
-        "for x in $(ls ForHemGroup/); do grep $x {subjectRegistry}currentRegistry_* >> $phiLinks; done;"
-        "n=$(cat $phiLinks | wc -l);"
-        "if [[ $n -gt 1 ]]; then rsync -rtL ForHemGroup/ {hemPath}Patients/ &> {log};"
-        "echo $n' new Avatar patient datasets have been uploaded into the HEME repo on Redwood "
-        "See and SAVE the attached file to associate coreIds with patient identifiers.' | "
-        "mailx -r noreply.bioinfo@hci.utah.edu -a $phiLinks -s 'PHI - New Avatar Datasets '$d "
-        "{hemEmail}; fi; rm -f $phiLinks; cp -f ResourceFiles/*ClinicalMolLinkage* {hemPath} &>> {log}; "
-        "d=$(date +'%m_%d_%Y'); cp -f AggregateQC/qcStats.xls {hemPath}../$d'_qcStats.xlsx' &>> {log}; "
-        "touch {output}"

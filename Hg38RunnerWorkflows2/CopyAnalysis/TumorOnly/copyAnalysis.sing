@@ -1,0 +1,65 @@
+# Bash script to run inside the container
+# 29 Nov 2022
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+set -e
+cd $jobDir
+start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
+
+echo -e "\n---------- Starting -------- $((($(date +'%s') - $start)/60)) min"
+
+# Fetch files
+bed=`readlink -f *.bed.gz`
+vcf=`readlink -f *.vcf.gz`
+bkg=`readlink -f *.hdf5`
+list=`readlink -f *.interval_list`
+tumorAli=`readlink -f *.bam`
+test -f $tumorAli || tumorAli=`readlink -f *.cram`
+
+# Read threads and ram
+allThreads=$(nproc)
+allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+name=${PWD##*/}
+
+# Print params
+echo -n jobDir"     : "; echo $jobDir
+echo -n name"       : "; echo $name
+echo -n dataBundle" : "; echo $dataBundle
+echo -n threads"    : "; echo $allThreads
+echo -n ram"        : "; echo $allRam
+echo -n host"       : "; echo $(hostname); echo
+echo -n tumorAli"         : "; echo $tumorAli
+echo -n tumorReadCov"     : "; echo $bed
+echo -n germlineVcf"      : "; echo $vcf
+echo -n genderMatchedBkg" : "; echo $bkg
+echo -n IntervalList"     : "; echo $list; echo
+
+# Check they exist
+ls $vcf $bkg $list $tumorAli $bed &> /dev/null
+
+snakemake --printshellcmds \
+--cores $allThreads \
+--stats $name"_Hg38_snakemake.stats.json" \
+--snakefile *.sm \
+--configfile *.yaml \
+--config \
+name=$name \
+vcf=$vcf \
+bed=$bed \
+tumorBam=$tumorAli \
+bkg=$bkg \
+list=$list \
+allThreads=$allThreads \
+allRam=$allRam
+
+echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min total"
+
+# See GATK's tutorials on copy ratio analysis and USeq's GatkCalledSegmentAnnotator app for a description of the arguments
+# https://gatkforums.broadinstitute.org/dsde/discussion/11682 
+# https://gatkforums.broadinstitute.org/dsde/discussion/11683
+
+## Svg DAG generation
+# Replace the top snakemake line with 'snakemake --dag'
+# Add onto the end '| dot -Tsvg > workflow.svg'
+

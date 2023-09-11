@@ -4,7 +4,7 @@
 #SBATCH -N 1
 #SBATCH -t 96:00:00
 
-# 8 Nov 2022
+# 6 July 2023
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -62,6 +62,7 @@ rsync -rtL --exclude 'slurm-*' $jobDir/ $tempDir/$name/ && echo CopyOverOK || ec
 
 # Execute the sing file in the container from the tempDir, always return true, even if it fails so one can copy all back
 echo -e "\n---------- Launching container -------- $((($(date +'%s') - $start)/60)) min"
+set +e
 cd $tempDir/$name
 SINGULARITYENV_dataBundle=$dataBundle SINGULARITYENV_jobDir=$tempDir/$name \
   singularity exec --containall --bind $dataBundle,$tempDir/$name $container bash $tempDir/$name/*.sing || true
@@ -71,9 +72,8 @@ ls -1 $tempDir/$name
 
 # Copy back job files regardless of success or failure, disable exit on error, exclude the cram and fastq files
 echo -e "\n---------- Copying back results -------- $((($(date +'%s') - $start)/60)) min"
-set +e
 rm -f $tempDir/$name/*cram* &> /dev/null
-rsync $tempDir/$name/COMPLETE $jobDir/ &> /dev/null
+sleep 2s
 rsync -rtL --exclude '*q.gz' $tempDir/$name/ $jobDir/ && echo CopyBackOK || { echo CopyBackFAILED; rm -f COMPLETE; }
 
 echo -e "\n---------- Files In JobDir -------- $((($(date +'%s') - $start)/60)) min"

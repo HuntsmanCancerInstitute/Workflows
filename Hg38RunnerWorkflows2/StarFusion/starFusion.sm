@@ -1,5 +1,5 @@
 # Alignment and QC for RNASeq samples
-# 10 Nov 2020
+# 5 Dec 2022
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -10,11 +10,8 @@ nameBuild = str(config["name"]) + "_Hg38"
 
 # Threads and memory
 allThreads = int(config["allThreads"])
+halfThreads = int(round(allThreads/2,0))
 allRam = int(round(float(config["allRam"])))
-
-# Gzipped Fastq files
-fastqReadOne = config["fastqReadOne"]
-fastqReadTwo = config["fastqReadTwo"]
 
 # Apps in the docker container
 samtools       = "/usr/local/src/Samtools/1.11/bin/samtools"
@@ -23,6 +20,10 @@ java           = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
 star           = "/usr/local/src/STAR-Fusion/STAR-Fusion"
 starGenLibDir  = config["starGenLibDir"]
 useq           = "/usr/local/src/USeq/Apps"
+
+# Resources
+cramIndex = config["cramAlignmentIndex"]
+
 
 # Use the SamAlignmentExtractor to pull alignments over the splice junctions 
 rule SamAlignmentExtractor:
@@ -51,9 +52,42 @@ rule SamAlignmentExtractor:
         "rm -rf Visualizations/{nameBuild}_FusionInspector {nameBuild}_SAE {nameBuild}_StarFusionOut || true ; "
         "numFus=$(gunzip -c *.sf.bed.gz | wc -l) ; if [ $numFus = 2 ]; then rm -f *sf.bed*; fi ; "        
 
+# If fastq aren't present look for a cram and convert it to fastq otherwise uncompresses the paired fastq into the TempFastq dir. The uncompression is needed since cutadapt often throws gzip errors yet gunzip -t shows no issues, arrg.
+rule Fastq:
+    output:
+        fq1 = temp ("TempFastq/"+ nameBuild+ ".1.fq"),
+        fq2 = temp ("TempFastq/"+ nameBuild+ ".2.fq")
+    log:
+        "Logs/"+ nameBuild+ "_Fastq.log"
+    threads:
+        allThreads
+    shell:
+        "echo 'Attempting to find two fastq files ending in q.gz or a cram file that can be converted to fastq...' &> {log};"
+        "rm -rf TempFastq; mkdir TempFastq; shopt -s nullglob; fq=(*q.gz); len=${{#fq[@]}}; "
+        "if [ $len -eq 2 ]; then "
+        "echo 'Two fastq.gz files found, uncompressing into TempFastq/' &>> {log}; "
+        "echo -n 'Fastq1: ' &>> {log}; realpath ${{fq[0]}} &>> {log}; "
+        "echo -n 'Fastq2: ' &>> {log}; realpath ${{fq[1]}} &>> {log}; "
+        "gunzip -c ${{fq[0]}} > {output.fq1} 2>> {log}; "
+        "gunzip -c ${{fq[1]}} > {output.fq2} 2>> {log}; "
+        "else "
+        "echo 'Fastq files not found, attempting to find cram file for conversion...' &>> {log}; "
+        "echo -n 'Cram: ' &>> {log}; realpath *cram &>> {log} && "        
+        "echo 'Collating cram and exporting fastq...' &>> {log} && "
+        "tmp=$(realpath TempFastq) &>> {log} && "
+        "export REF_CACHE=$tmp &>> {log} && "
+        "{samtools} collate --threads {halfThreads} -Ouf --reference {cramIndex} *.cram TempFastq/ | "
+        "{samtools} fastq --threads {halfThreads} --reference {cramIndex} -1 {output.fq1} -2 {output.fq2} -0 /dev/null -s /dev/null - &>> {log}; "
+        "fi && "
+        "echo -n 'fastqReadOne : ' &>> {log} && realpath {output.fq1} &>> {log} && "
+        "echo -n 'fastqReadTwo : ' &>> {log} && realpath {output.fq2} &>> {log} "
+
 # Run STAR-fusion to generate an RNASeq alignment optimized for fusions detection and annotated and filterd fusions
 # Python is a huge pain!
 rule StarFusion:
+    input:
+        fq1 = "TempFastq/"+ nameBuild+ ".1.fq",
+        fq2 = "TempFastq/"+ nameBuild+ ".2.fq"
     output:
         bam = temp (nameBuild+ "_StarFusionOut/Aligned.out.bam"),
         svg = nameBuild+ "_StarFusionOut/star-fusion.fusion_predictions.abridged.coding_effect.tsv"
@@ -62,10 +96,11 @@ rule StarFusion:
     log:
         "Logs/"+ nameBuild+ "_StarFusion.log",
     shell:
-        "{star} --left_fq {fastqReadOne} --right_fq {fastqReadTwo} "
+        "{star} --left_fq {input.fq1} --right_fq {input.fq2} "
         "--genome_lib_dir {starGenLibDir} -O {nameBuild}_StarFusionOut "
         "--FusionInspector validate --examine_coding_effect "
-        "--denovo_reconstruct --CPU {threads} --extract_fusion_reads &> {log}"
+        "--denovo_reconstruct --CPU {threads} --extract_fusion_reads &> {log} && "
+        "rm -rf TempFastq/ "
 
 # Sort the star bam
 rule SamtoolsSort:

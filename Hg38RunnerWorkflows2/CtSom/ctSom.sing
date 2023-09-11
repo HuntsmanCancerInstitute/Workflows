@@ -1,0 +1,61 @@
+# Circulating Tumor DNA Somatic Variant Caller
+# Bash script to run inside the container
+# 22 October 2019
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+set -e
+cd $jobDir
+
+# Read params and files
+tumorBam=`readlink -f tumor.bam`
+normalBam=`readlink -f normal.bam`
+
+allThreads=$(nproc)
+allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+
+# Print params
+echo -n jobDir"     : "; echo $jobDir
+echo -n name"       : "; echo $name
+echo -n dataBundle" : "; echo $dataBundle
+echo -n threads"    : "; echo $allThreads
+echo -n ram"        : "; echo $allRam
+echo -n host"       : "; echo $(hostname)
+echo -n tumorBam"   : "; echo $tumorBam
+echo -n normalBam"  : "; echo $normalBam
+
+/BioApps/Miniconda3/bin/snakemake --printshellcmds \
+--cores $allThreads \
+--snakefile *.sm \
+--config \
+allThreads=$allThreads \
+allRam=$allRam \
+regionsForAnalysis=$dataBundle/Bed/Underhill/HSV1_GBM_IDT_Probes_Hg38Pad150bps_91K.bed \
+indexFasta=$dataBundle/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
+bpileup=$dataBundle/MpileupBkg/Hg38Underhill/15352R.bp.txt.gz \
+tumorBam=$tumorBam \
+normalBam=$normalBam \
+genomeBuild=Hg38 \
+name=$name \
+minMappingQuality=13 \
+minTumorAlignmentDepth=100 \
+minNormalAlignmentDepth=100 \
+minTumorAF=0.0025 \
+maxTumorAF=0.2 \
+maxNormalAF=0.1 \
+minTumorAltCount=3 \
+minTNRatio=2 \
+minTNDiff=0.0025 \
+maxFisherPval=0.001 \
+minBKZ=3 \
+extraVCFBkzArgs="-i 8 -e -l"
+
+# Notes
+## regionsForAnalysis - a non overlapping bed file of regions to scan. Run the USeq MergedRegions app if unsure.
+## indexFasta - the same fasta file used in sample alignment. Also needed are the index xxx.fa.fai and xxx.dict files.
+## bpileup - a multi sample background bpileup file of 10-25 normal high depth bam files. See the USeq BamPileup app.
+## USeq - launch each app (SimpleSomaticCaller and VCFBkz) to print cmd line options
+
+# Replace first and last lines above with the following to get dag svg graph
+	# snakemake --printshellcmds \
+	# allRam=$allRam | dot -Tsvg > $name"_dag.svg"

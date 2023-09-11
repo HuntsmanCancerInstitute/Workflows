@@ -1,5 +1,5 @@
 # Hg38 Exome Alignment and QC Workflow 
-# 6 Apr 2022
+# 8 Nov 2022
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -50,7 +50,7 @@ rule CleanupDirs:
     output:
         "COMPLETE"
     shell:
-        "rm -rf TempFastq/; touch {output}"
+        "rm -rf rawSeq.cram TempFastq/; touch {output}"
         
 ############# Alignment and Pileup ###############
 
@@ -75,12 +75,10 @@ rule Fastq:
         "else "
         "echo 'Fastq files not found, attempting to find cram file for conversion...' &>> {log}; "
         "echo -n 'Cram: ' &>> {log}; realpath *cram &>> {log} && "        
-        "echo 'Sorting cram file by name...' &>> {log} && "
-        "{samtools} sort --threads {threads} -u -m 1G -n -o TempFastq/sorted.tmp.bam -T TempFastq/{nameBuild}_ --reference {cramIndexFasta} *.cram &>> {log} && "
-        "echo 'Saving fastq...' &>> {log} && "
-        "{samtools} fastq --threads {threads} --reference {cramIndexFasta} -1 {output.fq1} -2 {output.fq2} -0 /dev/null -s /dev/null -n TempFastq/sorted.tmp.bam &>> {log}; "
+        "echo 'Collating cram and exporting fastq...' &>> {log} && "
+        "{samtools} collate --threads {halfThreads} -Ouf --reference {cramIndexFasta} *.cram TempFastq/ | "
+        "{samtools} fastq --threads {halfThreads} --reference {cramIndexFasta} -1 {output.fq1} -2 {output.fq2} -0 /dev/null -s /dev/null - &>> {log}; "
         "fi && "
-        "rm -f TempFastq/sorted.tmp.bam && "
         "echo -n 'fastqReadOne : ' &>> {log} && realpath {output.fq1} &>> {log} && "
         "echo -n 'fastqReadTwo : ' &>> {log} && realpath {output.fq2} &>> {log} "
 

@@ -6,15 +6,14 @@
 
 set -e
 
-# 4 Jan 2022
+# 15 May Jan 2022
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
 # This is a standard BWA mem alt aware alignment to Hg38/GRCh38 followed by quality filtering, deduplication, and read depth QC.
 # The output alignment cram file has been filtered and only contains uniquely aligned primary alignments.
 # Don't use this for structural variant and repeat/ segment duplication analysis without disabling those settings.
-
-
+# For use on AWS EC2, see ~/TNRunner/Workflows/DnaAlignQC for CHPC Slurm
 
 #### Do just once ####
 
@@ -31,9 +30,12 @@ container=$dataBundle/Containers/public_SM_BWA_1.sif
 
 # 5) If running this on AWS EC2 via the JobRunner, build the resource archive, and upload it to S3
 # cd /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1
-# zip -r dnaAlignQC_3Nov2021.zip TNRunner/GATKResourceBundleAug2021/Homo_sapiens_assembly38.* TNRunner/Containers/public_SM_BWA_1.sif \
-#   TNRunner/Bed/AvatarMergedNimIdtBeds/hg38NimIdtMergedPad150bp.bed.gz* TNRunner/Bed/AvatarMergedNimIdtBeds/hg38NimIdtCCDSShared.bed.gz*
-
+# zip -r dnaAlignQC_15May2023.zip TNRunner/GATKResourceBundleAug2021/Homo_sapiens_assembly38.* \
+# TNRunner/Containers/public_SM_BWA_1.sif \
+# TNRunner/Bed/AvatarNimIdtTwstBeds/mergedNimV1IdtV1-2TwistV2Pad175bp8March2023.bed.gz* \
+# TNRunner/Bed/AvatarNimIdtTwstBeds/sharedNimV1IdtV1-2TwistV2CCDS8March2023.bed.gz*
+# aws s3 cp dnaAlignQC_15May2023.zip s3://hcibioinfo-jobrunner/ResourceBundles/dnaAlignQC_15May2023.zip && \
+# rm -f dnaAlignQC_15May2023.zip
 
 #### Do for every run ####
 
@@ -53,5 +55,7 @@ container=$dataBundle/Containers/public_SM_BWA_1.sif
 
 # Launch the container
 jobDir=$(realpath .)
-SINGULARITYENV_dataBundle=$dataBundle SINGULARITYENV_jobDir=$jobDir singularity exec --containall --bind $dataBundle,$jobDir $container bash $jobDir/*.sing
+SINGULARITYENV_dataBundle=$dataBundle SINGULARITYENV_jobDir=$jobDir \
+singularity exec --containall --bind $dataBundle,$jobDir $container \
+bash $jobDir/*.sing
 

@@ -1,5 +1,5 @@
 # Alignment and QC for RNASeq samples
-# 4 Nov 2022
+# 22 March 2023
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -12,18 +12,13 @@ halfThreads = int(round(allThreads/2,0))
 quarterThreads = int(round(halfThreads/4,0))
 allRam = int(round(float(config["allRam"])))
 
-# Gzipped Fastq files
-fastqReadOne = config["fastqReadOne"]
-fastqReadTwo = config["fastqReadTwo"]
-
 # Resources
 adapterR1=config["adapterR1"]
 adapterR2=config["adapterR2"]
 
-#dataBundle from config =/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/atlatl/data
+# DataBundle from config =/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/atlatl/data
 dataBundle = config["dataBundle"]+ "/Human/GRCh38"
 chrom = dataBundle + "/chrom.sizes"
-
 fqsConfig = config["dataBundle"] +"/Human/Hg38/TNRunner/redwood_fastq_screen_rRNA.conf"
 analysisRegions = config["dataBundle"] +"/Human/Hg38/TNRunner/hg38AllGeneExonsPad175bp.bed.gz"
 
@@ -36,6 +31,7 @@ riboint = dataBundle +"/release106/Homo_sapiens.GRCh38.106.rRNA.interval"
 rsemIndex = dataBundle +"/release106/rsem/RSEM"
 
 fastaIndex = dataBundle + "/Homo_sapiens.GRCh38.dna.primary_assembly.fa"
+cramIndex = config["cramAlignmentIndex"]
 mappingQuality=config["mappingQuality"]
 baseQuality=config["baseQuality"]
 
@@ -76,17 +72,48 @@ rule CheckFiles:
         "echo riboint: &>> {log} && ls {riboint} &>> {log} && "
         "echo rsemIndex: &>> {log} && ls {rsemIndex}* &>> {log} && "
         "echo fqsConfig: &>> {log} && ls {fqsConfig} &>> {log} && "
-        "echo fastqReadOne: &>> {log} && ls {fastqReadOne} &>> {log} && "
-        "echo fastqReadTwo: &>> {log} && ls {fastqReadTwo} &>> {log} && "
         "touch {output}"
+
+# If fastq aren't present look for a cram and convert it to fastq otherwise uncompresses the paired fastq into the TempFastq dir. The uncompression is needed since cutadapt often throws gzip errors yet gunzip -t shows no issues, arrg.
+rule Fastq:
+    input:
+        "FileCheckOK"
+    output:
+        fq1 = temp ("TempFastq/"+ nameBuild+ ".1.fq"),
+        fq2 = temp ("TempFastq/"+ nameBuild+ ".2.fq")
+    log:
+        "Logs/"+ nameBuild+ "_Fastq.log"
+    threads:
+        allThreads
+    shell:
+        "echo 'Attempting to find two fastq files ending in q.gz or a cram file that can be converted to fastq...' &> {log};"
+        "rm -rf TempFastq; mkdir TempFastq; shopt -s nullglob; fq=(*q.gz); len=${{#fq[@]}}; "
+        "if [ $len -eq 2 ]; then "
+        "echo 'Two fastq.gz files found, uncompressing into TempFastq/' &>> {log}; "
+        "echo -n 'Fastq1: ' &>> {log}; realpath ${{fq[0]}} &>> {log}; "
+        "echo -n 'Fastq2: ' &>> {log}; realpath ${{fq[1]}} &>> {log}; "
+        "gunzip -c ${{fq[0]}} > {output.fq1} 2>> {log}; "
+        "gunzip -c ${{fq[1]}} > {output.fq2} 2>> {log}; "
+        "else "
+        "echo 'Fastq files not found, attempting to find cram file for conversion...' &>> {log}; "
+        "echo -n 'Cram: ' &>> {log}; realpath *cram &>> {log} && "        
+        "echo 'Collating cram and exporting fastq...' &>> {log} && "
+        "tmp=$(realpath TempFastq) &>> {log} && "
+        "export REF_CACHE=$tmp &>> {log} && "
+        "samtools collate --threads {halfThreads} -Ouf --reference {cramIndex} *.cram TempFastq/ | "
+        "samtools fastq --threads {halfThreads} --reference {cramIndex} -1 {output.fq1} -2 {output.fq2} -0 /dev/null -s /dev/null - &>> {log}; "
+        "fi && "
+        "echo -n 'fastqReadOne : ' &>> {log} && realpath {output.fq1} &>> {log} && "
+        "echo -n 'fastqReadTwo : ' &>> {log} && realpath {output.fq2} &>> {log} "
 
 # Cutadapt to trim fastq
 rule Cutadapt:
     input:
-        "FileCheckOK"
+        fq1 = "TempFastq/"+ nameBuild+ ".1.fq",
+        fq2 = "TempFastq/"+ nameBuild+ ".2.fq"
     output:
-        fq1 = temp( nameBuild+ "_1.fq"),
-        fq2 = temp( nameBuild+ "_2.fq")
+        fq1 = temp ( nameBuild+ "_1.fq"),
+        fq2 = temp ( nameBuild+ "_2.fq")
     threads:
         allThreads
     log:
@@ -94,7 +121,7 @@ rule Cutadapt:
     shell:
         "cutadapt -j {threads} -O 6 -m 20 -o {output.fq1} -p {output.fq2} "
         "-a {adapterR1} -A {adapterR2} "
-        "{fastqReadOne} {fastqReadTwo} &> {log}"
+        "{input.fq1} {input.fq2} &> {log} && rm -rf TempFastq/ &>> {log}"
 
 # Look for contaminants
 rule FastqScreen:
@@ -144,24 +171,12 @@ rule StarAlignment:
         "Logs/"+ nameBuild+ "_StarAlignment.log",
     shell:
         "STAR --genomeDir {starIndex} --readFilesIn {input.fq1} {input.fq2} --runThreadN {allThreads} "
-        "--twopassMode Basic --outSAMtype BAM SortedByCoordinate --outBAMsortingBinsN 100 "
-        "--quantMode TranscriptomeSAM --outWigType bedGraph --outWigStrand Unstranded &> {log} && "
+        "--twopassMode Basic --outSAMtype BAM SortedByCoordinate --outBAMsortingBinsN 800 --limitBAMsortRAM {allRam}000000000 "
+        "--quantMode TranscriptomeSAM --outWigType bedGraph --outWigStrand Unstranded --seedPerWindowNmax 30 &> {log} && "
         "mv -f Aligned.sortedByCoord.out.bam {output.bam} &>> {log} && "
         "mv Log.final.out {output.stats} &>> {log} && "
         "rm -rf _STAR* SJ.out.tab Log.out Log.progress.out "
 
-# wig1 = temp("Signal.Unique.str1.out.wig"),
-# wig2 = temp("Signal.Unique.str2.out.wig")
-#        "star --runThreadN {threads} --genomeDir {starIndex} --readFilesIn {fastqReadOne} {fastqReadTwo} "
-#        "--readFilesCommand zcat -c --outFilterType BySJout --outFilterMultimapNmax 20 "
-#        "--alignSJoverhangMin 8 --alignSJDBoverhangMin 1 --outFilterMismatchNmax 999 "
-#        "--outFilterMismatchNoverReadLmax 0.04 --alignIntronMin 20 --alignIntronMax 1000000 "
-#        "--alignMatesGapMax 1000000 --outSAMtype BAM SortedByCoordinate --outMultimapperOrder Random "
-#        "--outSAMmultNmax 1 --outWigType wiggle --outWigNorm RPM &> {log} && "
-#        "mv -f Aligned.sortedByCoord.out.bam {output.bam} &>> {log} && "
-#        "mv -f Log.final.out Logs/{nameBuild}_starAlignmentStats.txt && "
-#        "rm -rf _STARtmp/ SJ.out.tab Log.progress.out Log.out "
-                
 # Index the star bam
 rule SamtoolsIndex:
     input:

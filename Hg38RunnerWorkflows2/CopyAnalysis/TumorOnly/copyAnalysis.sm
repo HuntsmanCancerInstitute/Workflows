@@ -1,5 +1,5 @@
 # GATK Copy Ratio Calling with USeq filtering
-# 28 March 2023
+# 5 April 2023
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -7,7 +7,6 @@
 
 # Input files
 tumorBam = config["tumorBam"]
-normalBam = config["normalBam"]
 vcf = config["vcf"]
 bed = config["bed"]
 nameBuild = str(config["name"])+"_Hg38"
@@ -31,26 +30,21 @@ java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
 useq = "/BioApps/USeq/Apps"
 ucsc = "/BioApps/UCSC/13Sept2021"
 htslib= "/BioApps/Htslib/1.15.1/bin"
-gatk = "/usr/bin/gatk"
 
 ############# Rules ##############
 
 # Workflow trigger
 rule OrganizeResults:
     input:
-        "ModelSegments/"+ nameBuild+ ".called.seg",
-        "Results/"+ nameBuild+ ".tumor.cr.bw",
-        "Results/"+ nameBuild+ ".tumor.af.bw",
-        "ModelSegments/Plots/"+ nameBuild+ ".modeled.png",
-        "Results/"+nameBuild+ ".called.seg.xls",
+        "Results/"+nameBuild+ ".fractionCopyRatio.txt",
         "Results/"+nameBuild+ ".called.seg.pass.bed.gz.tbi",
-        "Results/"+nameBuild+ ".fractionCopyRatio.txt"
+        "Results/"+ nameBuild+ ".tumor.cr.bw",
+        "Results/"+ nameBuild+ ".tumor.af.bw"
     output:
         "COMPLETE"
     shell:
         "cd ModelSegments && mkdir Seg Param Igv HetAF && mv *.igv.* Igv/ && mv *param Param/ && "
-        "mv *seg Seg/ && mv *tsv HetAF/ && cd ../ && rm -rf Anno *.hets.normal.txt.gz.tbi *.hets.txt.gz.tbi "
-        "*.cr.txt.gz.tbi {nameBuild}.germline.snv.vcf.idx && "
+        "mv *seg Seg/ && mv *tsv HetAF/ && cd ../ && rm -rf Anno {nameBuild}.germline.snv.vcf.idx *Hg38.hets.txt.gz* *Hg38.tumor.cr.txt.gz* && "
         "touch {output}"
 
 # Collect tumor counts
@@ -62,21 +56,9 @@ rule CollectTumorCounts:
     log:
         "Logs/"+ nameBuild+ "_CollectTumorCounts.log"
     shell:
-        "{gatk} CollectReadCounts -I {tumorBam} -L {intervals} --interval-merging-rule OVERLAPPING_ONLY "
+        "gatk CollectReadCounts -I {tumorBam} -L {intervals} --interval-merging-rule OVERLAPPING_ONLY "
         "-O {output} -R {indexFasta} &> {log}"
    		   
-# Collect normal counts
-rule CollectNormalCounts:
-    output:
-        temp (nameBuild+ ".normal.hdf5")
-    threads:
-        halfThreads
-    log:
-        "Logs/"+ nameBuild+ "_CollectNormalCounts.log"
-    shell:
-        "{gatk} CollectReadCounts -I {normalBam} -L {intervals} --interval-merging-rule OVERLAPPING_ONLY "
-        "-O {output} -R {indexFasta} &> {log}"
-
 # Denoise tumor counts
 rule DenoiseTumorCounts:
     input:
@@ -88,24 +70,9 @@ rule DenoiseTumorCounts:
     log:
         "Logs/"+ nameBuild+ "_DenoiseTumorCounts.log"
     shell:
-        "{gatk} --java-options '-Xmx{halfRam}G' DenoiseReadCounts -I {input} "
+        "gatk --java-options '-Xmx{halfRam}G' DenoiseReadCounts -I {input} "
         "--count-panel-of-normals {bkg} --standardized-copy-ratios tumor.delete.tsv --denoised-copy-ratios "
         "{output} &> {log} && rm -rf tumor.delete.tsv"
-
-# Denoise normal counts
-rule DenoiseNormalCounts:
-    input:
-        nameBuild+ ".normal.hdf5"
-    output:
-        temp (nameBuild+ ".normal.cr.tsv")
-    threads:
-        halfThreads
-    log:
-        "Logs/"+ nameBuild+ "_DenoiseNormalCounts.log"
-    shell:
-        "{gatk} --java-options '-Xmx{halfRam}G' DenoiseReadCounts -I {input} "
-        "--count-panel-of-normals {bkg} --standardized-copy-ratios normal.delete.tsv --denoised-copy-ratios "
-        "{output} &> {log} && rm -rf normal.delete.tsv"
 
 # Extract snvs from germline calls
 rule SelectSnvVariants:
@@ -116,7 +83,7 @@ rule SelectSnvVariants:
     log:
         "Logs/"+ nameBuild+ "_SelectSnvVariants.log"
     shell:
-        "{gatk} SelectVariants --variant {vcf} --output {output} "
+        "gatk SelectVariants --variant {vcf} --output {output} "
         "--select-type-to-include SNP &> {log} "
 
 # Collect counts from tumor over germline snvs
@@ -130,32 +97,16 @@ rule CollectTumorSnvCounts:
     log:
         "Logs/"+ nameBuild+ "_CollectTumorSnvCounts.log"
     shell:
-        "{gatk} --java-options '-Xmx{halfRam}G' CollectAllelicCounts -L {input} -I {tumorBam} "
-        "-R {indexFasta} -O {output} &> {log}"
-
-# Collect counts from normal over germline snvs
-rule CollectNormalSnvCounts:
-    input:
-        vcf = nameBuild+ ".germline.snv.vcf"
-    output:
-        temp (nameBuild+ ".normal.snv.ac.tsv")
-    threads:
-        halfThreads
-    log:
-        "Logs/"+ nameBuild+ "_CollectNormalSnvCounts.log"
-    shell:
-        "{gatk} --java-options '-Xmx{halfRam}G' CollectAllelicCounts -L {input} -I {normalBam} "
+        "gatk --java-options '-Xmx{halfRam}G' CollectAllelicCounts -L {input} -I {tumorBam} "
         "-R {indexFasta} -O {output} &> {log}"
 
 # Group adjacent copy ratio regions
 rule ModelSegments:
     input:
         tAc = nameBuild+ ".tumor.snv.ac.tsv",
-        nAc = nameBuild+ ".normal.snv.ac.tsv",
         dnCR = nameBuild+ ".tumor.cr.tsv"
     output:
         "ModelSegments/"+ nameBuild+ ".cr.seg",
-        "ModelSegments/"+ nameBuild+ ".hets.normal.tsv",
         "ModelSegments/"+ nameBuild+ ".hets.tsv",
         "ModelSegments/"+ nameBuild+ ".modelFinal.seg"
     threads:
@@ -164,10 +115,9 @@ rule ModelSegments:
         "Logs/"+ nameBuild+ "_ModelSegments.log"
     shell:
         "rm -rf ModelSegments && mkdir ModelSegments && "
-        "{gatk} --java-options '-Xmx{halfRam}G' ModelSegments "
+        "gatk --java-options '-Xmx{halfRam}G' ModelSegments "
         "--denoised-copy-ratios {input.dnCR} "
         "--allelic-counts {input.tAc} "
-        "--normal-allelic-counts {input.nAc} "
         "--output ModelSegments --output-prefix {nameBuild} &> {log}"
 
 # Call copy ratio segments +/- or non change 0
@@ -182,7 +132,7 @@ rule CallCopyRatioSegments:
     log:
         "Logs/"+ nameBuild+ "_CallCopyRatioSegments.log"
     shell:
-        "{gatk} CallCopyRatioSegments --input {input} --output {output.seg} &> {log}"
+        "gatk CallCopyRatioSegments --input {input} --output {output.seg} &> {log}"
 
 
 # Plot model segments with R
@@ -199,7 +149,7 @@ rule PlotModeledSegments:
         "Logs/"+ nameBuild+ "_PlotModeledSegments.log"
     shell:
         "rm -rf ModelSegments/Plots && mkdir ModelSegments/Plots && "
-        "{gatk} PlotModeledSegments "
+        "gatk PlotModeledSegments "
         "--sequence-dictionary {dictFasta} --minimum-contig-length 46709983 "
         "--output ModelSegments/Plots --output-prefix {nameBuild} "
         "--denoised-copy-ratios {input.dnCR} "
@@ -210,8 +160,7 @@ rule PlotModeledSegments:
 # Convert denoised copy ratios to bw graph tracks for the tumor and matched normal
 rule CopyRatio2Bw:
     input:
-        t = nameBuild+ ".tumor.cr.tsv",
-        n = nameBuild+ ".normal.cr.tsv"
+        t = nameBuild+ ".tumor.cr.tsv"
     output:
         t = "Results/"+ nameBuild+ ".tumor.cr.bw"
     threads:
@@ -220,27 +169,21 @@ rule CopyRatio2Bw:
         "Logs/"+ nameBuild+ "_CopyRatio2Bw.log"
     shell:
         "grep -v ^@ {input.t} > {input.t}.txt  2> {log} && "
-        "grep -v ^@ {input.n} > {input.n}.txt 2>> {log} && "
         "{java} {useq}/PrintSelectColumns -n 1 -i 0,1,2,3,3 -f {input.t}.txt &>> {log} && "
-        "{java} {useq}/PrintSelectColumns -n 1 -i 0,1,2,3,3 -f {input.n}.txt &>> {log} && "
-        "mkdir -p {nameBuild}.tumor.cr {nameBuild}.normal.cr &>> {log} && "
+        "mkdir -p {nameBuild}.tumor.cr  &>> {log} && "
         "mv {input.t}.PSC.xls {nameBuild}.tumor.cr/{input.t}.bed &>> {log} && "
-        "mv {input.n}.PSC.xls {nameBuild}.normal.cr/{input.n}.bed &>> {log} && "
         "{java} {useq}/Bed2Bar -f {nameBuild}.tumor.cr -v H_sapiens_Dec_2013 &>> {log} && "
-        "{java} {useq}/Bed2Bar -f {nameBuild}.normal.cr -v H_sapiens_Dec_2013 &>> {log} && "
         "{java} {useq}/Bar2USeq -f . &>> {log} && "
         "{java} {useq}/USeq2UCSCBig -u . -d {ucsc} || true &>> {log} && "
         "mv -f */*.cr.bw Results/ &>> {log} && "
-        "rm -rf {nameBuild}.tumor.cr {nameBuild}.normal.cr *.cr.tsv.txt "
+        "rm -rf {nameBuild}.tumor.cr  *.cr.tsv.txt "
 
-# Convert heterozygous allele frequencies to bw graph tracks for the tumor and matched normal
+# Convert heterozygous allele frequencies to bw graph tracks for the tumor
 rule HeterozygousAllelicFrequency2Bw:
     input:
-        t = "ModelSegments/"+ nameBuild+ ".hets.tsv",
-        n = "ModelSegments/"+ nameBuild+ ".hets.normal.tsv"
+        t = "ModelSegments/"+ nameBuild+ ".hets.tsv"
     output:
-        t = "Results/"+ nameBuild+ ".tumor.af.bw",
-        n = "Results/"+ nameBuild+ ".normal.af.bw"
+        t = "Results/"+ nameBuild+ ".tumor.af.bw"
     threads:
         halfThreads
     log:
@@ -248,7 +191,6 @@ rule HeterozygousAllelicFrequency2Bw:
     shell:
         "rm -rf HetTemp && mkdir HetTemp && "
         "grep -v ^@ {input.t} | grep -v ^CONTIG > HetTemp/{nameBuild}.tumor.af.txt  2> {log} && "
-        "grep -v ^@ {input.n} | grep -v ^CONTIG > HetTemp/{nameBuild}.normal.af.txt 2>> {log} && "
         "{java} {useq}/Text2USeq -o  -f HetTemp -c 0 -b 1 -v 3,2 -g H_sapiens_Dec_2013 &>> {log} && "
         "{java} {useq}/USeq2UCSCBig -u HetTemp -d {ucsc} &>> {log} && "
         "mv -f HetTemp/*.af.bw Results/ &>> {log} && "
@@ -258,38 +200,26 @@ rule HeterozygousAllelicFrequency2Bw:
 rule IndexHetAndCopyRatios:
     input:
         tCr = nameBuild+ ".tumor.cr.tsv",
-        nCr = nameBuild+ ".normal.cr.tsv",
-        tAf = "ModelSegments/"+ nameBuild+ ".hets.tsv",
-        nAf = "ModelSegments/"+ nameBuild+ ".hets.normal.tsv"
+        tAf = "ModelSegments/"+ nameBuild+ ".hets.tsv"
     output:
-        tCr = temp (nameBuild+ ".tumor.cr.txt.gz"),
-        nCr = temp (nameBuild+ ".normal.cr.txt.gz"),
-        tAf = temp (nameBuild+ ".hets.txt.gz"),
-        nAf = temp (nameBuild+ ".hets.normal.txt.gz")
+        tCr = nameBuild+ ".tumor.cr.txt.gz",
+        tAf = nameBuild+ ".hets.txt.gz"
     log:
         "Logs/"+ nameBuild+ "_IndexHetAndCopyRatios.log"
     shell:
         "grep -vE '(@|CONTIG)' {input.tCr} > {nameBuild}.tumor.cr.txt 2> {log} && "
-        "grep -vE '(@|CONTIG)' {input.nCr} > {nameBuild}.normal.cr.txt 2>> {log} && "
         "{htslib}/bgzip {nameBuild}.tumor.cr.txt &>> {log} && "
-        "{htslib}/bgzip {nameBuild}.normal.cr.txt &>> {log} && "
         "{htslib}/tabix -s 1 -b 2 -e 3 {output.tCr} &>> {log} && "
-        "{htslib}/tabix -s 1 -b 2 -e 3 {output.nCr} &>> {log} && "
         "grep -vE '(@|CONTIG)' {input.tAf} > {nameBuild}.hets.txt 2>> {log} && "
-        "grep -vE '(@|CONTIG)' {input.nAf} > {nameBuild}.hets.normal.txt 2>> {log} && "
         "{htslib}/bgzip {nameBuild}.hets.txt &>> {log} && "
-        "{htslib}/bgzip {nameBuild}.hets.normal.txt &>> {log} && "
-        "{htslib}/tabix -s 1 -b 2 -e 2 {output.tAf} &>> {log} && "
-        "{htslib}/tabix -s 1 -b 2 -e 2 {output.nAf} &>> {log} "
+        "{htslib}/tabix -s 1 -b 2 -e 2 {output.tAf} &>> {log}"
 
 # Annotate and filter segment calls
 rule GatkCalledSegmentAnnotator:
     input:
         seg = "ModelSegments/"+ nameBuild+ ".called.seg",
         tCr = nameBuild+ ".tumor.cr.txt.gz",
-        nCr = nameBuild+ ".normal.cr.txt.gz",
         tAf = nameBuild+ ".hets.txt.gz",
-        nAf = nameBuild+ ".hets.normal.txt.gz"
     output:
         s = "Results/"+nameBuild+ ".called.anno.seg",
         p = "Results/"+nameBuild+ ".called.seg.pass.bed",
@@ -297,15 +227,12 @@ rule GatkCalledSegmentAnnotator:
     threads:
         halfThreads
     params:
-        max = config["maxNormalCopyRatio"],
-        minR = config["minTNCRRatio"],
         minT = config["minTumorCopyRatio"]
     log:
         "Logs/"+ nameBuild+ "_GatkCalledSegmentAnnotator.log"
     shell:
         "{java} {useq}/GatkCalledSegmentAnnotator -r Results -s {input.seg} -t {input.tCr} "
-        "-n {input.nCr} -u {input.tAf} -o {input.nAf} -x {params.max} -m "
-        "{params.minR} -g {geneTable} -c {params.minT} &> {log} "
+        "-u {input.tAf} -g {geneTable} -c {params.minT} &> {log} "
 
 # Calculate fraction interrogated bps that overlap a copy ratio region
 rule FractionCopyRatio:
@@ -319,7 +246,7 @@ rule FractionCopyRatio:
         "Logs/"+ nameBuild+ "_FractionCopyRatio.log"
     shell:
         "grep Pass {input} > passing.seg || true 2> {log} && "
-        "{java} {useq}/PrintSelectColumns -f passing.seg -i 1,2,3,7 &>> {log} && "
+        "{java} {useq}/PrintSelectColumns -f passing.seg -i 1,2,3,5 &>> {log} && "
         "grep '-' passing.PSC.xls > del.bed || true 2>> {log} && "
         "grep -v '-' passing.PSC.xls > amp.bed || true 2>> {log} && "
         "numDel=$({java} {useq}/FindSharedRegions -f del.bed -s {bed} -r delCommon.bed | grep 'Total BP' | cut -d$'\\t' -f1)  2>> {log} && "

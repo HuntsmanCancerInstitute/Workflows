@@ -1,4 +1,4 @@
-# 25 Aug 2022 
+# 25 April 2023 
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -20,8 +20,7 @@ deleteS3Objects = "" # Set to -d to delete the downloaded S3 objects, otherwise 
 # GU Group
 guGroup="GU"
 guOp="Neeraj_Agarwal Benjamin_Maughan Manish_Kohli Umang_Swami Sumati_Gupta Jennifer_Lloyd Julia_Batten Tenzin_Phunrab Lindsay_Maxwell Jared_Thorley"
-guEmail="david.nix@hci.utah.edu"
-   ##,Roberto.Nussenzveig@hci.utah.edu,u6038961@utah.edu"
+guEmail="david.nix@hci.utah.edu,JongTaek.Kim@aruplab.com,beverly.chigarira@hci.utah.edu"
 guBucket="s3://hcibioinfo-gu-patient-molecular-repo/Patients/"
 
 # PHI Resources
@@ -163,7 +162,7 @@ rule SyncMainRepo:
     threads:
         halfThreads
     shell:
-        "aws s3 sync CJobs/ {patientMolRepo} --quiet &> {log}; "
+        "aws s3 sync CJobs/ {patientMolRepo} --no-progress &> {log}; "
         "touch {output}"
 
 # Sync xml reports with PHI
@@ -212,7 +211,7 @@ rule MainRepoIndex:
         halfThreads
     shell:
         "aws s3 ls --recursive {patientMolRepo} > Logs/patientMolecularRepoIndex.txt 2> {log}; "
-        "aws s3 cp Logs/patientMolecularRepoIndex.txt {molRepoIndex} --quiet &>> {log}; "
+        "aws s3 cp Logs/patientMolecularRepoIndex.txt {molRepoIndex} --no-progress &>> {log}; "
         "touch {output}"
 
 rule UploadGUDatasets:
@@ -234,7 +233,7 @@ rule UploadGUDatasets:
         "head -n 1 {subjectRegistry}/currentRegistry_* > $phiLinks;"
         "for x in $(ls {guGroup}/); do grep $x {subjectRegistry}/currentRegistry_* >> $phiLinks; done;"
         "n=$(cat $phiLinks | wc -l);"
-        "if [[ $n -gt 1 ]]; then aws s3 sync {guGroup}/ {guBucket} --quiet --follow-symlinks "
+        "if [[ $n -gt 1 ]]; then aws s3 sync {guGroup}/ {guBucket} --no-progress --follow-symlinks "
         "--profile {guGroup}; echo $n' new Caris patient datasets have been uploaded into {guBucket} "
         "See and SAVE the attached file to associate coreIds with patient identifiers.' | "
         "mailx -r noreply.bioinfo@hci.utah.edu -a $phiLinks -s 'PHI - New Caris Datasets '$d "

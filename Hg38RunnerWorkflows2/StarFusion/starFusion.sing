@@ -1,17 +1,15 @@
 # Bash script to run inside the container
-# 8 Nov 2022
+# 5 Dec 2022
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
 set -e
 cd $jobDir
+rm -f FAILED COMPLETE QUEUED; touch STARTED
 
 # Read info
 allThreads=$(nproc)
 allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
-shopt -s nullglob; fq=(*.gz)
-fq1=`realpath ${fq[0]}`
-fq2=`realpath ${fq[1]}`
 name=${PWD##*/}
 
 # Print params
@@ -21,21 +19,22 @@ echo -n dataBundle"   : "; echo $dataBundle
 echo -n threads"      : "; echo $allThreads
 echo -n ram"          : "; echo $allRam
 echo -n host"         : "; echo $(hostname)
-echo -n fastqReadOne" : "; echo $fq1
-echo -n fastqReadTwo" : "; echo $fq2; echo
+echo
 
 snakemake -p -T --cores $allThreads \
+--stats $name"_Hg38_snakemake.stats.json" \
 --snakefile *.sm \
 --config \
-fastqReadOne=$fq1 \
-fastqReadTwo=$fq2 \
 starGenLibDir=$dataBundle/StarFusion/Version33/GRCh38_gencode_v33_CTAT_lib_Apr062020.plug-n-play/ctat_genome_lib_build_dir/ \
+dataBundle=$dataBundle \
+cramAlignmentIndex=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
 name=$name \
 allThreads=$allThreads \
 allRam=$allRam
 
 mkdir -p RunScripts
 mv -f starFusion* RunScripts/
+mv -f *snakemake.stats.json Logs/ &> /dev/null || true
 rm -rf .snakemake FAILED STARTED DONE RESTART* QUEUED
 touch COMPLETE
 

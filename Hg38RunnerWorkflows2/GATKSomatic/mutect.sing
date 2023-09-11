@@ -1,0 +1,46 @@
+# Bash script to run inside the container
+# 27 July 2023
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+set -e
+cd $jobDir
+name=${PWD##*/}
+allThreads=$(nproc)
+allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+
+# Read params and files
+tumorAli=`readlink -f tumor.bam`
+normalAli=`readlink -f normal.bam`
+test -f $tumorAli || tumorAli=`readlink -f tumor.cram`
+test -f $normalAli || normalAli=`readlink -f normal.cram`
+
+# Print params
+echo -n jobDir"     : "; echo $jobDir
+echo -n name"       : "; echo $name
+echo -n dataBundle" : "; echo $dataBundle
+echo -n threads"    : "; echo $allThreads
+echo -n ram"        : "; echo $allRam
+echo -n host"       : "; echo $(hostname)
+echo -n tumorAli"   : "; echo $tumorAli
+echo -n normalAli"  : "; echo $normalAli
+echo
+
+# Make sure required files are present
+ls $tumorAli $normalAli > /dev/null
+
+snakemake -p --cores $allThreads \
+--stats $name"_Hg38_snakemake.stats.json" \
+--snakefile *.sm \
+--configfile *.yaml \
+--config \
+allThreads=$allThreads \
+allRam=$allRam \
+tumorBam=$tumorAli \
+normalBam=$normalAli \
+name=$name 
+
+# Replace first and last lines above with the following to get dag svg graph
+	# /BioApps/Miniconda3/bin/snakemake --dag \
+	# allRam=$allRam | dot -Tsvg > $name"_dag.svg"
+

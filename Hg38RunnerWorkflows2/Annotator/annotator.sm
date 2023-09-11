@@ -1,5 +1,5 @@
 # Annotation of a vcf file with snpEff, splice, and prior call freq, followed by region and quality filtering
-# 20 Dec 2021
+# 8 March 2023
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -71,24 +71,24 @@ rule Clinvar:
         "{java} {snpEff}/SnpSift.jar annotate -v {dataDir}/Clinvar/clinvar.vcf.gz "
         "{input} > {output} 2> {log} "
 
-# ExAC AFs
-rule ExAC:
+# GnomAD population AFs
+rule GnomAD:
     input:
         nameBuild+ ".snpEff.clinvar.vcf"
     output:
-        temp (nameBuild+ ".snpEff.clinvar.exac.vcf")
+        temp (nameBuild+ ".snpEff.clinvar.gnomad.vcf")
     threads:
         allThreads
     log:
-        "Logs/"+ nameBuild+ "_Exac.log"
+        "Logs/"+ nameBuild+ "_Gnomad.log"
     shell:
-        "{java} {snpEff}/SnpSift.jar annotate -name ExAC_ -v {dataDir}/ExAC/exac.hg38.vcf.gz "
+        "{java} {snpEff}/SnpSift.jar annotate -name GnomAD_ -v {dataDir}/GnomAD/gnomADv2v3_maxAF.hg38.vcf.gz "
         "{input} > {output} 2> {log} "
 
 # USeq Splice Scanner
 rule VCFSpliceScanner:
     input:
-        nameBuild+ ".snpEff.clinvar.exac.vcf"
+        nameBuild+ ".snpEff.clinvar.gnomad.vcf"
     output:
         "Vcfs/"+ nameBuild+ ".anno.vcf.gz"
     threads:

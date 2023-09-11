@@ -1,0 +1,251 @@
+# Mutect2 Tumor - Normal Somatic Variant Calling Workflow 
+# 27 July 2023
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+# See https://gatk.broadinstitute.org/hc/en-us/articles/360035531132--How-to-Call-somatic-mutations-using-GATK4-Mutect2
+# Pulling required resources from the best practice bucket: https://console.cloud.google.com/storage/browser/gatk-best-practices/somatic-hg38;tab=objects?prefix
+# Dev notes at ~/Code/workingWithMutect2.sh
+
+############ No need to modify anything in this document #############
+
+# Base name to prepend on all files
+nameBuild = str(config["name"]) + "_Hg38"
+
+# Threads and memory
+allThreads = int(config["allThreads"])
+minusFourAllThreads = allThreads - 4
+allRam = int(round(float(config["allRam"])))
+
+# Resources in the JobDir
+tumor = config["tumorBam"]
+normal = config["normalBam"]
+
+# Resources in the data bundle
+db = config["dataBundle"] + "/"
+indexFasta = db + config["indexFasta"]
+regions = db + config["mutectRegions"]
+germlineVcf = db + config["mutectGermline"]
+commonVcf = db + config["mutectCommon"]
+pon = db + config["mutectPoN"]
+
+# Apps in BioApps and container
+useq = db + "BioApps/USeq/Apps"
+vt = db + "BioApps/Vt/24Sept2020/vt"
+htsLib = "/usr/bin"
+java8 = "/Jre1.8/jre1.8.0_381/bin/java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
+
+# VCF variant filtering params
+fdrs = config["mutectFdrs"]
+minAF = config["mutectMinAF"]
+minAlt = config["mutectMinAlt"]
+
+# Workflow trigger, final Rule, cleanup and tabix index the vcfs 
+rule VcfTabix:
+    input:
+        "Vcfs/PassFilteringComplete"
+    output:
+        "Vcfs/" + nameBuild+ "_unfiltered.vcf.gz.tbi"
+    threads:
+        allThreads
+    log:
+        "Logs/"+ nameBuild+ "_VcfTabix.log"
+    shell:
+        "{java8} {useq}/VCFTabix -t {htsLib} -v Vcfs/ &> {log}; "
+        "rm -rf TmpDir* Vcfs/*.idx Vcfs/*.tsv TmpSplit/ &>> {log}"
+
+# Calls Mutect for tumor vs matched control normal analysis
+rule Mutect:
+    output:
+        "TmpSplit/MutectComplete"
+    log:
+        "Logs/"+ nameBuild+ "_Mutect.log"
+    threads: 
+        minusFourAllThreads
+    shell:
+        "rm -rf TmpSplit TmpDirMutect &> {log} ; "
+        "mkdir TmpSplit TmpDirMutect &>> {log} ; "
+        "normalName=$(samtools view -H {normal} | grep ^@RG | cut -f 2 | cut -c4-) &>> {log} ; "
+        "numChunks=$(( {threads} / 4 )) &>> {log} ; "
+        "split -n l/$numChunks --additional-suffix .bed {regions} TmpSplit/chunk_ &>> {log} ; "
+        "export OMP_NUM_THREADS=4 &>> {log}; "
+        "for x in TmpSplit/chunk_*.bed ;"
+        "do"
+        "  name=$(echo $x | awk -F'.bed' '{{print $1}}') ;"
+        "  echo Launching Mutect2 on $name &>> {log} ;"
+        "  gatk --java-options '-Djava.io.tmpdir=TmpDirMutect' Mutect2 -R {indexFasta}"
+        "    -L $x -I {tumor} -I {normal} -normal $normalName"
+        "    -germline-resource {germlineVcf} -pon {pon}"
+        "    --max-reads-per-alignment-start 0 --tmp-dir TmpDirMutect"
+        "    --f1r2-tar-gz $name'_f1r2.tar.gz' "
+        "    -O $name'_unfiltered.vcf' &> $name'_mutect.log' & "
+        "done ; "
+        ""
+        "numDone=0 ; "
+        "echo -n Waiting until $numChunks': ' &>> {log} ; "
+        "until [ $numChunks -eq $numDone ] ; "
+        "do "
+        "  sleep 120s ;"
+        "  grep SUCCESS TmpSplit/*log > TmpDirMutect/lines.txt || true ;"
+        "  numDone=$(cat TmpDirMutect/lines.txt | wc -l) ;"
+        "  echo -n $numDone' ' &>> {log} ;"
+        "done ;"
+        "echo Mutect Chunks Complete &>> {log} ; "
+        "touch {output} &>> {log} ; "
+
+# Calls LearnReadOrientationModel on the Mutect *f1r2.tar.gz files
+rule LearnReadOrientationModel:
+    input:
+        "TmpSplit/MutectComplete"
+    output:
+        temp("read-orientation-model.tar.gz")
+    log:
+        "Logs/"+ nameBuild+ "_LearnReadOrientationModel.log"
+    threads: 
+        2
+    shell:
+        "allF1r2=$(for x in TmpSplit/*f1r2.tar.gz; do echo -n ' -I '$x; done ) &> {log} ; "
+        "rm -rf TmpDirLROM &>> {log} ; mkdir TmpDirLROM &>> {log} ; "
+        "gatk --java-options '-Djava.io.tmpdir=TmpDirLROM' LearnReadOrientationModel $allF1r2 "
+        "  -O {output} --max-depth 5000 --tmp-dir TmpDirLROM &>> {log} ; "
+
+# Calls GetPileupSummaries on the tumor alignment file
+rule GetPileupSummariesTumor:
+    output:
+        temp("tumor.pileup.table")
+    log:
+        "Logs/"+ nameBuild+ "_GetPileupSummariesTumor.log"
+    threads: 
+        2
+    shell:
+        "rm -rf TmpDirGPST; mkdir TmpDirGPST &>> {log} ; "
+        "gatk --java-options '-Djava.io.tmpdir=TmpDirGPST' GetPileupSummaries -I {tumor} -V {commonVcf} -L {commonVcf} -R {indexFasta}"
+        "  --max-depth-per-sample 0 --tmp-dir TmpDirGPST -O {output} &>> {log} ; "
+
+# Calls GetPileupSummaries on the normal alignment file
+rule GetPileupSummariesNormal:
+    output:
+        temp("normal.pileup.table")
+    log:
+        "Logs/"+ nameBuild+ "_GetPileupSummariesNormal.log"
+    threads: 
+        2
+    shell:
+        "rm -rf TmpDirGPSN; mkdir TmpDirGPSN &>> {log} ; "
+        "gatk --java-options '-Djava.io.tmpdir=TmpDirGPSN' GetPileupSummaries -I {normal} -V {commonVcf} -L {commonVcf} -R {indexFasta}"
+        "  --max-depth-per-sample 0 --tmp-dir TmpDirGPSN -O {output} &>> {log} ; "
+
+# Calls CalculateContamination on the common variant pileups
+rule CalculateContamination:
+    input:
+       t = "tumor.pileup.table",
+       n = "normal.pileup.table"
+    output:
+        t = temp("tumor.seg.table"),
+        c = temp("contamination.table")
+    log:
+        "Logs/"+ nameBuild+ "_CalculateContamination.log"
+    threads: 
+        2
+    shell:
+        "rm -rf TmpDirCC &>> {log} ; mkdir TmpDirCC &>> {log} ; "
+        "gatk --java-options '-Djava.io.tmpdir=TmpDirCC' CalculateContamination -I {input.t} --matched-normal {input.n}"
+        "  --tumor-segmentation {output.t} -O {output.c} --tmp-dir TmpDirCC &>> {log} ; "
+
+# Calls MergeMutectStats on the Mutect *.stats files
+rule MergeMutectStats:
+    input:
+        "TmpSplit/MutectComplete"
+    output:
+        temp("merged.vcf.stats")
+    log:
+        "Logs/"+ nameBuild+ "_MergeMutectStats.log"
+    threads: 
+        2
+    shell:
+        "rm -rf TmpDirMMS &>> {log} ; mkdir TmpDirMMS &>> {log} ; "    
+        "allStats=$(for x in TmpSplit/*stats; do echo -n ' -stats '$x; done) &> {log} ; "
+        "gatk --java-options '-Djava.io.tmpdir=TmpDirMMS' MergeMutectStats $allStats -O {output} --tmp-dir TmpDirMMS &>> {log} ; "
+
+# Calls the USeq VCFMerger on the Mutect *unfiltered.vcf files, can't get GATK's GatherVcfs to run, sorting issue
+rule MergeMutectVcfs:
+    input:
+        "TmpSplit/MutectComplete"
+    output:
+        v = "Vcfs/" + nameBuild+ "_unfiltered.vcf.gz",
+        m = temp ("merged.vcf")
+    log:
+        "Logs/"+ nameBuild+ "_MergeMutectVcfs.log"
+    threads: 
+        2
+    shell:
+        "java -jar -Xmx10G {useq}/VCFMerger -v TmpSplit/ -o {output} &> {log}; "
+        "gunzip -c {output.v} > {output.m} "
+
+
+# Calls FilterMutectCalls for a set of desired fdrs
+rule FilterMutectCalls:
+    input:
+       v = "merged.vcf",
+       s = "tumor.seg.table",
+       c = "contamination.table",
+       p = "read-orientation-model.tar.gz",
+       m = "merged.vcf.stats"
+    output:
+        temp("Vcfs/FilteringComplete")
+    log:
+        "Logs/"+ nameBuild+ "_FilterMutectCalls.log"
+    threads: 
+        allThreads
+    shell:
+        "rm -rf TmpDirFMC &> {log} ; mkdir TmpDirFMC &>> {log} ; "
+        "for x in {fdrs} ;"
+        "do"
+        "  echo Launching FilterMutectCalls with an FDR of $x &>> {log} ;"
+        "  gatk --java-options '-Djava.io.tmpdir=TmpDirFMC' FilterMutectCalls "
+        "    -R {indexFasta} -V {input.v} "
+        "    --tumor-segmentation {input.s} --contamination-table {input.c} "
+        "    --ob-priors {input.p} --threshold-strategy FALSE_DISCOVERY_RATE "
+        "    -O Vcfs/all_{nameBuild}'_FDR_'$x'.vcf' --false-discovery-rate $x "
+        "    --min-allele-fraction {minAF} --unique-alt-read-count {minAlt} "
+        "    --tmp-dir TmpDirFMC &> TmpDirFMC/$x'.log' & "
+        "done ; "
+        ""
+        "numDone=0 ; sleep 2s; numChunks=$(ls TmpDirFMC/*.log | wc -l); "
+        "echo -n Waiting until $numChunks': ' &>> {log} ; "
+        "until [ $numChunks -eq $numDone ] ; "
+        "do "
+        "  sleep 5s ;"
+        "  grep 'Traversal complete' TmpDirFMC/*log > TmpDirFMC/lines.txt || true ;"
+        "  numDone=$(cat TmpDirFMC/lines.txt | wc -l) ;"
+        "  echo -n $numDone' ' &>> {log} ; "
+        "done ;"
+        "echo Mutect Filtering Complete &>> {log} ; "
+        "touch {output} &>> {log} ; "
+
+
+# Select PASS variants from filtered calls
+rule SelectVariants:
+    input:
+       "Vcfs/FilteringComplete"
+    output:
+        temp("Vcfs/PassFilteringComplete")
+    log:
+        "Logs/"+ nameBuild+ "_SelectVariants.log"
+    threads: 
+        allThreads
+    shell:
+        "rm -rf TmpDirSV &> {log} ; mkdir TmpDirSV &>> {log} ; "
+        "for x in {fdrs} ;"
+        "do"
+        "  echo Launching SelectVariants with an FDR of $x &>> {log} ;"
+        "  gatk --java-options '-Djava.io.tmpdir=TmpDirSV' SelectVariants -R {indexFasta} "
+        "    -V Vcfs/all_{nameBuild}'_FDR_'$x'.vcf' -O Vcfs/pass_{nameBuild}'_FDR_'$x'.vcf' "
+        "    --exclude-filtered  --tmp-dir TmpDirSV &> TmpDirSV/$x'.log' ;"
+        "done ; "
+        "touch {output} &>> {log} ; "
+
+
+onerror:
+    shell( "rm -f STARTED COMPLETE; touch FAILED")
+

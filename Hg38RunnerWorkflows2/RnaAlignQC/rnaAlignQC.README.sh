@@ -4,20 +4,21 @@
 #SBATCH -N 1
 #SBATCH -t 96:00:00
 
-# 8 Nov	2022
+# 6 July 2023
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
-# This fires Chris Stubben's standard RNASeq analysis (CutAdapt, STAR, RSEM, fetureCounts, QC, etc.) on paired end fastq datasets.
-
+# This fires a standard RNASeq analysis (CutAdapt, STAR, RSEM, fetureCounts, QC, etc.) on paired end datasets.
+# Takes ~132min when disabling RSEM and BamPileup for Avatar datasets on Redwood
 
 #### Do just once ####
 
 # 1) Install Singularity (https://www.sylabs.io) or load via a module, place in your path
 module load singularity
 
-# 2) Define file paths to "mount" in the container. The first is to the data bundle mirrored on BSR servers. 
+# 2) Define file paths to "mount" in the container. The first is to the data bundle mirrored on BSR servers. The second is needed if raw read alignment crams are provided to realign. This must match otherwise the samtools fastq conversion takes hours.
 dataBundle=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/atlatl/data
+cramAlignmentIndexDir=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Indexes/B38IndexForBwa-0.7.17
 
 # 3) Modify the workflow xxx.sing file setting the paths to the required resources. These must be within the mounts.
 
@@ -30,7 +31,7 @@ container=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Containers/
 
 # 1) Create a folder named as you would like the analysis name to appear, this along with the genome build will be prepended onto all files, no spaces, change into it. This must reside somewhere in the myData mount path.
 
-# 2) Soft link or move your paired end RNASeq fastq files into the job directory naming.
+# 2) Soft link or move your paired end RNASeq, gzipped fastq files or a raw cram file and index into the job directory.
 
 # 3) Copy over the workflow docs: xxx.sing, xxx.README.sh, and xxx.sm into the job directory.
 
@@ -56,16 +57,18 @@ rsync -rtL --exclude 'slurm-*' $jobDir/ $tempDir/$name/ && echo CopyOverOK || ec
 # Execute the sing file in the container from the tempDir, always return true, even if it fails so one can copy all back
 echo -e "\n---------- Launching container -------- $((($(date +'%s') - $start)/60)) min"
 cd $tempDir/$name
+set +e
 SINGULARITYENV_jobDir=$tempDir/$name SINGULARITYENV_dataBundle=$dataBundle \
-  singularity exec --containall --bind $dataBundle,$tempDir/$name $container \
+  singularity exec --containall --bind $dataBundle,$tempDir/$name,$cramAlignmentIndexDir $container \
   bash $tempDir/$name/*.sing
 
 echo -e "\n---------- Files In Temp -------- $((($(date +'%s') - $start)/60)) min"
 ls -1 $tempDir/$name
 
-# Copy back job files regardless of success or failure, disable exit on error, exclude the fastqs
+# Copy back job files regardless of success or failure, disable exit on error, exclude the fastqs, and crams
 echo -e "\n---------- Copying back results -------- $((($(date +'%s') - $start)/60)) min"
-set +e
+sleep 2s
+rm -rf $tempDir/$name/*.cram $tempDir/$name/*.crai &> /dev/null || true
 rsync -rtL --exclude '*q.gz' $tempDir/$name/ $jobDir/ && echo CopyBackOK || { echo CopyBackFAILED; rm -f COMPLETE; }
 
 echo -e "\n---------- Files In JobDir -------- $((($(date +'%s') - $start)/60)) min"
