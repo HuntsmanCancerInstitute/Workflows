@@ -1,0 +1,36 @@
+---
+# Last edit 27 January 2024 - david.nix@hci.utah.edu
+# Configuration for the bulk RnaAlignQC workflow, keeping it simple, just hardcoding for redwood
+# Mouse latest
+
+genomeBuild: GRCm39
+
+# Illumina TruSeq universal
+adapterR1: AGATCGGAAGAGCACACGTCTGAACTCCAGTCA
+adapterR2: AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT
+
+mappingQuality: 13
+baseQuality: 13
+
+# root must end in /
+root: /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/atlatl/data/
+chrom: Mouse/GRCm39/chrom.sizes
+fqsConfig: Human/Hg38/TNRunner/redwood_fastq_screen_rRNA.conf
+analysisRegions: Human/Hg38/TNRunner/MouseGRCm39/GRCm39RefSeqCurated4Jan2023_MergedExonsStdChrNoUtrs.bed.gz
+
+# use 100bp for reads at and over 100bp, use the star50 for short reads
+starIndex: Mouse/GRCm39/release110/star100/
+gtf: Mouse/GRCm39/release110/Mus_musculus.GRCm39.110.gtf
+refFlat: Mouse/GRCm39/release110/Mus_musculus.GRCm39.110.refflat
+riboIntervals: Mouse/GRCm39/release110/Mus_musculus.GRCm39.110.rRNA.interval
+rsemIndex: Mouse/GRCm39/release110/rsem/RSEM
+fastaIndex: Mouse/GRCm39/Mus_musculus.GRCm39.dna.primary_assembly.fa
+
+# Must match chr usage (chr1 or just 1) of the input cram for fastq conversion
+cramIndex: Mouse/GRCm39/Mus_musculus.GRCm39.dna.primary_assembly.fa
+
+# Strandedness, set all to the same
+rsemStrand: reverse # 'none', 'forward', and 'reverse' (default)
+fcStrand: 2 # 0 (unstranded), 1 (stranded, Tempus) and 2 (reversely stranded, default)
+crsStrand: SECOND_READ_TRANSCRIPTION_STRAND # NONE, FIRST_READ_TRANSCRIPTION_STRAND, SECOND_READ_TRANSCRIPTION_STRAND (default)
+

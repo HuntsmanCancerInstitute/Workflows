@@ -1,10 +1,7 @@
 # Alignment and QC for RNASeq samples
-# 6 Nov 2023
+# 24 Jan 2024
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
-
-# Base name to prepend on all files
-nameBuild = str(config["name"]) + "_Hg38"
 
 # Threads and memory
 allThreads = int(config["allThreads"])
@@ -12,34 +9,34 @@ halfThreads = int(round(allThreads/2,0))
 quarterThreads = int(round(halfThreads/4,0))
 allRam = int(round(float(config["allRam"])))
 
-# Resources
-adapterR1=config["adapterR1"]
-adapterR2=config["adapterR2"]
+# Params
+nameBuild = str(config["name"])+ "_"+ config["genomeBuild"]
+adapterR1 = config["adapterR1"]
+adapterR2 = config["adapterR2"]
+mappingQuality = config["mappingQuality"]
+baseQuality = config["baseQuality"]
 
-# DataBundle from config =/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/atlatl/data
-dataBundle = config["dataBundle"]+ "/Human/GRCh38"
-chrom = dataBundle + "/chrom.sizes"
-fqsConfig = config["dataBundle"] +"/Human/Hg38/TNRunner/redwood_fastq_screen_rRNA.conf"
-analysisRegions = config["tnRunnerDir"] +"/Bed/AvatarNimIdtTwstBeds/mergedNimV1IdtV1-2TwistV2Pad175bp8March2023.bed.gz"
+r = config["root"]
+chrom = r + config["chrom"]
+fqsConfig = r + config["fqsConfig"]
+analysisRegions = r + config["analysisRegions"]
+starIndex = r + config["starIndex"]
+gtf = r + config["gtf"]
+refFlat = r + config["refFlat"]
+riboIntervals = r + config["riboIntervals"]
+rsemIndex = r + config["rsemIndex"]
+rsemStrand = config["rsemStrand"] 
+fcStrand = str(config["fcStrand"])
+crsStrand = config["crsStrand"]
+fastaIndex = r + config["fastaIndex"]
+cramIndex = r + config["cramIndex"]
 
-# for release 106 and 100bp
-# use 100bp for reads at and over 100bp, use the star50 for short reads
-starIndex = dataBundle+ "/release106/star100"
-gtf= dataBundle +"/release106/Homo_sapiens.GRCh38.106.gtf"
-refflat = dataBundle +"/release106/Homo_sapiens.GRCh38.106.refflat"
-riboint = dataBundle +"/release106/Homo_sapiens.GRCh38.106.rRNA.interval"
-rsemIndex = dataBundle +"/release106/rsem/RSEM"
-
-fastaIndex = dataBundle + "/Homo_sapiens.GRCh38.dna.primary_assembly.fa"
-cramIndex = config["tnRunnerDir"]+"/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa"
-mappingQuality=config["mappingQuality"]
-baseQuality=config["baseQuality"]
 
 # Trigger rule to run particular analysis
 ## If you're not going to run SampleConcordance, remove the '"Alignment/"+ nameBuild+ "_bp.txt.gz"' to skip bamPileup file generation. This is time consuming and only needed for T/N Exome+ RNASeq runs.
+## "Alignment/"+ nameBuild+ "_bp.txt.gz", removed
 rule MultiQC:
     input:
-        "Alignment/"+ nameBuild+ "_bp.txt.gz",
         "QC/FastqScreen/"+ nameBuild+ "_1_screen.txt",
         "QC/FastQC/"+ nameBuild+ "_2_fastqc.zip",
         "Quantitation/RSEM/"+ nameBuild+ ".genes.results",
@@ -56,22 +53,30 @@ rule MultiQC:
         "multiqc --outdir QC/ --title {nameBuild} --force . && touch {output.c} &> {log}"
 
 # Look for the required resources
-rule CheckFiles:
+rule CheckFilesParams:
     output:
         temp ("FileCheckOK")
     log:
-        "Logs/"+ nameBuild+ "_CheckFiles.log"
+        "Logs/"+ nameBuild+ "_CheckFilesParams.log"
     shell:
-        "echo dataBundle: &> {log} && ls {dataBundle} &>> {log} && "
+        "echo nameBuild: &>> {log} && echo {nameBuild} &>> {log} && "
+        "echo adapterR1: &>> {log} && echo {adapterR1} &>> {log} && "
+        "echo adapterR2: &>> {log} && echo {adapterR2} &>> {log} && "
+        "echo mappingQuality: &>> {log} && echo {mappingQuality} &>> {log} && "
+        "echo baseQuality: &>> {log} && echo {baseQuality} &>> {log} && "
+        "echo root: &> {log} && ls {r} &>> {log} && "
         "echo chrom: &>> {log} && ls {chrom} &>> {log} && "
         "echo starIndex: &>> {log} && ls {starIndex} &>> {log} && "
         "echo fastaIndex: &>> {log} && ls {fastaIndex} &>> {log} && "
         "echo analysisRegions: &>> {log} && ls {analysisRegions} &>> {log} && "
         "echo gtf: &>> {log} && ls {gtf} &>> {log} && "
-        "echo refflat: &>> {log} && ls {refflat} &>> {log} && "
-        "echo riboint: &>> {log} && ls {riboint} &>> {log} && "
+        "echo refFlat: &>> {log} && ls {refFlat} &>> {log} && "
+        "echo riboIntervals: &>> {log} && ls {riboIntervals} &>> {log} && "
         "echo rsemIndex: &>> {log} && ls {rsemIndex}* &>> {log} && "
         "echo fqsConfig: &>> {log} && ls {fqsConfig} &>> {log} && "
+        "echo rsemStrand: &>> {log} && echo {rsemStrand} &>> {log} && "
+        "echo fcStrand: &>> {log} && echo {fcStrand} &>> {log} && "
+        "echo crsStrand: &>> {log} && echo {crsStrand} &>> {log} && "
         "touch {output}"
 
 # If fastq aren't present look for a cram and convert it to fastq otherwise uncompresses the paired fastq into the TempFastq dir. The uncompression is needed since cutadapt often throws gzip errors yet gunzip -t shows no issues, arrg.
@@ -205,10 +210,11 @@ rule RSEM:
     log:
         "Logs/"+ nameBuild+ "_RSEM.log"
     shell:
-        "rsem-calculate-expression --paired-end -p {threads} --alignments --strandedness reverse "
+        "rsem-calculate-expression --paired-end -p {threads} --alignments --strandedness {rsemStrand} "
         "--no-bam-output {input} {rsemIndex} Quantitation/RSEM/{nameBuild} &> {log}"
 
 # Summary transcript counts
+# If this fails, try writing out an uncompressed bam, and replace the Alignment/xxx.bam e.g. samtools sort -u -o sorted.bam Alignment/*bam; samtools index -b sorted.bam
 rule FeatureCounts:
     input:
         bam = "Alignment/"+ nameBuild+ ".bam",
@@ -221,8 +227,8 @@ rule FeatureCounts:
     log:
         "Logs/"+ nameBuild+ "_FeatureCounts.log"
     shell:
-        "featureCounts -T {threads} -p --countReadPairs -s 2 --largestOverlap -a {gtf} -o {output.c} {input.bam} &> {log} && "
-        "featureCounts -T {threads} -p --countReadPairs -s 2 --largestOverlap -a {gtf} -o {output.b} -g gene_biotype "
+        "featureCounts -T {threads} -p --countReadPairs -s {fcStrand} --largestOverlap -a {gtf} -o {output.c} {input.bam} &> {log} && "
+        "featureCounts -T {threads} -p --countReadPairs -s {fcStrand} --largestOverlap -a {gtf} -o {output.b} -g gene_biotype "
         "{input.bam} &>> {log}"
 
 # QC metrics from Picard
@@ -237,8 +243,8 @@ rule CollectRnaSeqMetrics:
     log:
         "Logs/"+ nameBuild+ "_CollectRnaSeqMetrics.log"
     shell:
-        "java -jar -Xmx20G /BioApps/Picard/2.26.2/picard.jar CollectRnaSeqMetrics  REF_FLAT={refflat} "
-        "STRAND=SECOND_READ_TRANSCRIPTION_STRAND RIBOSOMAL_INTERVALS={riboint} I={input.bam} "
+        "java -jar -Xmx20G /BioApps/Picard/2.26.2/picard.jar CollectRnaSeqMetrics  REF_FLAT={refFlat} "
+        "STRAND={crsStrand} RIBOSOMAL_INTERVALS={riboIntervals} I={input.bam} "
         "O={output} &> {log} "
 
 # Convert bam to cram
@@ -256,6 +262,7 @@ rule SamtoolsCram:
         "samtools view -C -T {fastaIndex} -o {output.cram} -@ {threads} --write-index {input} &> {log}"
 
 # BamPileup file for Read Coverage, Sample Concordance, and ultra sensitive somatic variant calling
+# Not used unless added above
 rule BamPileup:
     input:
         bam = "Alignment/"+ nameBuild+ ".bam",

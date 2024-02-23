@@ -1,0 +1,187 @@
+# 2 Nov 2023 
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+# Resources
+maxThreads = config["allThreads"]
+halfThreads = int(round(maxThreads/2,0)) - 1
+maxSlurmJobs = 45
+queueName = "hci-rw"
+workingDir = config["workingDir"]
+
+## Annotator  BulkParsing
+invitaeWorkflows = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Workflows/Invitae"
+
+# S3 Resources
+patientMolRepo = "s3://hcibioinfo-patient-molecular-repo/Patients/"
+
+# PHI Resources
+subjectRegistry = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/PHI/Registry/"
+bkupSubjectRegistry = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/PHI/RegistryBackupDontUse/"
+invitaePHIRepo = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/PHI/Invitae"
+
+# Apps, aws cli installed and in the path
+java = "java -jar -Djava.io.tmpdir=. -Xmx5G"
+useq = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps"
+htslib = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/HtsLib/1.15/bin"
+
+############# Rules ##############
+rule Trigger:
+    input:
+        "Status/SyncMainRepo_COMPLETE",
+        "Status/CpPHIReports_COMPLETE",
+        "Status/BackupSubjectRegistry_COMPLETE"
+    output:
+        "Status/COMPLETE"
+    shell:
+        "touch {output}"
+
+# Parses the bulk export Invitae patients and variants csv files, crossmaps the hg19 coordinates to hg38, 
+#    writes out json, vcf, and sequenced bed files for each patient using the PMR framework but running 
+#    the SubjectMatchMaker on the patient PHI
+rule InvitaeBulkProcessing:
+    output:
+        "Status/InvitaeBulkProcessing_COMPLETE"
+    log:
+        "Logs/invitaeBulkProcessing.log"
+    threads:
+        maxThreads
+    shell:
+        "rm -rf InvitaeBulkProcessing ; mkdir InvitaeBulkProcessing; cd InvitaeBulkProcessing/; "
+        "ln -s {subjectRegistry} . &>> ../{log}; "
+        "cp -r {invitaeWorkflows}/BulkParsing/invitaeBulk.* . &> ../{log}; "
+        "cp {workingDir}/*csv . &>> ../{log}; "
+        "bash invitaeBulk.README.sh &>> ../{log}; "
+        "rm Registry; cd {workingDir}; touch {output}"
+
+# Run the Invitae Annotator workflow to annotate each vcf. Many patients don't have any reported variants. 
+rule AnnotateVcfs:
+    input:
+       "Status/InvitaeBulkProcessing_COMPLETE"
+    output:
+        "Status/AnnotateVcfs_COMPLETE"
+    log:
+        "Logs/annotateVcfs.log"
+    threads:
+        maxThreads
+    shell:
+        "rm -f {log} ; touch {log}; fpLog=$(realpath {log}); "
+        "numVcfs=$(ls InvitaeBulkProcessing/IJobs/*/Invitae/*/GermlineVariantCalling/*_Hg38/*_Hg38.vcf.gz | wc -l) ; "
+        "for vcf in InvitaeBulkProcessing/IJobs/*/Invitae/*/GermlineVariantCalling/*_Hg38/*_Hg38.vcf.gz ; "
+        "do echo -e '\nProcessing '$vcf &>> {log}; "
+        ""
+        "echo 'Checking if nodes are available... ' &>> {log} ; "
+        "while [ $(squeue -p {queueName} | wc -l) -ge {maxSlurmJobs} ] ; "
+        "do "
+        "  echo 'Waiting to submit anno job '$vcf &>> {log} ; "
+        "  sleep 120s ;"
+        "done ;"
+        ""
+         "IFS='/' read -r -a array <<< $vcf ; "
+         "annoDir=`echo ${{array[0]}}'/'${{array[1]}}'/'${{array[2]}}'/'${{array[3]}}'/'${{array[4]}}'/'${{array[5]}}'/'${{array[6]}}'_Anno'` ; "
+         "echo AnnoDir:$annoDir &>> {log}; "
+         "complete=$annoDir'/COMPLETE' ; "
+         "if [ ! -e $complete ]; "
+         "  then echo 'Building anno job ' &>> {log} ; "
+         "     rm -rf $annoDir; mkdir $annoDir &>> {log}; "
+         "     cp $vcf''* $annoDir/ &>> {log}; "
+         "     cd $annoDir &>> $fpLog ; "
+         "     cp -r {invitaeWorkflows}/Annotator/annotator.* . &>> $fpLog ; "
+         "     sbatch annotator.README.sh &>> $fpLog ; "
+         "     cd {workingDir} &>> $fpLog ; "
+         "  else echo 'COMPLETE, skipping ' &>> {log}; fi ; "
+         "done ; "
+        "touch {output}"
+
+# Copy files needed for GQuery
+rule GQuery:
+    input:
+        "Status/AnnotateVcfs_COMPLETE"
+    output:
+        "Status/GQuery_COMPLETE"
+    log:
+        "Logs/gquery.log"
+    threads:
+        halfThreads
+    shell:
+        "mkdir -p ForGQuery/Data/Hg38/Germline/Invitae/ToMergeVcf ForGQuery/Data/Hg38/Germline/Invitae/ToMergeBed &> {log};"
+        "for x in $(ls InvitaeBulkProcessing/IJobs/*/Invitae/*/GermlineVariantCalling/*_Hg38_Anno/Vcfs/*.vcf.gz*); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f3); cp $x ForGQuery/Data/Hg38/Germline/Invitae/ToMergeVcf/$coreId'_'$fileName &>> {log}; done; "
+        "for x in $(ls InvitaeBulkProcessing/IJobs/*/Invitae/*/GermlineVariantCalling/*_Hg38/*.bed.gz*); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f3); cp $x ForGQuery/Data/Hg38/Germline/Invitae/ToMergeBed/$coreId'_'$fileName &>> {log}; done; "
+        "{java} {useq}/PmrVcfBedMerger -v ForGQuery/Data/Hg38/Germline/Invitae/ToMergeVcf/ "+
+        "   -b ForGQuery/Data/Hg38/Germline/Invitae/ToMergeBed/ -e ForGQuery/Data/Hg38/Germline/Invitae/Bed/ "+
+        "   -c ForGQuery/Data/Hg38/Germline/Invitae/Vcf/ &>> {log} ; "
+        "rm -rf	ForGQuery/Data/Hg38/Germline/Invitae/ToMerge* &>> {log}	; "
+        "{java} {useq}/VCFTabix -v ForGQuery/Data/Hg38/Germline/Invitae/Vcf -t {htslib} &>> {log}; "
+        "{java} {useq}/BedTabix -v ForGQuery/Data/Hg38/Germline/Invitae/Bed -t {htslib} &>> {log}; "
+        "touch {output}"
+
+# Copy files needed for cBio?  Can these be loaded into cBio? There's a big mix of panel tests so would need to merge all the beds? The freq stats would be wrong.
+rule cBioPortal:
+    input:
+        "Status/GQuery_COMPLETE"
+    output:
+        "Status/CBioPortal_COMPLETE"
+    log:
+        "Logs/cBioPortal.log"
+    threads:
+        halfThreads
+    shell:
+        "mkdir -p ForCBioPortal/GermlineVariants/  ForCBioPortal/ClinicalReports &> {log}; "
+        "cp -r ForGQuery/Data/Hg38/Germline/Invitae/* ForCBioPortal/GermlineVariants/ &>> {log}; "
+        "for x in $(ls InvitaeBulkProcessing/IJobs/*/Invitae/*/ClinicalReport/*json); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f3); cp $x ForCBioPortal/ClinicalReports/$coreId'_'$fileName &>> {log}; done; "
+        "touch {output}"
+
+# Clean up the job directories
+rule JobCleaner:
+    input:
+        "Status/CBioPortal_COMPLETE"
+    output:
+        "Status/JobCleaner_COMPLETE"
+    log:
+        "Logs/jobCleaner.log"
+    threads:
+        halfThreads
+    shell:
+        "{java} {useq}/JobCleaner -r InvitaeBulkProcessing/IJobs/ -e '.tbi,.crai,.bai,COMPLETE' -n 'Logs,RunScripts' &> {log}; "
+        "touch {output}"
+
+# Copy over reports
+rule CpPHIReports:
+    input:
+         "Status/InvitaeBulkProcessing_COMPLETE"
+    output:
+        "Status/CpPHIReports_COMPLETE"
+    log:
+        "Logs/cpPHIReports.log"
+    shell:
+        "cp -f *.csv {invitaePHIRepo}/ &> {log}; "
+        "touch {output}"
+
+# Sync cleaned analysis with main mol bio repo
+rule SyncMainRepo:
+    input:
+         "Status/JobCleaner_COMPLETE"
+    output:
+        "Status/SyncMainRepo_COMPLETE"
+    log:
+        "Logs/syncMainRepo.log"
+    threads:
+        halfThreads
+    shell:
+        "aws s3 sync InvitaeBulkProcessing/IJobs/ {patientMolRepo} --no-progress &> {log}; "
+        "touch {output}"
+        
+# Backup subject registry with PHI
+# Hold off on syncing PHI until we have the approved AWS PHI policies in place
+# aws s3 sync /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/PHI/Registry/ \
+#     s3://hcibioinfo-patient-molecular-repo/PHI/Registry/ --quiet
+rule BackupSubjectRegistry:
+    input:
+         "Status/SyncMainRepo_COMPLETE"
+    output:
+        "Status/BackupSubjectRegistry_COMPLETE"
+    log:
+        "Logs/backupSubjectRegistry.log"
+    shell:
+        "rsync -rtq {subjectRegistry} {bkupSubjectRegistry} &> {log}; "
+        "touch {output}"

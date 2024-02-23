@@ -1,4 +1,4 @@
-# 14 Aug 2023 
+# 8 Nov 2023 
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -24,16 +24,14 @@ guBucket="s3://hcibioinfo-gu-patient-molecular-repo/Patients/"
 melGroup="MEL"
 melOp="Siwen_Hu-lieskovan Jeff_Russell Jeff_S-Russell Jeffery_Russell Joanne_Jeter Kenneth_Grossmann Umang_Swami"
 melEmail="david.nix@hci.utah.edu,Siwen.Hu-Lieskovan@hci.utah.edu"
-melDir="/uufs/chpc.utah.edu/common/HIPAA/IRB_00138167/Auto/Patients"
-melPhiDir="/uufs/chpc.utah.edu/common/HIPAA/IRB_00138167/Auto/PHI"
+melDir="/uufs/chpc.utah.edu/common/HIPAA/IRB_00138167/TempusClinicalTesting/Auto/Patients"
+melPhiDir="/uufs/chpc.utah.edu/common/HIPAA/IRB_00138167/TempusClinicalTesting/Auto/PHI"
 melKeyWord="melanoma"
 
 # PHI Resources
-#subjectRegistry = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/PHI/Registry/"
-#bkupSubjectRegistry = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/PHI/RegistryBackupDontUse/"
+subjectRegistry = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/PHI/Registry/"
+bkupSubjectRegistry = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/PHI/RegistryBackupDontUse/"
 tempusPHIRepo = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/PHI/Tempus/TempusJsonReports_PHI"
-subjectRegistry = "/scratch/general/pe-nfs1/u0028003/Tempus/SubMatchMaker/Registry/"
-bkupSubjectRegistry = "/scratch/general/pe-nfs1/u0028003/Tempus/SubMatchMaker/Bkup/"
 
 # Apps, aws cli installed and in the path
 java = "java -jar -Djava.io.tmpdir=. -Xmx5G"
@@ -58,6 +56,7 @@ rule FinalCleanup:
     shell:
         "touch {output} &> {log}"
 ## "rm -rf TJobs/ &> {log}; touch {output}"
+
 
 # Look for new Tempus datasets to process, downloades them, uses the PHI to identify the patient in the registry
 # Setting the time delay to 5 days since the RNASeq data posts a day or two after the DNA data
@@ -252,7 +251,7 @@ rule SyncMainRepo:
     threads:
         maxThreads
     shell:
-        "aws s3 sync TJobs/ {patientMolRepo} --no-progress &> {log}; "
+        "aws s3 sync TJobs/ {patientMolRepo} --no-progress --quiet &> {log}; "
         "touch {output}"
 
 # Sync xml reports with PHI
@@ -323,7 +322,7 @@ rule UploadGUDatasets:
         "head -n 1 {subjectRegistry}/currentRegistry_* > $phiLinks;"
         "for x in $(ls {guGroup}/); do grep $x {subjectRegistry}/currentRegistry_* >> $phiLinks; done;"
         "n=$(cat $phiLinks | wc -l);"
-        "if [[ $n -gt 1 ]]; then aws s3 sync {guGroup}/ {guBucket} --no-progress --follow-symlinks "
+        "if [[ $n -gt 1 ]]; then aws s3 sync {guGroup}/ {guBucket} --quiet --no-progress --follow-symlinks "
         "--profile {guGroup}; echo $n' new Tempus patient datasets have been uploaded into {guBucket} "
         "See and SAVE the attached file to associate coreIds with patient identifiers.' | "
         "mailx -r noreply.bioinfo@hci.utah.edu -a $phiLinks -s 'PHI - New Tempus Datasets '$d "

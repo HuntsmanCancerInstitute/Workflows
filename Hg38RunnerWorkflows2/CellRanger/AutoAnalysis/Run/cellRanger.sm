@@ -1,0 +1,84 @@
+# Primary analysis of CellRanger fastq
+# 22 Feb 2024
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+# Threads and memory
+allThreads = int(config["allThreads"])
+allRam = int(round(float(config["allRam"])))
+
+# Params
+sampleNames = config["sampleNames"]
+nameBuild = str(config["name"])+ "_"+ config["genomeBuild"]
+indexDir = config["root"] + config["indexDir"]
+cellranger = "/BioApps/CellRanger/cellranger-7.2.0/cellranger"
+samtools = "/BioApps/Samtools/1.19.2/bin/samtools"
+fastaIndex = indexDir + "/fasta/genome.fa"
+
+rule Cleanup:
+    input:
+        "CellRanger/outs/possorted_genome_bam.cram.crai"
+    output:
+        "COMPLETE"
+    log:
+        "Logs/"+ nameBuild+ "_Cleanup.log"
+    shell:
+        "zip -r CellRanger/Misc.zip CellRanger/_* &> {log}; "
+        "rm -rf CellRanger/SC_RNA_COUNTER_CS CellRanger/_* &>> {log};"
+        "touch {output}; "
+
+# "rm -f *q.gz"  remove the fastq files
+
+# Look for the required resources
+rule CheckFilesParams:
+    output:
+        temp ("FileCheckOK")
+    log:
+        "Logs/"+ nameBuild+ "_CheckFilesParams.log"
+    shell:
+        "echo -ne nameBuild:'\t' &> {log} && echo {nameBuild} &>> {log} && "
+        "echo -ne sampleNames:'\t' &>> {log} && echo {sampleNames} &>> {log} && "
+        "echo -ne indexDir:'\t' &>> {log} && echo {indexDir} &>> {log} && "
+        "echo -ne fastq:'\t' &>> {log} && ls *q.gz &>> {log} && "
+        "numFastq=$(ls *q.gz | wc -l) && "
+        "if [ $numFastq -lt 3 ]; then "
+        "  echo 'FAILED to find at least 3 fastq.gz files, aborting.' &>> {log}; " 
+        "  exit 1; "
+        "else "
+        "  echo 'Correct number fastq files found' &>> {log}; "
+        "fi; "
+        "touch {output}"
+
+# Run CellRanger 
+rule CellRangerCount:
+    input:
+        "FileCheckOK"
+    output:
+        temp ("CellRangerCountOK")
+    threads:
+        allThreads
+    log:
+        "Logs/"+ nameBuild+ "_CellRangerCount.log",
+    shell:
+        "{cellranger} count --localcores {threads} --localmem {allRam} "
+        "--id={nameBuild} --output-dir CellRanger --fastqs=$(pwd) "
+        "--sample={sampleNames} --transcriptome={indexDir} &> {log}; "
+        "touch {output}" 
+
+# Convert bam to cram
+rule SamtoolsCram:
+    input:
+        "CellRangerCountOK"
+    output:
+        cram = "CellRanger/outs/possorted_genome_bam.cram",
+        crai = "CellRanger/outs/possorted_genome_bam.cram.crai"
+    threads:
+        allThreads
+    log:
+        "Logs/"+ nameBuild+ "_SamtoolsCram.log"
+    shell:
+        "{samtools} view -C -T {fastaIndex} --write-index -o {output.cram} -@ {threads} CellRanger/outs/possorted_genome_bam.bam &> {log}; "
+        "rm -rf CellRanger/outs/possorted_genome_bam.bam* &>> {log} "
+
+onerror:
+    shell( "rm -f STARTED COMPLETE DONE; touch FAILED")

@@ -1,4 +1,4 @@
-# 22 Feb 2024 
+# 2 Oct 2023 
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -14,25 +14,25 @@ avatarWorkflows = "/scratch/general/pe-nfs1/u0028003/Avatar/Auto/Workflows"
 # Cloud Resources
 patientMolRepo = "s3://hcibioinfo-patient-molecular-repo/Patients/"
 molRepoIndex = "s3://hcibioinfo-patient-lists/MolecularRepo/"
+dxToken = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/DNAnexus/token"
 
 # GU Group
 guEmail = "david.nix@hci.utah.edu,beverly.chigarira@hci.utah.edu,JongTaek.Kim@aruplab.com"
 guBucket = "s3://hcibioinfo-gu-patient-molecular-repo/Patients/"
 
 # HEM Group
-hemEmail = "david.nix@hci.utah.edu,Nicola.Camp@hci.utah.edu,Myke.Madsen@hci.utah.edu,Brian.Avery@hci.utah.edu"
+hemEmail = "david.nix@hci.utah.edu,Nicola.Camp@hci.utah.edu,Myke.Madsen@hci.utah.edu"
 hemPath = "/uufs/chpc.utah.edu/common/HIPAA/IRB_00088405-2/AVATAR/SourceData/"
 
 # PHI Resources
-# subjectRegistry = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/PHI/Registry/"
-subjectRegistry = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/Scratch/Avatar/Auto/Registry/"
+subjectRegistry = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/PHI/Registry/"
 bkupSubjectRegistry = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/PHI/RegistryBackupDontUse/"
 
 # Apps, aws cli installed and in the path
 java = "java -jar -Djava.io.tmpdir=. -Xmx5G"
 useq = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps"
 htslib = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/HtsLib/1.15/bin"
-aster = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Aster"
+
 
 ############# Rules ##############
 
@@ -41,7 +41,7 @@ rule FinalCleanup:
     input:
         "Status/FetchResourceFiles_COMPLETE",
         "Status/AvatarDataWrangler_COMPLETE",
-        "Status/DownloadFastqFiles_COMPLETE",
+        "Status/DownloadCramFiles_COMPLETE",
         "Status/SyncMainRepo_COMPLETE",
         "Status/UploadGUDatasets_COMPLETE",
         "Status/BackupSubjectRegistry_COMPLETE",
@@ -52,10 +52,8 @@ rule FinalCleanup:
         "Logs/finalCleanup.log"
     shell:
         "touch {output} &> {log}"
-
         # "rm -rf AJobs/ &> {log}; touch {output}"
 
-# This downloads a variety of Resource files for processing
 rule FetchResourceFiles:
     output:
         "Status/FetchResourceFiles_COMPLETE"
@@ -64,44 +62,14 @@ rule FetchResourceFiles:
     threads:
         maxThreads
     shell:
-        "rm -rf Avatar_MolecularData_hg38 ResourceFiles &> {log}; "
-        "python {aster}/support_scripts/download_project.py"
-        "  --project-id project-F66v00Q0q4045Q4Y6PY2Xv7F"
-        "  --exec {aster}/rwb.linux.x64"
-        "  --include /Avatar_MolecularData_hg38/Manifests_and_QC_Files"
-        "  --exclude /Avatar_MolecularData_hg38/Manifests_and_QC_Files/Archive"
-        "  --no-dry-run &>> {log}; "
-
-        "mkdir ResourceFiles &>> {log}; "
-        "mv Avatar_MolecularData_hg38/Manifests_and_QC_Files/* ResourceFiles/ &>> {log}; "
-        "rm -rf Avatar_MolecularData_hg38 &>> {log}; "
-
-        "python {aster}/support_scripts/download_project.py"
-        "  --project-id project-F66v00Q0q4045Q4Y6PY2Xv7F --exec {aster}/rwb.linux.x64"
-        "  --include '*' | grep Whole_Exome/FASTq | grep -E '(2023|2024|2025|2026|2027)'"
-        "  > ResourceFiles/exomeFastqDirs.txt 2>> {log}; "
-        "while read -r line;"
-        "  do x=$(echo $line | cut -d' ' -f4 | sed 's/[\(\)]//g');"
-        "  echo $x &>> {log}; " 
-        "python {aster}/support_scripts/download_project.py"
-        "  --project-id project-F66v00Q0q4045Q4Y6PY2Xv7F --exec {aster}/rwb.linux.x64"
-        "  --include $x | grep fastq.gz | grep -v .md5 | grep download | cut -d' ' -f4"
-        "  >> ResourceFiles/exomeFastqFiles.txt; "
-        "done < ResourceFiles/exomeFastqDirs.txt; "
-
-        "python {aster}/support_scripts/download_project.py"
-        "  --project-id project-F66v00Q0q4045Q4Y6PY2Xv7F --exec {aster}/rwb.linux.x64"
-        "  --include '*' | grep RNAseq/FASTq | grep -E '(2023|2024|2025|2026)'"
-        "  > ResourceFiles/rnaFastqDirs.txt 2>> {log}; "
-        "while read -r line;"
-        "  do x=$(echo $line | cut -d' ' -f4 | sed 's/[\(\)]//g');"
-        "  echo $x &>> {log}; " 
-        "python {aster}/support_scripts/download_project.py"
-        "  --project-id project-F66v00Q0q4045Q4Y6PY2Xv7F --exec {aster}/rwb.linux.x64"
-        "  --include $x | grep fastq.gz | grep -v .md5 | grep download | cut -d' ' -f4"
-        "  >> ResourceFiles/rnaFastqFiles.txt; "
-        "done < ResourceFiles/rnaFastqDirs.txt; "
-
+        "dx login --noprojects --token $(cat {dxToken}) &> {log}; "
+        "dx select --name HCI_Molecular_Data --level VIEW &>> {log}; "
+        "rm -rf ResourceFiles &>> {log}; "
+        "mkdir ResourceFiles &>> {log};"
+        "dx download -f --no-progress HCI_Molecular_Data:/Avatar_MolecularData_hg38/Manifests_and_QC_Files/*_HCI_ClinicalMolLinkage_V4.csv -o ResourceFiles/ &>> {log};"
+        "dx download -f --no-progress HCI_Molecular_Data:/Avatar_MolecularData_hg38/Manifests_and_QC_Files/*_HCI_WES_QC_Metrics.csv -o ResourceFiles/ &>> {log};"
+        "dx ls HCI_ORIEN_AVATAR_MOLECULAR_DATA:/Whole_Exome/alignment_crams/*cram | sort | uniq > ResourceFiles/avatar_WesCramList.txt 2>> {log};"
+        "dx ls HCI_ORIEN_AVATAR_MOLECULAR_DATA:/RNAseq/alignment_crams/*cram | sort | uniq > ResourceFiles/avatar_RNACramList.txt 2>> {log};"
         "aws s3 ls {patientMolRepo} --recursive > ResourceFiles/hci_AWSRepoList.txt 2>> {log};"
         "touch {output}"
 
@@ -111,33 +79,35 @@ rule avatarDataWrangler:
         "Status/FetchResourceFiles_COMPLETE"
     output:
         c = "Status/AvatarDataWrangler_COMPLETE",
-        d = "ResourceFiles/downloadLinkCmds.txt"
+        d = "ResourceFiles/dxDwnldCmds.txt"
     log:
         "Logs/avatarDataWrangler.log"
     threads:
         halfThreads
     shell:
-        "{java} {useq}/AvatarDataWrangler -r ResourceFiles -j AJobs -a AzureDownloads "
+        "{java} {useq}/AvatarDataWrangler -r ResourceFiles -j AJobs "
         "-s {subjectRegistry} -d {output.d} -t ResourceFiles/SMM_PHI &> {log};"
-        "touch {output.c} "
+        "touch {output.c}"
 
-rule DownloadFastqFiles:
+rule DownloadCramFiles:
     input:
-        "ResourceFiles/downloadLinkCmds.txt"
+        "ResourceFiles/dxDwnldCmds.txt"
     output:
-        "Status/DownloadFastqFiles_COMPLETE"
+        "Status/DownloadCramFiles_COMPLETE"
     log:
-        "Logs/downloadFastqFiles.log"
+        "Logs/downloadCramFiles.log"
     threads:
         maxThreads
     shell:
-        "bash {input} &> {log}; "
+        "dx login --noprojects --token $(cat {dxToken}) &> {log}; "
+        "dx select --name HCI_Molecular_Data --level VIEW &>> {log}; "
+        "while read -r line; do echo 'Starting: '$line &>> {log}; $line &>> {log}; done < {input}; "
         "touch {output}"
 
 # Run TNRunner2, a tool for coordinating the execution of many containerized snakemake workflows to process the data
 rule TNRunner2:
     input:
-       "Status/DownloadFastqFiles_COMPLETE"
+       "Status/DownloadCramFiles_COMPLETE"
     output:
         "Status/TNRunner2_COMPLETE"
     log:
@@ -146,8 +116,8 @@ rule TNRunner2:
         maxThreads
     shell:
         "{java} {useq}/TNRunner2 -p AJobs "
-        "-e {tnRunnerWorkflows}/DnaAlignQC "
-        "-t {tnRunnerWorkflows}/RnaAlignQC "
+        "-e {avatarWorkflows}/DnaAlignQC "
+        "-t {avatarWorkflows}/RnaAlignQC "
         "-m {tnRunnerWorkflows}/Msi "
         "-a {tnRunnerWorkflows}/Annotator "
         "-q {tnRunnerWorkflows}/IlluminaGermline "
@@ -156,7 +126,6 @@ rule TNRunner2:
         "-y {tnRunnerWorkflows}/CopyAnalysis/ "
         "-k {tnRunner}/CopyRatioBkgs/Avatar "
         "-c {tnRunnerWorkflows}/SomaticCaller "
-        "-f {tnRunnerWorkflows}/StarFusion "
         "-B {tnRunner}/BamPileups/Avatar/ "
         "-L {tnRunnerWorkflows}/LoH "
         "-b {tnRunnerWorkflows}/SampleConcordance "
@@ -325,7 +294,7 @@ rule SyncMainRepo:
         thirdThreads
     shell:
         "echo STARTING &> {log};"
-        "aws s3 sync --only-show-errors --follow-symlinks AJobs/ {patientMolRepo} &>> {log}; "
+        "aws s3 sync --only-show-errors AJobs/ {patientMolRepo} &>> {log}; "
         "touch {output}; echo COMPLETE &>> {log};"
 
 rule UploadGUDatasets:

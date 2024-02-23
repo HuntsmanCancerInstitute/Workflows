@@ -4,13 +4,13 @@
 #SBATCH -N 1
 #SBATCH -t 96:00:00
 
-# 10 Jan 2024
+# 25 Sept 2023
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
-# This is a standard BWA mem alt aware alignment followed by quality filtering, deduplication, and read depth QC.
+# This is a standard BWA mem alt aware alignment to Hg38/GRCh38 followed by quality filtering, deduplication, and read depth QC.
 # The output alignment cram file has been filtered and only contains uniquely aligned primary alignments.
-# Follow the instructions in the dnaAlign.sm file to modify this for structural variant and repeat/ segment duplication analysis.
+# Don't use this for structural variant and repeat/ segment duplication analysis without disabling those settings.
 
 
 
@@ -24,12 +24,12 @@ dataBundle=$(grep dataBundle *.yaml | grep -v ^# | cut -d ' ' -f2)
 
 # 3) Check and if needed, modify the parameters specific to this workflow in the snakemake config yaml file.
 
-# 4) If needed build the singularity container, and define the path to the xxx.sif file, do after each update, e.g. singularity pull docker://hcibioinformatics/public:SM_BWA_2
-container=$dataBundle/Containers/public_SM_BWA_2.sif
+# 4) If needed build the singularity container, and define the path to the xxx.sif file, do after each update, e.g. singularity pull docker://hcibioinformatics/public:SM_BWA_1
+container=$dataBundle/Containers/public_SM_BWA_1.sif
 
 # 5) If running this on AWS EC2 via the JobRunner, build the resource archive, and upload it to S3
 # cd /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1
-# zip -r dnaAlignQC_3Nov2021.zip TNRunner/GATKResourceBundleAug2021/Homo_sapiens_assembly38.* TNRunner/Containers/public_SM_BWA_2.sif \
+# zip -r dnaAlignQC_3Nov2021.zip TNRunner/GATKResourceBundleAug2021/Homo_sapiens_assembly38.* TNRunner/Containers/public_SM_BWA_1.sif \
 #   TNRunner/Bed/AvatarMergedNimIdtBeds/hg38NimIdtMergedPad150bp.bed.gz* TNRunner/Bed/AvatarMergedNimIdtBeds/hg38NimIdtCCDSShared.bed.gz*
 
 
@@ -85,11 +85,7 @@ if [ -f COMPLETE ];
 then
   echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min total"
   mv -f slurm* Logs/ 
-  mkdir -p RunScripts
-  mv -f dnaAlign*  RunScripts/
-  mv -f  *.yaml RunScripts/ &> /dev/null || true
-  mv -f *snakemake.stats.json Logs/ &> /dev/null || true
-  rm -rf .snakemake STARTED RESTART* QUEUED 
+  rm -f dnaAlignQC.* QUEUED
 else
   echo -e "\n---------- FAILED! -------- $((($(date +'%s') - $start)/60)) min total"
   touch FAILED

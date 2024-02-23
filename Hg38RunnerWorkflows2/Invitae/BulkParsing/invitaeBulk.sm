@@ -1,0 +1,130 @@
+# 25 Oct 2023
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+############ No need to modify anything in this document #############
+
+# Threads and memory
+allThreads = int(config["allThreads"])
+halfThreads = int(round(allThreads/2,0)) - 1
+allRam = int(round(float(config["allRam"])))
+
+# Input
+name = config["name"]
+patients = config["patients"]
+variants = config["variants"]
+
+# Resources
+smmRegistry = config["smmRegistry"]
+hg19Index = config["hg19Index"]
+hg38Index = config["hg38Index"]
+chainFile = config["chain"]
+genes = config["genes"]
+pmrDir = config["pmrDir"]
+
+# Apps in the docker container
+htsLib = " /BioApps/Htslib/1.18/bin/"
+java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
+useq = "/BioApps/USeq/Apps"
+vt = "/BioApps/Vt/vt_2June2015/vt"
+
+############# Rules ##############
+
+# Workflow trigger, final Rule, cleanup and tabix index the hg38 vcfs 
+rule VcfTabixHg38:
+    input:
+        "CrossMap_COMPLETE",
+        "BedTabix_COMPLETE"
+    output:
+        "COMPLETE"
+    threads:
+        allThreads
+    log:
+        "Logs/"+ name+ "_VcfTabixHg38.log"
+    shell:
+        "{java} {useq}/VCFTabix -t {htsLib} -v {pmrDir} &> {log} && "
+        "touch {output} "
+
+# Convert the Invitae csv files to vcfs, beds, and jsons
+rule InvitaeBulkCsvParser:
+    output:
+        temp ("InvitaeBulkCsvParser_COMPLETE")
+    log:
+        "Logs/"+ name + "_InvitaeBulkCsvParser.log"
+    threads:
+        allThreads
+    shell:
+        "{java} {useq}/InvitaeBulkCsvParser -p {patients} -v {variants} -f {hg19Index} "
+        "-t {name}_TempDelme -c {smmRegistry} -g {genes} -j {pmrDir} &> {log} && "
+        "rm -rf {name}_TempDelme && touch {output}"
+
+# Tabix index the beds 
+rule BedTabix:
+    input:
+        "InvitaeBulkCsvParser_COMPLETE"
+    output:
+        temp ("BedTabix_COMPLETE")
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ name+ "_BedTabix.log"
+    shell:
+        "{java} {useq}/BedTabix -t {htsLib} -v {pmrDir} &>> {log} && "
+        "touch {output}"
+
+# Tabix index the hg19 vcfs, needed for vt normalization
+rule VcfTabixHg19:
+    input:
+        "InvitaeBulkCsvParser_COMPLETE"
+    output:
+        temp ("VcfTabixHg19_COMPLETE")
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ name+ "_VcfTabixHg19.log"
+    shell:
+        "{java} {useq}/VCFTabix -t {htsLib} -v {pmrDir} &> {log} && "
+        "touch {output}"
+
+# Normalize the hg19 vcfs with Vt
+rule NormalizeVcfs:
+    input:
+        "VcfTabixHg19_COMPLETE"
+    output:
+        temp ("NormalizeVcfs_COMPLETE")
+    log:
+        "Logs/"+ name + "_NormalizeVcfs.log"
+    threads:
+        allThreads
+    shell:
+        "rm -rf {log}; "
+        "for x in {pmrDir}/*/Invitae/*/GermlineVariantCalling/*_Hg19/*vcf.gz; "
+        "  do echo $x &>>{log}; "
+        "  {vt} normalize -r {hg19Index} $x -o $x.norm.vcf &>> {log}; "
+        "done; touch {output} "
+        
+# Convert the hg19 coordinates to hg38
+rule CrossMap:
+    input:
+        "NormalizeVcfs_COMPLETE"
+    output:
+        temp ("CrossMap_COMPLETE")
+    log:
+        "Logs/"+ name+ "_CrossMap.log"
+    threads:
+        allThreads
+    shell:
+        "rm -rf	{log}; "
+       	"for x in {pmrDir}/*/Invitae/*/GermlineVariantCalling/*_Hg19/*vcf.gz.norm.vcf; "
+       	"  do echo $x &>>{log}; "
+        "  IFS='/' read -r -a array <<< $x; "
+        "  vcf=`echo ${{array[0]}}'/'${{array[1]}}'/'${{array[2]}}'/'${{array[3]}}'/'${{array[4]}}'/'${{array[3]}}'_Hg38/'${{array[3]}}'_Hg38.vcf'`; "
+        "  echo $vcf &>> {log}; "
+        "  CrossMap.py vcf {chainFile} $x {hg38Index} $vcf &>> {log}; "        
+        "  sed 's/Hg38End/END/g' $vcf > $vcf.ended 2>> {log}; "
+        "  mv $vcf.ended $vcf &>> {log}; "
+        "  rm -f $vcf.unmap &>> {log}; "
+       	"done; touch {output} "
+
+onerror:
+    shell( "rm -f STARTED COMPLETE; touch FAILED")

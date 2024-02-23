@@ -1,0 +1,46 @@
+# Bash script to run inside the container
+# 24 Oct 2023
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+set -e
+cd $jobDir
+
+# Read info
+allThreads=$(nproc)
+allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+patients=`readlink -f  *patients*.csv`
+variants=`readlink -f *variants*.csv`
+
+# Print params
+echo -n jobDir"     : "; echo $jobDir
+echo -n dataBundle" : "; echo $dataBundle
+echo -n threads"    : "; echo $allThreads
+echo -n ram"        : "; echo $allRam
+echo -n host"       : "; echo $(hostname)
+echo -n patients"   : "; echo $patients
+echo -n variants"   : "; echo $variants; echo
+
+ls $patients $variants > /dev/null
+
+snakemake -p  \
+--cores $allThreads \
+--snakefile *.sm \
+--config \
+hg38Index=$dataBundle/GATKResourceBundleAug2021/Homo_sapiens_assembly38.fasta \
+hg19Index=$dataBundle/Indexes/Hg19/hg19.fasta \
+chain=$dataBundle/Indexes/hg19ToHg38.over.chain.gz \
+genes=$dataBundle/Bed/Invitae/invitaeGeneRegions17Oct2023.txt \
+patients=$patients \
+variants=$variants \
+smmRegistry=Registry \
+pmrDir=IJobs \
+name=${PWD##*/} \
+allThreads=$allThreads \
+allRam=$allRam
+
+# Replace first and last lines above with the following to get dag svg graph
+	# snakemake --dag \
+	# allRam=$allRam | dot -Tsvg > $name"_dag.svg"
+
+

@@ -4,7 +4,7 @@
 #SBATCH -N 1
 #SBATCH -t 96:00:00
 
-# 12 Jan 2024
+# 24 Jan 2024
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -17,8 +17,7 @@
 module load singularity
 
 # 2) Define file paths to "mount" in the container. The first is to the data bundle mirrored on BSR servers. The second is needed for cram conversion and sample concordance.
-dataBundle=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/atlatl/data
-tnRunnerDir=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner
+dataBundle=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/atlatl
 
 # 3) Modify the workflow xxx.sing file setting the paths to the required resources. These must be within the mounts.
 
@@ -33,7 +32,7 @@ container=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Containers/
 
 # 2) SOFT LINK your paired end, gzipped fastq files or a raw cram file and index into the job directory. These WILL BE DELETED upon completion.
 
-# 3) Copy over the workflow docs: xxx.sing, xxx.README.sh, and xxx.sm into the job directory.
+# 3) Copy over the workflow docs: xxx.sing, xxx.README.sh, xxx.sm, and species_strand_adapter matched xxx.RnaAlignQC.yaml into the job directory.
 
 # 4) Launch the xxx.README.sh via slurm's sbatch or run it on your local server.  
 
@@ -58,8 +57,8 @@ rsync -rtL --exclude 'slurm-*' $jobDir/ $tempDir/$name/ && echo CopyOverOK || ec
 echo -e "\n---------- Launching container -------- $((($(date +'%s') - $start)/60)) min"
 cd $tempDir/$name
 set +e
-SINGULARITYENV_jobDir=$tempDir/$name SINGULARITYENV_dataBundle=$dataBundle SINGULARITYENV_tnRunnerDir=$tnRunnerDir \
-  singularity exec --containall --bind $dataBundle,$tempDir/$name,$tnRunnerDir $container \
+SINGULARITYENV_jobDir=$tempDir/$name SINGULARITYENV_dataBundle=$dataBundle \
+  singularity exec --containall --bind $dataBundle,$tempDir/$name $container \
   bash $tempDir/$name/*.sing
 
 echo -e "\n---------- Files In Temp -------- $((($(date +'%s') - $start)/60)) min"
@@ -80,7 +79,7 @@ then
   echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min total"
   mkdir -p RunScripts
   mv -f slurm* *stats.json Logs/ 
-  mv -f rnaAlignQC* RUNME  RunScripts/ 
+  mv -f rnaAlignQC* RUNME *yaml RunScripts/ 
   rm -rf .snakemake STARTED RESTARTED QUEUED FAILED *cram* *q.gz
 else
   echo -e "\n---------- FAILED! -------- $((($(date +'%s') - $start)/60)) min total"

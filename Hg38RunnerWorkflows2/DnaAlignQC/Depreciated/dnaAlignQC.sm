@@ -1,13 +1,12 @@
-# Dna Alignment and QC Workflow 
-# 10 Jan 2024
+# Hg38 Exome Alignment and QC Workflow 
+# 8 Nov 2022
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
 ############ No need to modify anything in this document #############
 
 # Params from config, see xxx.sing for details
-build = "Hg38"
-nameBuild = str(config["name"]) + "_" + build 
+nameBuild = str(config["name"]) + "_Hg38" 
 adapterR1=config["adapterR1"]
 adapterR2=config["adapterR2"]
 opticalDistance=config["opticalDistance"]
@@ -35,7 +34,7 @@ halfThreads = int(round(allThreads/2,0)) - 1
 
 # Apps not in path
 bwa = "/BioApps/Bwa/bwa-mem2-2.2.1_x64-linux/bwa-mem2"
-samtools = "/BioApps/Samtools/1.19/bin/samtools"
+samtools = "/BioApps/Samtools/1.13/bin/samtools"
 htslib = "/BioApps/Htslib/1.13/bin"
 useq = "/BioApps/USeq/Apps"
 java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
@@ -55,12 +54,11 @@ rule CleanupDirs:
         
 ############# Alignment and Pileup ###############
 
-# If fastq aren't present look for a cram and convert it to fastq otherwise link the paired fastq into the TempFastq dir. 
-# Sometimes cutadapt often throws gzip errors yet gunzip -t shows no issues, so gunzip then gzip the files. Ugg!!
+# If fastq aren't present look for a cram and convert it to fastq otherwise uncompresses the paired fastq into the TempFastq dir. The uncompression is needed since cutadapt often throws gzip errors yet gunzip -t shows no issues, arrg.
 rule Fastq:
     output:
-        fq1 = temp ("TempFastq/"+ nameBuild+ ".1.fq.gz"),
-        fq2 = temp ("TempFastq/"+ nameBuild+ ".2.fq.gz")
+        fq1 = temp ("TempFastq/"+ nameBuild+ ".1.fq"),
+        fq2 = temp ("TempFastq/"+ nameBuild+ ".2.fq")
     log:
         "Logs/"+ nameBuild+ "_Fastq.log"
     threads:
@@ -69,9 +67,11 @@ rule Fastq:
         "echo 'Attempting to find two fastq files ending in q.gz or a cram file that can be converted to fastq...' &> {log};"
         "rm -rf TempFastq; mkdir TempFastq; shopt -s nullglob; fq=(*q.gz); len=${{#fq[@]}}; "
         "if [ $len -eq 2 ]; then "
-        "echo 'Two fastq.gz files found, linking into TempFastq/' &>> {log}; "
-        "ln -s $(realpath ${{fq[0]}}) {output.fq1} 2>> {log}; "
-        "ln -s $(realpath ${{fq[1]}}) {output.fq2} 2>> {log}; "
+        "echo 'Two fastq.gz files found, uncompressing into TempFastq/' &>> {log}; "
+        "echo -n 'Fastq1: ' &>> {log}; realpath ${{fq[0]}} &>> {log}; "
+        "echo -n 'Fastq2: ' &>> {log}; realpath ${{fq[1]}} &>> {log}; "
+        "gunzip -c ${{fq[0]}} > {output.fq1} 2>> {log}; "
+        "gunzip -c ${{fq[1]}} > {output.fq2} 2>> {log}; "
         "else "
         "echo 'Fastq files not found, attempting to find cram file for conversion...' &>> {log}; "
         "echo -n 'Cram: ' &>> {log}; realpath *cram &>> {log} && "        
@@ -82,19 +82,16 @@ rule Fastq:
         "echo -n 'fastqReadOne : ' &>> {log} && realpath {output.fq1} &>> {log} && "
         "echo -n 'fastqReadTwo : ' &>> {log} && realpath {output.fq2} &>> {log} "
 
-# Alt aware align with bwa mem2, masks adapters, coordinate sorts, removes duplicates. 
-# Removes unaligned and secondary alignments (fixmate -r)
-# Removes those with a MQ < minimum (view -q). 
-# Delete -r from the fixmate line and the entire "samtools view" line if calling structural variants. 
-rule Align:
+# Alt aware align to Hg38 with bwa mem2, masks adapters, mark dups, sort. Removes unaligned, secondary alignments (fixmate -r), and those with a MQ < minimum (view -q). Delete these if calling structural variants. 
+rule AlignHg38:
     input:
-        fq1 = "TempFastq/"+ nameBuild+ ".1.fq.gz",
-        fq2 = "TempFastq/"+ nameBuild+ ".2.fq.gz"
+        fq1 = "TempFastq/"+ nameBuild+ ".1.fq",
+        fq2 = "TempFastq/"+ nameBuild+ ".2.fq"
     output:
         a = "Alignment/"+ nameBuild+ ".cram",
         i = "Alignment/"+ nameBuild+ ".cram.crai"
     log:
-        "Logs/"+ nameBuild+ "_Align.log"
+        "Logs/"+ nameBuild+ "_AlignHg38.log"
     params:
         rg ="\"@RG\\tID:"+nameBuild+"\\tPL:ILLUMINA\\tLB:"+nameBuild+"\\tSM:"+nameBuild+ "\\tCN:HCI\\tPU:"+nameBuild+"\""
     threads:
@@ -102,11 +99,11 @@ rule Align:
     shell:
         "set -o pipefail && mkdir -p Tmp && "
         "cutadapt -a {adapterR1} -A {adapterR2} --interleaved --action mask --cores={tenPerThreads} {input.fq1} {input.fq2} 2>> {log} | " 
-        "{bwa} mem -t {twoThirdThreads} -R {params} -p {indexFasta} /dev/stdin 2>> {log} | "
+        "{bwa} mem -t {nintyPerThreads} -R {params} -p {indexFasta} /dev/stdin 2>> {log} | "
         "{samtools} fixmate -r -u -m - - 2>> {log} | "
-        "{samtools} view --with-header -u -q {mappingQuality} - 2>> {log} | "
+        "{samtools} view --with-header -@ {tenPerThreads} -u -q {mappingQuality} - 2>> {log} | "
         "{samtools} sort -u -@ {thirdThreads} -T Tmp/sort - 2>> {log} | "
-        "{samtools} markdup -@ {tenPerThreads} -T Tmp/dup --no-multi-dup -r -f Logs/{nameBuild}_Markdup.log --write-index -d {opticalDistance} "
+        "{samtools} markdup -@ {twoThirdThreads} -r -f Logs/{nameBuild}_Markdup.log --write-index -d {opticalDistance} "
         "     --reference {indexFasta} - {output.a} 2>> {log} && rm -rf Tmp "
 
 # BamPileup file for Read Coverage, Sample Concordance, and ultra sensitive somatic variant calling

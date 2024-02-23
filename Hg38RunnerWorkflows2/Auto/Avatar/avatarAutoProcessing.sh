@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# 27 Aug 2022
+# 2 Feb 2024
 # David.Nix@hci.utah.edu
 # Huntsman Cancer Institute
 
-# Runs a snakemake workflow to process Tempus datasets for translational genomics
+# Runs a snakemake workflow to process Avatar datasets for translational genomics
 # Execute this on redwood and in the /scratch/general/pe-nfs1/u0028003/Avatar directory
 
 set -e; start=$(date +'%s')

@@ -1,6 +1,6 @@
 # Bash script to run inside the container, no need to modify anything in this file
 
-# 10 Jan 2024
+# 10 March 2022
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -26,13 +26,20 @@ ls $dataBundle  *.sm *.yaml  > /dev/null
 
 # Launch snakemake with these settings
 snakemake -p --cores $allThreads \
---stats $name"_snakemake.stats.json" \
+--stats $name"_Hg38_snakemake.stats.json" \
 --snakefile *.sm \
 --configfile *.yaml \
 --config \
 name=$name \
 allThreads=$allThreads \
 allRam=$allRam
+
+# Final cleanup
+mkdir -p RunScripts
+mv -f dnaAlign*  RunScripts/
+mv -f  *.yaml RunScripts/ &> /dev/null || true
+mv -f *snakemake.stats.json Logs/ &> /dev/null || true
+rm -rf .snakemake STARTED RESTART* QUEUED slurm*
 
 ## Svg DAG generation
 # Replace the top snakemake line with 'snakemake --dag'

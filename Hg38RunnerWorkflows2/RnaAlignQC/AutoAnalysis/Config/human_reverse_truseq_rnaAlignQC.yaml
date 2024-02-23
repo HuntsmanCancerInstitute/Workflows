@@ -1,0 +1,38 @@
+---
+# Last edit 24 January 2024 - david.nix@hci.utah.edu
+# Configuration for the bulk RnaAlignQC workflow, keeping it simple, just hardcoding for redwood
+# Human latest
+
+genomeBuild: Hg38
+
+# Illumina TruSeq universal
+adapterR1: AGATCGGAAGAGCACACGTCTGAACTCCAGTCA
+adapterR2: AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT
+
+mappingQuality: 13
+baseQuality: 13
+
+# root must end in /
+root: /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/atlatl/data/
+chrom: Human/GRCh38/chrom.sizes
+fqsConfig: Human/Hg38/TNRunner/redwood_fastq_screen_rRNA.conf
+analysisRegions: Human/Hg38/TNRunner/mergedNimV1IdtV1-2TwistV2Pad175bp8March2023.bed.gz
+
+# use 100bp for reads at and over 100bp, use the star50 for short reads
+starIndex: Human/GRCh38/release110/star100
+gtf: Human/GRCh38/release110/Homo_sapiens.GRCh38.110.gtf
+refFlat: Human/GRCh38/release110/Homo_sapiens.GRCh38.110.refflat
+riboIntervals: Human/GRCh38/release110/Homo_sapiens.GRCh38.110.rRNA.interval
+rsemIndex: Human/GRCh38/release110/rsem/RSEM
+fastaIndex: Human/GRCh38/Homo_sapiens.GRCh38.dna.primary_assembly.fa
+
+# Must match chr usage (chr1 or just 1) of the input cram for fastq conversion
+cramIndex: Human/Hg38/hg38.with_alt.fa
+
+# Strandedness, set all to the same
+rsemStrand: reverse # 'none', 'forward', and 'reverse' (default)
+fcStrand: 2 # 0 (unstranded), 1 (stranded, Tempus) and 2 (reversely stranded, default)
+crsStrand: SECOND_READ_TRANSCRIPTION_STRAND # NONE, FIRST_READ_TRANSCRIPTION_STRAND, SECOND_READ_TRANSCRIPTION_STRAND (default)
+
+
+

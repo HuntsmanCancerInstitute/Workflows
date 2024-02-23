@@ -1,0 +1,11 @@
+---
+# Last edit 16 Feb 2024 - david.nix@hci.utah.edu
+# Configuration for the 10X GEM CellRanger workflow on redwood
+
+genomeBuild: GRCh38
+
+# root must end in /
+root: /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/atlatl/data/
+indexDir: Human/GRCh38/10x_star/refdata-gex-GRCh38-2020-A
+
+

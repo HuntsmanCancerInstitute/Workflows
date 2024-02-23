@@ -1,0 +1,97 @@
+# Annotation of a vcf file with snpEff, splice, and clinvar; no filtering 
+# 27 Oct 2023
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+############ No need to modify anything in this document #############
+
+# To prepend on all output
+name = str(config["name"])
+
+# Threads and memory
+allThreads = int(config["allThreads"])
+halfThreads = int(round(allThreads/2,0))
+allRam = int(round(float(config["allRam"])))
+
+# Resources
+indexFasta = config["dataBundle"] +"/"+ config["indexFasta"]
+dataDir = config["dataBundle"] + "/AnnotatorData"
+
+# Apps in the docker container
+java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
+useq = "/BioApps/USeq/Apps"
+htslib = "/BioApps/Htslib/1.13/bin"
+snpEff = "/BioApps/SnpEff/5.0e"
+
+############# Rules ##############
+
+# Tabix index the annotated vcf
+rule VcfTabix:
+    input:
+        "Vcfs/"+ name+ ".vcf.gz"
+    output:
+        "Vcfs/"+ name+ ".vcf.gz.tbi"
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ name+ "_VcfTabix.log"
+    shell:
+        "{java} {useq}/VCFTabix -t {htslib} -v {input} &> {log}"
+
+# Basic SnpEff Annotations
+rule SnpEff:
+    output:
+        temp (name+ ".snpEff.vcf")
+    threads:
+        allThreads
+    log:
+        "Logs/"+ name+ "_SnpEff.log"
+    shell:
+        "{java} {snpEff}/snpEff.jar -dataDir {dataDir} -v -strict GRCh38.p13.RefSeq *vcf.gz "
+        "> {output} 2> {log} && mv -f snpEff_* Logs/ "
+   		   
+# Clinvar
+rule Clinvar:
+    input:
+        name+ ".snpEff.vcf"
+    output:
+        temp (name+ ".snpEff.clinvar.vcf")
+    threads:
+        allThreads
+    log:
+        "Logs/"+ name+ "_Clinvar.log"
+    shell:
+        "{java} {snpEff}/SnpSift.jar annotate -v {dataDir}/Clinvar/clinvar.vcf.gz "
+        "{input} > {output} 2> {log} "
+
+# GnomAD population AFs
+rule GnomAD:
+    input:
+        name+ ".snpEff.clinvar.vcf"
+    output:
+        temp (name+ ".snpEff.clinvar.gnomad.vcf")
+    threads:
+        allThreads
+    log:
+        "Logs/"+ name+ "_Gnomad.log"
+    shell:
+        "{java} {snpEff}/SnpSift.jar annotate -name GnomAD_ -v {dataDir}/GnomAD/gnomADv2v3_maxAF.hg38.vcf.gz "
+        "{input} > {output} 2> {log} "
+
+# USeq Splice Scanner
+rule VCFSpliceScanner:
+    input:
+        name+ ".snpEff.clinvar.gnomad.vcf"
+    output:
+        "Vcfs/"+ name+ ".vcf.gz"
+    threads:
+        allThreads
+    log:
+        "Logs/"+ name+ "_VCFSpliceScanner.log"
+    shell:
+        "{java} {useq}/VCFSpliceScanner -u {dataDir}/UCSC/8Aug2018/hg38RefSeq8Aug2018.ucsc.zip "
+        "-m {dataDir}/SpliceModels -f {indexFasta} "
+        "-v {input} -r {output} &> {log}"
+
+onerror:
+    shell( "rm -f STARTED COMPLETE; touch FAILED")
