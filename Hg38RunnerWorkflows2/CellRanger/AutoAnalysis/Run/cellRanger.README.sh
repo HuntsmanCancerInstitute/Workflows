@@ -4,7 +4,7 @@
 #SBATCH -N 1
 #SBATCH -t 96:00:00
 
-# 21 Feb 2024
+# 14 May 2024
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -25,9 +25,9 @@ container=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Containers/
 
 #### Do for every run ####
 
-# 1) Create a folder named as you would like the analysis name to appear, this along with the genome build will be prepended onto all files, no spaces, change into it. This must reside somewhere in the myData mount path.
+# 1) Create a folder for each sample named as you would like the analysis name to appear, this along with the genome build will be prepended onto all files, no spaces, change into it. This must reside somewhere in the myData mount path.
 
-# 2) SOFT LINK your 8 gzipped fastq files into the job directory. These WILL BE DELETED upon completion.
+# 2) SOFT LINK your gzipped fastq files for a particular sample into the job directory. These WILL BE DELETED upon completion.
 
 # 3) Copy over the workflow docs: xxx.sing, xxx.README.sh, xxx.sm, and species_libraryPrep matched xxx.cellRanger.yaml into the job directory.
 
@@ -79,7 +79,9 @@ then
   mkdir -p RunScripts
   mv -f slurm* *stats.json Logs/ 
   mv -f *cellRanger.* RUNME RunScripts/ 
-  rm -rf .snakemake STARTED RESTARTED QUEUED FAILED *q.gz
+  rm -rf .snakemake STARTED RESTARTED QUEUED FAILED 
+  # Delete the fastqs?
+  rm -f *q.gz
 else
   echo -e "\n---------- FAILED! -------- $((($(date +'%s') - $start)/60)) min total"
   rm -rf STARTED RESTARTED QUEUED

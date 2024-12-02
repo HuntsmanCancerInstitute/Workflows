@@ -1,5 +1,5 @@
 # Hg38 Exome Alignment and QC Workflow 
-# 5 Oct 2023
+# 10 June 2024
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -175,7 +175,9 @@ rule AlignUnpairedConsensusFastq:
         "cat {nameBuild}_UnPairedAlignHg38.log.bwamem >> {log} && "
         "cat {nameBuild}_UnPairedAlignHg38.log.trim >> {log} && "
         "rm -f {nameBuild}_UnPairedAlignHg38.log.* {nameBuild}_UnPairedAlignHg38.sh {nameBuild}_UnPairedAlignHg38.hla.* && "
-        "{samtools} view {nameBuild}_UnPairedAlignHg38.aln.bam | gzip > {output}"
+        "{samtools} view {nameBuild}_UnPairedAlignHg38.aln.bam | gzip > {output} && "
+        "echo -n 'NumAlign: ' >> {log} && "
+        "{samtools} view {nameBuild}_UnPairedAlignHg38.aln.bam | wc -l >> {log} "
 
 # Align paired consensus fastq
 rule AlignPairedConsensusFastq:
@@ -199,7 +201,9 @@ rule AlignPairedConsensusFastq:
         "cat {nameBuild}_PairedAlignHg38.log.bwamem >> {log} && "
         "cat {nameBuild}_PairedAlignHg38.log.trim >> {log} && "
         "rm -f {nameBuild}_PairedAlignHg38.log.* {nameBuild}_PairedAlignHg38.sh {nameBuild}_PairedAlignHg38.hla.* && "
-        "{samtools} view {nameBuild}_PairedAlignHg38.aln.bam | gzip > {output}"
+        "{samtools} view {nameBuild}_PairedAlignHg38.aln.bam | gzip > {output} && "
+       	"echo -n 'NumAlign: ' >> {log} && "
+        "{samtools} view {nameBuild}_PairedAlignHg38.aln.bam | wc -l >> {log} "
 
 # Concatinate alignments
 rule ConcatinateAlignments:

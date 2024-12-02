@@ -1,4 +1,4 @@
-# 22 Feb 2024 
+# 26 Sept 2024 
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -25,8 +25,10 @@ hemPath = "/uufs/chpc.utah.edu/common/HIPAA/IRB_00088405-2/AVATAR/SourceData/"
 
 # PHI Resources
 # subjectRegistry = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/PHI/Registry/"
-subjectRegistry = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/Scratch/Avatar/Auto/Registry/"
-bkupSubjectRegistry = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/PHI/RegistryBackupDontUse/"
+#subjectRegistry = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/Scratch/Avatar/Auto/Registry/"
+#bkupSubjectRegistry = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/PHI/RegistryBackupDontUse/"
+subjectRegistry = "/scratch/general/pe-nfs1/u0028003/Avatar/Auto/RegistryCopy/Registry/"
+bkupSubjectRegistry = "/scratch/general/pe-nfs1/u0028003/Avatar/Auto/RegistryCopy/Backup/"
 
 # Apps, aws cli installed and in the path
 java = "java -jar -Djava.io.tmpdir=. -Xmx5G"
@@ -39,10 +41,6 @@ aster = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Aster"
 # Workflow trigger, final Rule, cleanup 
 rule FinalCleanup:
     input:
-        "Status/FetchResourceFiles_COMPLETE",
-        "Status/AvatarDataWrangler_COMPLETE",
-        "Status/DownloadFastqFiles_COMPLETE",
-        "Status/SyncMainRepo_COMPLETE",
         "Status/UploadGUDatasets_COMPLETE",
         "Status/BackupSubjectRegistry_COMPLETE",
         "Status/CopyHemDatasets_COMPLETE"
@@ -53,9 +51,18 @@ rule FinalCleanup:
     shell:
         "touch {output} &> {log}"
 
+# "Status/LinkAsterFilesIntoJobsDirs_COMPLETE"
         # "rm -rf AJobs/ &> {log}; touch {output}"
+	# "Status/DownloadFastqFiles_COMPLETE",
+        # "Status/SyncMainRepo_COMPLETE",
+        # "Status/UploadGUDatasets_COMPLETE",
+        # "Status/BackupSubjectRegistry_COMPLETE",
+        # "Status/CopyHemDatasets_COMPLETE"
 
 # This downloads a variety of Resource files for processing
+# Assumes a recent login session key is available, run 
+# ~/BioApps/Aster/rwb.linux.x64 project list
+# to trigger the web app credentialling.
 rule FetchResourceFiles:
     output:
         "Status/FetchResourceFiles_COMPLETE"
@@ -65,6 +72,9 @@ rule FetchResourceFiles:
         maxThreads
     shell:
         "rm -rf Avatar_MolecularData_hg38 ResourceFiles &> {log}; "
+
+        "set +e; "
+
         "python {aster}/support_scripts/download_project.py"
         "  --project-id project-F66v00Q0q4045Q4Y6PY2Xv7F"
         "  --exec {aster}/rwb.linux.x64"
@@ -78,30 +88,18 @@ rule FetchResourceFiles:
 
         "python {aster}/support_scripts/download_project.py"
         "  --project-id project-F66v00Q0q4045Q4Y6PY2Xv7F --exec {aster}/rwb.linux.x64"
-        "  --include '*' | grep Whole_Exome/FASTq | grep -E '(2023|2024|2025|2026|2027)'"
-        "  > ResourceFiles/exomeFastqDirs.txt 2>> {log}; "
+        "  --include '*' | grep FASTq > ResourceFiles/fastqDirs.txt 2>> {log}; "
+
         "while read -r line;"
         "  do x=$(echo $line | cut -d' ' -f4 | sed 's/[\(\)]//g');"
         "  echo $x &>> {log}; " 
         "python {aster}/support_scripts/download_project.py"
         "  --project-id project-F66v00Q0q4045Q4Y6PY2Xv7F --exec {aster}/rwb.linux.x64"
-        "  --include $x | grep fastq.gz | grep -v .md5 | grep download | cut -d' ' -f4"
-        "  >> ResourceFiles/exomeFastqFiles.txt; "
-        "done < ResourceFiles/exomeFastqDirs.txt; "
-
-        "python {aster}/support_scripts/download_project.py"
-        "  --project-id project-F66v00Q0q4045Q4Y6PY2Xv7F --exec {aster}/rwb.linux.x64"
-        "  --include '*' | grep RNAseq/FASTq | grep -E '(2023|2024|2025|2026)'"
-        "  > ResourceFiles/rnaFastqDirs.txt 2>> {log}; "
-        "while read -r line;"
-        "  do x=$(echo $line | cut -d' ' -f4 | sed 's/[\(\)]//g');"
-        "  echo $x &>> {log}; " 
-        "python {aster}/support_scripts/download_project.py"
-        "  --project-id project-F66v00Q0q4045Q4Y6PY2Xv7F --exec {aster}/rwb.linux.x64"
-        "  --include $x | grep fastq.gz | grep -v .md5 | grep download | cut -d' ' -f4"
-        "  >> ResourceFiles/rnaFastqFiles.txt; "
-        "done < ResourceFiles/rnaFastqDirs.txt; "
-
+        "  --include $x | grep q.gz | grep -v .md5 | grep download | cut -d' ' -f6"
+        "  >> ResourceFiles/fastqFiles.txt; "
+        "done < ResourceFiles/fastqDirs.txt; "
+        "set -e; "
+        "echo STARTING_AWS_LISTING >> {log}; "
         "aws s3 ls {patientMolRepo} --recursive > ResourceFiles/hci_AWSRepoList.txt 2>> {log};"
         "touch {output}"
 
@@ -110,34 +108,74 @@ rule avatarDataWrangler:
     input:
         "Status/FetchResourceFiles_COMPLETE"
     output:
-        c = "Status/AvatarDataWrangler_COMPLETE",
-        d = "ResourceFiles/downloadLinkCmds.txt"
+        d = "ResourceFiles/downloadAsterFiles.sh",
+        c = "Status/AvatarDataWrangler_COMPLETE"
     log:
         "Logs/avatarDataWrangler.log"
     threads:
         halfThreads
     shell:
-        "{java} {useq}/AvatarDataWrangler -r ResourceFiles -j AJobs -a AzureDownloads "
-        "-s {subjectRegistry} -d {output.d} -t ResourceFiles/SMM_PHI &> {log};"
+        "{java} {useq}/AvatarDataWrangler -r ResourceFiles -j AJobs -a FastqCramDownloads "
+        "-s {subjectRegistry} -t ResourceFiles/SMM_PHI &> {log};"
         "touch {output.c} "
 
-rule DownloadFastqFiles:
+# Download Aster fastq and cram files
+rule DownloadAsterSequenceFiles:
     input:
-        "ResourceFiles/downloadLinkCmds.txt"
+        "ResourceFiles/downloadAsterFiles.sh"
     output:
-        "Status/DownloadFastqFiles_COMPLETE"
+        c = "Status/DownloadAsterSequenceFiles_COMPLETE",
+        m = "ResourceFiles/moveAsterFiles.sh",
+        f = "ResourceFiles/makeSoftLinks.sh"
     log:
-        "Logs/downloadFastqFiles.log"
+        "Logs/downloadAsterSequenceFiles.log"
+    threads:
+        21
+    shell:
+        "mkdir -p FastqCramDownloads; "
+        "cat {input} | parallel --will-cite --jobs 20 --halt soon,fail=1 &> {log}; "
+        "numFail=$(grep FAIL {log} | wc -l); "
+        "if (( $numFail > 0 )); then echo 'ERROR: Azure download failures found. Check Log!' &>> {log}; ls DownloadFailure; fi; "
+        "touch {output.c}"
+
+# Download files from the AWS Patient Molecular Repository
+rule DownloadAwsSequenceFiles:
+    input:
+        "Status/DownloadAsterSequenceFiles_COMPLETE"
+    output:
+        "Status/DownloadAwsSequenceFiles_COMPLETE"
+    log:
+        "Logs/downloadAwsSequenceFiles.log"
     threads:
         maxThreads
     shell:
-        "bash {input} &> {log}; "
+        "aws='ResourceFiles/awsFilesToDownload.txt' "
+        "if [ -f $aws ]; then "
+        "   echo 'Need to run S3Copy!' &> {log}; "
+        "else "
+        "   echo 'No S3Copy needed.' &> {log}; "
+        "   touch {output}; "
+        "fi "
+
+# Soft link in the downloaded files to the Jobs Fastq folders.  Some will need to be manually merged.
+rule LinkAsterFilesIntoJobsDirs:
+    input:
+        c = "Status/DownloadAwsSequenceFiles_COMPLETE",
+        m = "ResourceFiles/moveAsterFiles",
+        f = "ResourceFiles/makeSoftLinks.sh"
+    output:
+        "Status/LinkAsterFilesIntoJobsDirs_COMPLETE"
+    log:
+        "Logs/linkAsterFilesIntoJobsDirs.log"
+    shell:
+        "./{input.m} &> {log}; "
+        "./{input.f} &>> {log}; "
         "touch {output}"
 
 # Run TNRunner2, a tool for coordinating the execution of many containerized snakemake workflows to process the data
 rule TNRunner2:
     input:
-       "Status/DownloadFastqFiles_COMPLETE"
+       "Status/LinkAsterFilesIntoJobsDirs_COMPLETE"
     output:
         "Status/TNRunner2_COMPLETE"
     log:

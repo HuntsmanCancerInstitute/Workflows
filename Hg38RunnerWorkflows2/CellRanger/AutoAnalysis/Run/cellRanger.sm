@@ -1,23 +1,27 @@
 # Primary analysis of CellRanger fastq
-# 22 Feb 2024
+# 13 Sept 2024
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
 # Threads and memory
 allThreads = int(config["allThreads"])
+halfThreads = int(round(allThreads/2,0)) - 1
 allRam = int(round(float(config["allRam"])))
 
 # Params
 sampleNames = config["sampleNames"]
 nameBuild = str(config["name"])+ "_"+ config["genomeBuild"]
 indexDir = config["root"] + config["indexDir"]
-cellranger = "/BioApps/CellRanger/cellranger-7.2.0/cellranger"
+cellranger = config["root"] + config["cellRangerApp"]
 samtools = "/BioApps/Samtools/1.19.2/bin/samtools"
 fastaIndex = indexDir + "/fasta/genome.fa"
+fqsConfig = config["root"] + config["fqsConfig"]
+fqsApp = config["root"] + config["fqsApp"]
 
 rule Cleanup:
     input:
-        "CellRanger/outs/possorted_genome_bam.cram.crai"
+        "CellRanger/outs/possorted_genome_bam.cram.crai",
+        "QC/FastqScreen/"+ nameBuild+ "_screen.txt"
     output:
         "COMPLETE"
     log:
@@ -26,8 +30,6 @@ rule Cleanup:
         "zip -r CellRanger/Misc.zip CellRanger/_* &> {log}; "
         "rm -rf CellRanger/SC_RNA_COUNTER_CS CellRanger/_* &>> {log};"
         "touch {output}; "
-
-# "rm -f *q.gz"  remove the fastq files
 
 # Look for the required resources
 rule CheckFilesParams:
@@ -62,7 +64,7 @@ rule CellRangerCount:
     shell:
         "{cellranger} count --localcores {threads} --localmem {allRam} "
         "--id={nameBuild} --output-dir CellRanger --fastqs=$(pwd) "
-        "--sample={sampleNames} --transcriptome={indexDir} &> {log}; "
+        "--sample={sampleNames} --transcriptome={indexDir} --create-bam=true &> {log}; "
         "touch {output}" 
 
 # Convert bam to cram
@@ -73,12 +75,29 @@ rule SamtoolsCram:
         cram = "CellRanger/outs/possorted_genome_bam.cram",
         crai = "CellRanger/outs/possorted_genome_bam.cram.crai"
     threads:
-        allThreads
+        halfThreads
     log:
         "Logs/"+ nameBuild+ "_SamtoolsCram.log"
     shell:
         "{samtools} view -C -T {fastaIndex} --write-index -o {output.cram} -@ {threads} CellRanger/outs/possorted_genome_bam.bam &> {log}; "
         "rm -rf CellRanger/outs/possorted_genome_bam.bam* &>> {log} "
+
+# Look for contaminants
+rule FastqScreen:
+    input:
+        "FileCheckOK"
+    output:
+        "QC/FastqScreen/"+ nameBuild+ "_screen.txt"
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_FastqScreen.log"
+    shell:
+        "shopt -s nullglob; fq=(*_R2_*.gz); "
+        "{fqsApp} --threads {threads} --subset 1000000 --outdir QC/FastqScreen "
+        " --force --conf {fqsConfig} --aligner bowtie2 ${{fq[0]}} &> {log} && "
+        "mv -f QC/FastqScreen/*screen.txt {output} &>> {log} && "
+        "rm -f QC/FastqScreen/*screen.html"
 
 onerror:
     shell( "rm -f STARTED COMPLETE DONE; touch FAILED")

@@ -1,6 +1,6 @@
 # Circulating Tumor - Normal Somatic Variant Calling Workflow 
 # Snakemake rule set
-# 22 Oct 2019
+# 11 July 2024
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -23,7 +23,7 @@ bpileup = config["bpileup"]
 # Apps in docker image
 useq = "/BioApps/USeq/Apps"
 bcftools = "/BioApps/Bcftools1.9/bin/bcftools"
-htsLib = "/BioApps/HTSlib_1.3"
+htsLib = "/BioApps/Htslib1.9/bin/"
 java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
 
 # VCF variant filtering params
@@ -83,7 +83,8 @@ rule SimpleSomaticCaller:
         "{java} {useq}/SimpleSomaticCaller -v {input} -s Vcfs -t {minTumorAF} -x {maxTumorAF} "
         "-u {minTumorAlignmentDepth} -n {maxNormalAF} -o {minNormalAlignmentDepth} -a {minTumorAltCount} "
         "-f {maxFisherPval} -d {minTNDiff} -r {minTNRatio} -m &> {log} && "
-        "mv -f Vcfs/{nameBuild}_raw.ssc.vcf.gz {output} &>> {log} "
+        "mv -f Vcfs/{nameBuild}_raw.ssc.pass.vcf.gz {output} &>> {log} && "
+        "rm -f Vcfs/*fail* &>> {log} "
 
 # Use panel of normal bams to z-score and filter the vcf records
 rule VCFBkz:
@@ -96,7 +97,7 @@ rule VCFBkz:
     threads:
         allThreads
     shell:
-        "{java} {useq}/VCFBkz -u -b {bpileup} {extraBkzArgs} -v {input} -s Vcfs -z {minBkzScore} "
+        "{java} {useq}/VCFBkz -u -b {bpileup} {extraBkzArgs} -v {input} -s Vcfs -z {minBKZ} "
         "-c {minTumorAlignmentDepth} &> {log} && mv -f Vcfs/{nameBuild}_ssc.bkz.vcf.gz {output} &>> {log} "
 
 onerror:

@@ -1,6 +1,6 @@
 # Circulating Tumor DNA Somatic Variant Caller
 # Bash script to run inside the container
-# 22 October 2019
+# 11 July 2024
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -30,9 +30,9 @@ echo -n normalBam"  : "; echo $normalBam
 --config \
 allThreads=$allThreads \
 allRam=$allRam \
-regionsForAnalysis=$dataBundle/Bed/Underhill/HSV1_GBM_IDT_Probes_Hg38Pad150bps_91K.bed \
+regionsForAnalysis=$dataBundle/Bed/Kohli_CfDNA_05689449_IDT/05689449_Kohli_Hg38_MergedProbesPad250bp.bed \
 indexFasta=$dataBundle/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
-bpileup=$dataBundle/MpileupBkg/Hg38Underhill/15352R.bp.txt.gz \
+bpileup=/scratch/general/pe-nfs1/u0028003/Kohli/ProstateCfDNA/FinalSet/BamPileup/23802X.germline.bp.txt.gz \
 tumorBam=$tumorBam \
 normalBam=$normalBam \
 genomeBuild=Hg38 \

@@ -1,0 +1,33 @@
+---
+# Last edit 17 July 2024 - david.nix@hci.utah.edu
+# Configuration for the AutoAnalysis DnaAlignQC workflow, keeping it simple, just hardcoding for redwood
+# NOTE! The read coverage statistics are only valid for WGS (including chIPSeq like experiments) or exome capture.
+#    Small panel captures require reanalysis with a capture matched set of bed files.
+#    Likewise UMI consensus deduplicate collapsing requires reanalysis.
+
+# Human latest
+genomeBuild: Hg38
+
+# Illumina TruSeq universal adapters
+adapterR1: ACTGTCTCTTATACACATCT
+adapterR2: ACTGTCTCTTATACACATCT
+
+# Set this to 2500 for NovaSeq/NextSeq datasets, set it to 100 for HiSeq/MiSeq datasets, set to 0 for fastq from SRA to disable
+opticalDistance: 2500
+
+mappingQuality: 13
+baseQuality: 13
+
+# Used to create a bed file of regions that pass this minimum unique observations threshold
+passingReadDepth: 12
+
+# Atlatl data bundle must end in /
+atlatl: /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/atlatl/data/
+fqsConfig: FastQ_Screen_Genomes/redwood_fastq_screen.conf
+
+# TNRunner data bundle, must end in /
+tnRunner: /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/
+fastaIndex: GIABResourceBundleFeb2024/GRCh38_GIABv3_no_alt_analysis_set_maskedGRC_decoys_MAP2K3_KMT2C_KCNJ18.fasta
+uniObRCRegions: Bed/AvatarNimIdtTwstBeds/sharedNimV1IdtV1-2TwistV2CCDS8March2023.bed.gz
+
+

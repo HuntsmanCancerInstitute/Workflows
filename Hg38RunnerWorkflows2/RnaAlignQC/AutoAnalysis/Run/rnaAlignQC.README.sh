@@ -4,12 +4,11 @@
 #SBATCH -N 1
 #SBATCH -t 96:00:00
 
-# 24 Jan 2024
+# 17 July 2024
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
 # This fires a standard RNASeq analysis (CutAdapt, STAR, RSEM, fetureCounts, QC, etc.) on paired end datasets.
-# Takes ~132min when disabling RSEM and BamPileup for Avatar datasets on Redwood
 
 #### Do just once ####
 
@@ -30,7 +29,7 @@ container=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Containers/
 
 # 1) Create a folder named as you would like the analysis name to appear, this along with the genome build will be prepended onto all files, no spaces, change into it. This must reside somewhere in the myData mount path.
 
-# 2) SOFT LINK your paired end, gzipped fastq files or a raw cram file and index into the job directory. These WILL BE DELETED upon completion.
+# 2) SOFT LINK your paired end, gzipped fastq files, these should contain _R1_ and _R2_. Multiple pairs will be merged. These WILL BE DELETED upon completion.
 
 # 3) Copy over the workflow docs: xxx.sing, xxx.README.sh, xxx.sm, and species_strand_adapter matched xxx.RnaAlignQC.yaml into the job directory.
 
@@ -80,7 +79,8 @@ then
   mkdir -p RunScripts
   mv -f slurm* *stats.json Logs/ 
   mv -f rnaAlignQC* RUNME *yaml RunScripts/ 
-  rm -rf .snakemake STARTED RESTARTED QUEUED FAILED *cram* *q.gz
+  rm -rf .snakemake STARTED RESTARTED QUEUED FAILED 
+  rm -f *cram* *q.gz
 else
   echo -e "\n---------- FAILED! -------- $((($(date +'%s') - $start)/60)) min total"
   rm -rf STARTED RESTARTED QUEUED

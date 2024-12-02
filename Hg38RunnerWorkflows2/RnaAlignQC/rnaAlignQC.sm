@@ -1,5 +1,5 @@
 # Alignment and QC for RNASeq samples
-# 6 Nov 2023
+# 30 Aug 2024
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -19,7 +19,7 @@ adapterR2=config["adapterR2"]
 # DataBundle from config =/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/atlatl/data
 dataBundle = config["dataBundle"]+ "/Human/GRCh38"
 chrom = dataBundle + "/chrom.sizes"
-fqsConfig = config["dataBundle"] +"/Human/Hg38/TNRunner/redwood_fastq_screen_rRNA.conf"
+fqsConfig = config["dataBundle"] +"/FastQ_Screen_Genomes/redwood_fastq_screen.conf"
 analysisRegions = config["tnRunnerDir"] +"/Bed/AvatarNimIdtTwstBeds/mergedNimV1IdtV1-2TwistV2Pad175bp8March2023.bed.gz"
 
 # for release 106 and 100bp
@@ -166,11 +166,11 @@ rule StarAlignment:
         bg1 = temp ("Signal.Unique.str1.out.bg"),
         bg2 = temp ("Signal.UniqueMultiple.str1.out.bg")
     threads:
-        allThreads
+        15
     log:
         "Logs/"+ nameBuild+ "_StarAlignment.log",
     shell:
-        "STAR --genomeDir {starIndex} --readFilesIn {input.fq1} {input.fq2} --runThreadN {allThreads} "
+        "STAR --genomeDir {starIndex} --readFilesIn {input.fq1} {input.fq2} --runThreadN {threads} "
         "--twopassMode Basic --outSAMtype BAM SortedByCoordinate --outBAMsortingBinsN 800 --limitBAMsortRAM {allRam}000000000 "
         "--quantMode TranscriptomeSAM --outWigType bedGraph --outWigStrand Unstranded --seedPerWindowNmax 30 &> {log} && "
         "mv -f Aligned.sortedByCoord.out.bam {output.bam} &>> {log} && "

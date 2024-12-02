@@ -1,5 +1,5 @@
 # Dna Alignment and QC Workflow 
-# 10 Jan 2024
+# 24 Jan 2024
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -10,7 +10,6 @@ build = "Hg38"
 nameBuild = str(config["name"]) + "_" + build 
 adapterR1=config["adapterR1"]
 adapterR2=config["adapterR2"]
-opticalDistance=config["opticalDistance"]
 mappingQuality=config["mappingQuality"]
 baseQuality=config["baseQuality"]
 passingReadDepth=config["passingReadDepth"]
@@ -106,7 +105,7 @@ rule Align:
         "{samtools} fixmate -r -u -m - - 2>> {log} | "
         "{samtools} view --with-header -u -q {mappingQuality} - 2>> {log} | "
         "{samtools} sort -u -@ {thirdThreads} -T Tmp/sort - 2>> {log} | "
-        "{samtools} markdup -@ {tenPerThreads} -T Tmp/dup --no-multi-dup -r -f Logs/{nameBuild}_Markdup.log --write-index -d {opticalDistance} "
+        "{samtools} markdup -@ {tenPerThreads} -T Tmp/dup --no-multi-dup -r -f Logs/{nameBuild}_Markdup.log --write-index "
         "     --reference {indexFasta} - {output.a} 2>> {log} && rm -rf Tmp "
 
 # BamPileup file for Read Coverage, Sample Concordance, and ultra sensitive somatic variant calling
@@ -149,7 +148,7 @@ rule ReadCoverageBed:
     log:
         "Logs/"+ nameBuild+ "_ReadCoverageBed.log"
     threads:
-        halfThreads
+        thirdThreads
     shell:
         "{java} {useq}/UniObRC -u {input} -r {analysisRegions} -s {output} "
         "-d {passingReadDepth} -p {threads} -t {htslib} &> {log} && rm -f QC/{nameBuild}.PassRC.json* "

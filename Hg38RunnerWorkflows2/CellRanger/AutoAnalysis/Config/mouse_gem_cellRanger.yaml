@@ -1,10 +1,15 @@
 ---
-# Last edit 15 Feb 2024 - david.nix@hci.utah.edu
+# Last edit 13 Sept 2024 - david.nix@hci.utah.edu
 # Configuration for the 10X GEM CellRanger workflow, keeping it simple, just hardcoding for redwood
 
-genomeBuild: GRCm38
+genomeBuild: GRCm39
 
 # root must end in /
-root: /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/atlatl/data/
-indexDir: Mouse/GRCm38/10x_star/refdata-gex-mm10-2020-A
+root: /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/atlatl/
+indexDir: data/Mouse/GRCm39/10x_star/refdata-gex-GRCm39-2024-A
+fqsConfig: data/FastQ_Screen_Genomes/redwood_fastq_screen.conf
+fqsApp: app/fastq_screen/v0.14.0/fastq_screen
+cellRangerApp: app/10X/cellranger-8.0.1/cellranger
+
+
 

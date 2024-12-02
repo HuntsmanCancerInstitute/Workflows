@@ -1,0 +1,40 @@
+# Bash script to run inside the container
+# 7 February 2019
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+set -e
+cd $jobDir
+
+# Read info
+allThreads=$(nproc)
+allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+bam=`readlink -f *bam`
+
+# Print params
+echo -n jobDir"       : "; echo $jobDir
+echo -n name"         : "; echo $name
+echo -n dataBundle"   : "; echo $dataBundle
+echo -n threads"      : "; echo $allThreads
+echo -n ram"          : "; echo $allRam
+echo -n host"         : "; echo $(hostname)
+echo -n bam"          : "; echo $bam; echo
+
+
+/BioApps/Miniconda3/bin/snakemake -p -T \
+--cores $allThreads \
+--snakefile *.sm \
+--config \
+bam=$bam \
+starIndex=$dataBundle/Indexes/Star/Hg38/Hg38StarIndex75bp \
+hg38ChromSizes=$dataBundle/Indexes/Star/Hg38/hg38ChromSize.txt \
+refFlatGenes=$dataBundle/Indexes/Star/Hg38/Gencode/gencode.v28.genes.ucsc \
+rRNAIntervals=$dataBundle/Indexes/Star/Hg38/Gencode/gencode.v28.rRNA.interval_list \
+name=$name \
+allThreads=$allThreads \
+allRam=$allRam
+
+
+# Replace first and last lines above with the following to get dag svg graph
+	# /BioApps/Miniconda3/bin/snakemake --dag \
+	# allRam=$allRam | dot -Tsvg > $name"_dag.svg"

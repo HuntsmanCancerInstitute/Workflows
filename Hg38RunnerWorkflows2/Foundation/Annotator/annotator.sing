@@ -1,0 +1,40 @@
+# Bash script to run inside the container
+# 7 February 2019
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+set -e
+cd $jobDir
+
+# Read threads and ram
+allThreads=$(nproc)
+allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+
+# Print params
+echo -n jobDir"     : "; echo $jobDir
+echo -n name"       : "; echo $name
+echo -n dataBundle" : "; echo $dataBundle
+echo -n threads"    : "; echo $allThreads
+echo -n ram"        : "; echo $allRam
+echo -n host"       : "; echo $(hostname); echo
+
+
+/BioApps/Miniconda3/bin/snakemake -p -T \
+--cores $allThreads \
+--snakefile *.sm \
+--config \
+genomeBuild=Hg38 \
+regionsForAnalysis=$dataBundle/Bed/Foundation/hg38FoundationMergedCdxHemeOnePad50bp.bed.gz \
+indexFasta=$dataBundle/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
+dataDir=$dataBundle/AnnotatorData \
+annoVcfParser="-m 0.01 -y annotatedVcfParser.config.txt" \
+regionsOfInterest=$dataBundle/Indexes/Star/Hg38/Gencode/gencode.v28.acmgExonsPad150bp.bed.gz \
+name=$name \
+vcf=$(ls *vcf.gz) \
+allThreads=$allThreads \
+allRam=$allRam
+
+
+# Replace first and last lines above with the following to get dag svg graph
+	# /BioApps/Miniconda3/bin/snakemake --dag \
+	# allRam=$allRam | dot -Tsvg > $name"_dag.svg"

@@ -1,0 +1,34 @@
+---
+# Last edit 7 May 2024 - david.nix@hci.utah.edu
+# Configuration for the bulk RnaAlignQC workflow, keeping it simple, just hardcoding for redwood
+# Human latest
+
+genomeBuild: GRCh38Pdx
+
+# Illumina TruSeq universal
+adapterR1: AGATCGGAAGAGCACACGTCTGAACTCCAGTCA
+adapterR2: AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT
+
+mappingQuality: 13
+baseQuality: 13
+
+# root and pdx must end in /
+root: /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/atlatl/data/
+pdx: /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Indexes/GRCh38_Mm39/
+chrom: chrom.sizes
+fqsConfig: FastQ_Screen_Genomes/redwood_fastq_screen.conf
+
+# use 100bp for reads at and over 100bp, use the star50 for short reads
+starIndex: star100
+pdxBed: GRCh38.bed.gz
+gtf: Human/GRCh38/release110/Homo_sapiens.GRCh38.110.gtf
+refFlat: Human/GRCh38/release110/Homo_sapiens.GRCh38.110.refflat
+riboIntervals: GRCh38Mm39.110.rRNA.interval_list
+fastaIndex: GRCh38_Mm39.fa
+
+# Strandedness, set all to the same
+fcStrand: 2 # 0 (unstranded), 1 (stranded, Tempus) and 2 (reversely stranded, default)
+crsStrand: SECOND_READ_TRANSCRIPTION_STRAND # NONE, FIRST_READ_TRANSCRIPTION_STRAND, SECOND_READ_TRANSCRIPTION_STRAND (default)
+
+
+

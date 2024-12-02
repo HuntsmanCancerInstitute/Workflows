@@ -1,0 +1,79 @@
+# 4 March 2022 
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+############ No need to modify anything in this document #############
+# Base name to prepend on all files
+nameBuild = str(config["name"]) + "_Hg38"
+
+# Threads and memory
+allThreads = int(config["allThreads"])
+allRam = config["allRam"]
+
+# Resources
+db = config["dataBundle"] + "/"
+carisCoordinateBed = db + config["carisCoordinateBed"]
+indexFasta = db + config["indexFasta"]
+
+
+# Apps in the docker container
+java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
+vt = "/BioApps/Vt/9Sept2021/vt"
+htsLib = "/BioApps/Htslib/1.13/bin/"
+useq = "/BioApps/USeq/Apps"
+
+############# Rules ##############
+
+# Workflow trigger, final Rule, cleanup and tabix index the vcfs 
+rule VcfTabix:
+    input:
+        "Vcfs/" + nameBuild+ "_final.vcf.gz"
+    output:
+        "Vcfs/" + nameBuild+ "_final.vcf.gz.tbi"
+    threads:
+        allThreads
+    log:
+        "Logs/"+ nameBuild+ "_VcfTabix.log"
+    shell:
+        "{java} {useq}/VCFTabix -t {htsLib} -v Vcfs/ &> {log}"
+
+# Convert the Caris xml report with Caris vcf to a parsed Caris vcf, sometimes there are no variants 
+rule CarisXmlVcfParser:
+    output:
+        "ParsedCarisResults/"+ nameBuild +"_NoNormCaris.vcf.gz"
+    log:
+        "Logs/"+ nameBuild + "_CarisXmlVcfParser.log"
+    threads:
+        allThreads
+    shell:
+        "{java} {useq}/CarisXmlVcfParser -d . -s ParsedCarisResults -u {carisCoordinateBed} &> {log} && "
+        "mv ParsedCarisResults/*vcf.gz {output} &>> {log}"
+
+# Normalize the parsed Caris vcf with Vt
+rule NormalizeVcf:
+    input:
+        "ParsedCarisResults/"+ nameBuild +"_NoNormCaris.vcf.gz"
+    output:
+        "Vcfs/"+ nameBuild +"_Caris.vcf.gz"
+    log:
+        "Logs/"+ nameBuild + "_NormalizeVcf.log"
+    threads:
+        allThreads
+    shell:
+        "{vt} normalize -r {indexFasta} {input} -o {output} &> {log}"
+             
+# Compare the normalized parsed Caris vcf with the recalled vcf, this generates a merged vcf
+rule CarisVcfComparator:
+    input:
+        "Vcfs/"+ nameBuild+ "_Caris.vcf.gz"
+    output:
+        "Vcfs/"+ nameBuild+ "_final.vcf.gz"
+    log:
+        "Logs/"+ nameBuild+ "_CarisVcfComparator.log"
+    threads:
+        allThreads
+    shell:
+        "{java} {useq}/CarisVcfComparator -c {input} -r $(realpath *_final.vcf.gz) -m {output} &> {log}"
+
+onerror:
+    shell( "rm -f STARTED COMPLETE; touch FAILED")

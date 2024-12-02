@@ -1,4 +1,4 @@
-# 25 April 2023 
+# 25 Nov 2024 
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -15,12 +15,12 @@ bamPileUp = tnRunner + "/MpileupBkg/Hg38AvatarBkgnd/Idt"
 carisBucket = "s3://hci-caris"
 patientMolRepo = "s3://hcibioinfo-patient-molecular-repo/Patients/"
 molRepoIndex = "s3://hcibioinfo-patient-lists/MolecularRepo/"
-deleteS3Objects = "" # Set to -d to delete the downloaded S3 objects, otherwise leave empty
+deleteS3Objects = " " # Set to -d to delete the downloaded S3 objects, otherwise leave empty
 
 # GU Group
 guGroup="GU"
-guOp="Neeraj_Agarwal Benjamin_Maughan Manish_Kohli Umang_Swami Sumati_Gupta Jennifer_Lloyd Julia_Batten Tenzin_Phunrab Lindsay_Maxwell Jared_Thorley"
-guEmail="david.nix@hci.utah.edu,JongTaek.Kim@aruplab.com,beverly.chigarira@hci.utah.edu"
+guOp="Neeraj_Agarwal Benjamin_Maughan Manish_Kohli Umang_Swami Sumati_Gupta Jennifer_Lloyd Julia_Batten Tenzin_Phunrab Lindsay_Maxwell Jared_Thorley Vinay_Mathew_Thomas Joshua_Quertinmont Hana_Ford"
+guEmail="david.nix@hci.utah.edu,JongTaek.Kim@aruplab.com,Roberto.Nussenzveig@hci.utah.edu"
 guBucket="s3://hcibioinfo-gu-patient-molecular-repo/Patients/"
 
 # PHI Resources
@@ -39,6 +39,7 @@ htslib = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/HtsLib/1.15/bin"
 # Workflow trigger, final Rule, cleanup 
 rule FinalCleanup:
     input:
+        "ForCBioPortal/aggregateTPM_ForCBio.txt.gz",
         "Status/BackupSubjectRegistry_COMPLETE",
         "Status/UploadGUDatasets_COMPLETE"
     output:
@@ -65,7 +66,7 @@ rule CarisDataWrangler:
         "{java} {useq}/CarisDataWrangler -b {carisBucket} -j CJobs -t 2 "
         "-r {carisPHIRepo} "
         "-s CarisDataWrangler/SubjectMatchMaker_PHI "
-        "-c {subjectRegistry} {deleteS3Objects}&> {log};"
+        "-c {subjectRegistry} {deleteS3Objects} -f 'cfTNA_,gDNA_' &> {log};"
         "touch {output}"
 
 # Run TNRunner2, a tool for coordinating the execution of many containerized snakemake workflows to process the data
@@ -80,13 +81,13 @@ rule TNRunner2:
         maxThreads
     shell:
         "{java} {useq}/TNRunner2 -p CJobs "
-        "-e {carisWorkflows}/DnaAlignQC "
-        "-t {carisWorkflows}/RnaAlignQC "
-        "-f {carisWorkflows}/StarFusion "
+        "-e {tnRunnerWorkflows}/DnaAlignQC "
+        "-t {tnRunnerWorkflows}/RnaAlignQC "
+        "-f {tnRunnerWorkflows}/StarFusion "
         "-w {tnRunner}/Bam/Hg38Exome/NA12878 "
-        "-c {carisWorkflows}/SomaticCaller "
+        "-c {tnRunnerWorkflows}/SomaticCaller "
         "-B {bamPileUp} "
-        "-a {carisWorkflows}/Annotator "
+        "-a {tnRunnerWorkflows}/Annotator "
         "-b {tnRunnerWorkflows}/SampleConcordance "
         "-v {tnRunnerWorkflows}/CarisVcf "
         "-x 500 -l &> {log}; "
@@ -136,6 +137,37 @@ rule cBioPortal:
         "rm -rf ForCBioPortal/ClinicalReports &>> {log}; "
         "touch {output}"
 
+# Pull tpm data from RSEM estimates
+rule TPM4cBioPortal:
+    input:
+        "Status/CBioPortal_COMPLETE"
+    output:
+        "ForCBioPortal/aggregateTPM_ForCBio.txt.gz"
+    log:
+        "Logs/TPM4cBioPortal.log"
+    threads:
+        thirdThreads
+    shell:
+        "rm -rf AggregateTPM &> {log}; mkdir -p AggregateTPM/RSEM AggregateTPM/TPM &>> {log}; cd AggregateTPM; "
+        "cp ../*Jobs/*/*/*/Alignment/*TumorRNA/Quantitation/RSEM/*TumorRNA_Hg38.genes.results RSEM/ &>> ../{log}; "
+        "files=(RSEM/*) &>> ../{log}; "
+        "firstFile=${{files[0]}} &>> ../{log}; "
+        "java -jar -Xmx1G ~/USeqApps/PrintSelectColumns -i 0 -f $firstFile -n 1 &>> ../{log}; "
+        "mv RSEM/*.xls geneIds.txt &>> ../{log}; "
+        "java -jar -Xmx1G ~/USeqApps/PrintSelectColumns -i 5 -f RSEM/ -n 1 &>> ../{log}; "
+        "mv RSEM/*xls TPM/ &>> ../{log}; cd TPM/; "
+        "for x in *xls; do name=$(echo $x | awk -F'_TumorRNA_Hg38.genes.PSC.xls' '{{print $1}}'); mv $x $name; done ;"
+        "ls -1 | tr '\\n' '\\t' > ../aggregateTPM.txt ;"
+        "echo >> ../aggregateTPM.txt ;"
+        "paste ../geneIds.txt * >> ../aggregateTPM.txt ;"
+        "cd ../; "
+        "java -jar -Xmx20G ~/USeqApps/NormalizedCountCBioFormater "
+        "   -e {tnRunner}/AnnotatorData/TpmVstRNASeqParsing/ens106GeneId2Symbol.txt.gz "
+        "   -n aggregateTPM.txt &>> ../{log}; "
+        "mv aggregateTPM_ForCBio.txt.gz ../ForCBioPortal/ &>> ../{log}; "
+        "cd ../; rm -rf AggregateTPM &>> {log}"  
+
+
 # Clean up the job directories
 rule JobCleaner:
     input:
@@ -148,7 +180,7 @@ rule JobCleaner:
     threads:
         maxThreads
     shell:
-        "{java} {useq}/JobCleaner -r CJobs/ -e '.tbi,.crai,.bai,COMPLETE' -n 'Logs,RunScripts' &> {log}; "
+        "{java} {useq}/JobCleaner -r CJobs/ -e '.tbi,.crai,.bai,COMPLETE'-m -n 'Logs,RunScripts' &> {log}; "
         "touch {output}"
 
 # Sync cleaned analysis with main mol bio repo
@@ -162,7 +194,7 @@ rule SyncMainRepo:
     threads:
         halfThreads
     shell:
-        "aws s3 sync CJobs/ {patientMolRepo} --no-progress &> {log}; "
+        "aws s3 sync CJobs/ {patientMolRepo} --quiet &> {log}; "
         "touch {output}"
 
 # Sync xml reports with PHI
@@ -233,7 +265,7 @@ rule UploadGUDatasets:
         "head -n 1 {subjectRegistry}/currentRegistry_* > $phiLinks;"
         "for x in $(ls {guGroup}/); do grep $x {subjectRegistry}/currentRegistry_* >> $phiLinks; done;"
         "n=$(cat $phiLinks | wc -l);"
-        "if [[ $n -gt 1 ]]; then aws s3 sync {guGroup}/ {guBucket} --no-progress --follow-symlinks "
+        "if [[ $n -gt 1 ]]; then aws s3 sync {guGroup}/ {guBucket} --quiet --follow-symlinks "
         "--profile {guGroup}; echo $n' new Caris patient datasets have been uploaded into {guBucket} "
         "See and SAVE the attached file to associate coreIds with patient identifiers.' | "
         "mailx -r noreply.bioinfo@hci.utah.edu -a $phiLinks -s 'PHI - New Caris Datasets '$d "

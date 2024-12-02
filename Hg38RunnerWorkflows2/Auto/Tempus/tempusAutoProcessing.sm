@@ -1,4 +1,4 @@
-# 8 Nov 2023 
+# 25 Nov 2024 
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -16,9 +16,11 @@ molRepoIndex = "s3://hcibioinfo-patient-lists/MolecularRepo/"
 
 # GU Group
 guGroup="GU"
-guOp="Neeraj_Agarwal Benjamin_Maughan Manish_Kohli Umang_Swami Sumati_Gupta Jennifer_Lloyd Julia_Batten Tenzin_Phunrab Lindsay_Maxwell Jared_Thorley"
-guEmail="david.nix@hci.utah.edu,beverly.chigarira@hci.utah.edu,JongTaek.Kim@aruplab.com"
+guOp="Neeraj_Agarwal Benjamin_Maughan Manish_Kohli Umang_Swami Sumati_Gupta Jennifer_Lloyd Julia_Batten Tenzin_Phunrab Lindsay_Maxwell Jared_Thorley Vinay_Mathew_Thomas Joshua_Quertinmont Hana_Ford"
+guEmail="david.nix@hci.utah.edu,JongTaek.Kim@aruplab.com,Roberto.Nussenzveig@hci.utah.edu"
 guBucket="s3://hcibioinfo-gu-patient-molecular-repo/Patients/"
+
+
 
 # Melanoma Group
 melGroup="MEL"

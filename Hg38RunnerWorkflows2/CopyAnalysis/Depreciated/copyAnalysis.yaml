@@ -1,5 +1,5 @@
 ---
-# Last edit 2 March 2022
+# Last edit 24 July 2024
 # Look below for the workflows you are running and modify the params as needed
 
 ############# For All #############
@@ -9,6 +9,7 @@ dataBundle: /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner # when ru
 
 # The BWA mem2 fasta file with all the associated index files including xxx.fa.fai and xxx.dict files, see https://github.com/bwa-mem2/bwa-mem2
 indexFasta: GATKResourceBundleAug2021/Homo_sapiens_assembly38.fasta
+# indexFasta: GIABResourceBundleFeb2024/GRCh38_GIABv3_no_alt_analysis_set_maskedGRC_decoys_MAP2K3_KMT2C_KCNJ18.fasta
 
 # Bgzippped and tabix indexed bed file of regions to use in the DnaAlignQC, SomaticCaller, HaplotypeCalling, JointGenotyping 
 #analysisRegions: Bed/AllExonHg38Bed8April2020/hg38AllGeneExonsPad175bp.bed.gz
@@ -33,9 +34,6 @@ uniObRCRegions: Bed/AvatarNimIdtTwstBeds/sharedNimV1IdtV1-2TwistV2CCDS8March2023
 # Used by CutAdapt to mask adapter sequence in the fastq prior to alignment
 adapterR1: AGATCGGAAGAGCACACGTCTGAACTCCAGTCA
 adapterR2: AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT
-
-# Set this to 2500 for NovaSeq/NextSeq datasets, set it to 100 for HiSeq/MiSeq datasets, set to 0 for fastq from SRA to disable
-opticalDistance: 2500
 
 # Base and alignment quality score minimums
 baseQuality: 13

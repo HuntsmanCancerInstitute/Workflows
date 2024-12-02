@@ -1,0 +1,64 @@
+# Bash script to run inside the container, no need to modify anything in this file
+
+# 17 July 2024
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+set -e
+cd $jobDir
+rm -f FAILED COMPLETE QUEUED; touch STARTED
+
+# Node resources
+name=${PWD##*/}
+allThreads=$(nproc)
+allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+
+# Merge the fastqs?
+shopt -s nullglob; fq=(*q.gz); len=${#fq[@]}
+if [ $len -ne 2 ]
+then
+   echo 'More than 2 fastq files found, cating the R1s and R2s:'
+   ls -1 *_R1_* *_R2_* 
+   cat *_R1_* > $name"_merged_1.fastq.gz"
+   cat *_R2_* > $name"_merged_2.fastq.gz"
+   rm *_R1_* *_R2_*
+   fastqRead1=`realpath $name"_merged_1.fastq.gz"`
+   fastqRead2=`realpath $name"_merged_2.fastq.gz"`
+   echo
+else
+   fq1=${fq[0]}
+   fq2=${fq[1]}
+   fastqRead1=`realpath $fq1`
+   fastqRead2=`realpath $fq2`
+fi
+
+# Print params
+echo -n jobDir"       : "; echo $jobDir
+echo -n name"         : "; echo $name
+echo -n fastqRead1"   : "; echo $fastqRead1
+echo -n fastqRead2"   : "; echo $fastqRead2
+echo -n threads"      : "; echo $allThreads
+echo -n ram"          : "; echo $allRam
+echo -n host"         : "; echo $(hostname)
+
+# Look for required files
+ls *.sm *.yaml *q.gz  > /dev/null
+
+# Launch snakemake with these settings
+snakemake -p --cores $allThreads \
+--stats $name"_snakemake.stats.json" \
+--snakefile *.sm \
+--configfile *.yaml \
+--config \
+name=$name \
+fastqRead1=$fastqRead1 \
+fastqRead2=$fastqRead2 \
+allThreads=$allThreads \
+allRam=$allRam
+
+# Clean up prior to rsync back 
+rm -rf .snakemake STARTED RESTARTED QUEUED FAILED *cram* *q.gz
+
+## Svg DAG generation
+# Replace the top snakemake line with 'snakemake --dag'
+# Add onto the end '| dot -Tsvg > workflow.svg'

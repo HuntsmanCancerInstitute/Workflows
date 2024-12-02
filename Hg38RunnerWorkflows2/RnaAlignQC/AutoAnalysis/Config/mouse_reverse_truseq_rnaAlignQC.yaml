@@ -1,5 +1,5 @@
 ---
-# Last edit 27 January 2024 - david.nix@hci.utah.edu
+# Last edit 28 June 2024 - david.nix@hci.utah.edu
 # Configuration for the bulk RnaAlignQC workflow, keeping it simple, just hardcoding for redwood
 # Mouse latest
 
@@ -9,21 +9,24 @@ genomeBuild: GRCm39
 adapterR1: AGATCGGAAGAGCACACGTCTGAACTCCAGTCA
 adapterR2: AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT
 
+# OD for removing duplicates with clumpify: 50 to 100 for NovaSeqX, 12000 for NovaSeq6000, 40 for HiSeq 2500
+opticalDistance: 100
 mappingQuality: 13
 baseQuality: 13
 
 # root must end in /
 root: /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/atlatl/data/
 chrom: Mouse/GRCm39/chrom.sizes
-fqsConfig: Human/Hg38/TNRunner/redwood_fastq_screen_rRNA.conf
+fqsConfig: FastQ_Screen_Genomes/redwood_fastq_screen.conf
+multiQCConfig: MultiQC/bulkRnaSeq_multiqc_config.yaml
 analysisRegions: Human/Hg38/TNRunner/MouseGRCm39/GRCm39RefSeqCurated4Jan2023_MergedExonsStdChrNoUtrs.bed.gz
 
 # use 100bp for reads at and over 100bp, use the star50 for short reads
-starIndex: Mouse/GRCm39/release110/star100/
-gtf: Mouse/GRCm39/release110/Mus_musculus.GRCm39.110.gtf
-refFlat: Mouse/GRCm39/release110/Mus_musculus.GRCm39.110.refflat
-riboIntervals: Mouse/GRCm39/release110/Mus_musculus.GRCm39.110.rRNA.interval
-rsemIndex: Mouse/GRCm39/release110/rsem/RSEM
+starIndex: Mouse/GRCm39/release112/star100/
+gtf: Mouse/GRCm39/release112/Mus_musculus.GRCm39.112.gtf
+refFlat: Mouse/GRCm39/release112/Mus_musculus.GRCm39.112.refflat
+riboIntervals: Mouse/GRCm39/release112/Mus_musculus.GRCm39.112.rRNA.interval
+rsemIndex: Mouse/GRCm39/release112/rsem/RSEM
 fastaIndex: Mouse/GRCm39/Mus_musculus.GRCm39.dna.primary_assembly.fa
 
 # Must match chr usage (chr1 or just 1) of the input cram for fastq conversion

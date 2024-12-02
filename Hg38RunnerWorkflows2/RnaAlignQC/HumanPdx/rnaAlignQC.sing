@@ -1,0 +1,36 @@
+# Bash script to run inside the container
+# 24 Jan 2023
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+set -e
+cd $jobDir
+
+# Read info
+allThreads=$(nproc)
+allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+name=${PWD##*/}
+
+# Print params
+echo -n jobDir"       : "; echo $jobDir
+echo -n name"         : "; echo $name
+echo -n threads"      : "; echo $allThreads
+echo -n ram"          : "; echo $allRam
+echo -n host"         : "; echo $(hostname); echo
+
+snakemake -p --cores $allThreads \
+--stats $name"_snakemake.stats.json" \
+--snakefile *.sm \
+--configfile *.yaml \
+--config \
+name=$name \
+allThreads=$allThreads \
+allRam=$allRam
+
+# Clean up prior to rsync back 
+rm -rf .snakemake STARTED RESTARTED QUEUED FAILED *cram* *q.gz
+
+## Svg DAG generation
+# Replace the top snakemake line with 'snakemake --dag'
+# Add onto the end '| dot -Tsvg > workflow.svg'
+

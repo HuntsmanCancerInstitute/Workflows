@@ -1,0 +1,43 @@
+# 3 March 2022
+# David.Nix@hci.utah.edu
+# Huntsman Cancer Institute
+
+
+set -e
+cd $jobDir
+start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
+echo -e "\n---------- Starting -------- $((($(date +'%s') - $start)/60)) min"
+
+# Read params and files
+allThreads=$(nproc)
+allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+
+name=${PWD##*/}
+
+# Print params
+echo -n jobDir"     : "; echo $jobDir
+echo -n name"       : "; echo $name
+echo -n dataBundle" : "; echo $dataBundle
+echo -n threads"    : "; echo $allThreads
+echo -n ram"        : "; echo $allRam
+echo -n host"       : "; echo $(hostname)
+echo -n carisXml"   : "; realpath caris.xml
+echo -n carisVcf"   : "; realpath caris.vcf.gz
+echo -n recalVcf"   : "; realpath recall.vcf.gz
+
+snakemake -p \
+--cores $allThreads \
+--stats $name"_Hg38_snakemake.stats.json" \
+--snakefile *.sm \
+--configfile *.yaml \
+--config \
+name=$name \
+allThreads=$allThreads \
+allRam=$allRam
+
+echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min total"
+
+## Svg DAG generation
+# Replace the top snakemake line with 'snakemake --dag'
+# Add onto the end '| dot -Tsvg > workflow.svg'
+

@@ -1,0 +1,176 @@
+# Basic Dna Alignment and QC Workflow geared to processing WGS, WES, and chIPSeq datasets
+# 17 July 2024
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+############ No need to modify anything in this document #############
+
+# Params from config, see xxx.sing and xxx.yaml for details
+nameBuild = str(config["name"]) + "_" + str(config["genomeBuild"])
+adapterR1=config["adapterR1"]
+adapterR2=config["adapterR2"]
+opticalDistance=config["opticalDistance"]
+mappingQuality=config["mappingQuality"]
+baseQuality=config["baseQuality"]
+passingReadDepth=config["passingReadDepth"]
+fastqRead1 = config["fastqRead1"]
+fastqRead2 = config["fastqRead2"]
+uniObRCRegions = config["tnRunner"]+ config["uniObRCRegions"]
+fastaIndex = config["tnRunner"]+ config["fastaIndex"]
+fqsConfig = config["atlatl"]+ config["fqsConfig"]
+
+# Threads and memory
+allRam = int(round(float(config["allRam"])))
+allThreads = int(config["allThreads"])
+tenPerThreads = int(round(allThreads*0.1))
+if tenPerThreads > 10:
+    tenPerThreads = 10
+else:
+    tenPerThreads = 5
+nintyPerThreads = allThreads - tenPerThreads
+thirdThreads = int(round(allThreads/3,0))
+twoThirdThreads = allThreads - thirdThreads
+halfThreads = int(round(allThreads/2,0)) - 1
+quarterThreads = int(round(allThreads/4,0)) - 1
+
+# Apps not in path
+bwa = "/BioApps/Bwa/bwa-mem2-2.2.1_x64-linux/bwa-mem2"
+samtools = "/BioApps/Samtools/1.19/bin/samtools"
+htslib = "/BioApps/Htslib/1.13/bin"
+useq = "/BioApps/USeq/Apps"
+java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
+fastq_screen = "/BioApps/FastQ-Screen-0.15.3/fastq_screen"
+fastqc = "/BioApps/FastQC/fastqc"
+
+############# Rules ##############
+
+# Workflow trigger
+rule Launcher:
+    input:
+        "QC/FastQC/"+ nameBuild+ "_2_fastqc.zip",
+        "QC/FastQC/"+ nameBuild+ "_1_fastqc.zip",
+        "QC/FastqScreen/"+ nameBuild+ "_1_screen.txt",
+        "QC/ReadCoverage/"+ nameBuild+ "_UniObRC.json.gz"
+    output:
+        "COMPLETE"
+    shell:
+        "touch {output}"
+        
+############# Alignment ###############
+
+# Alt aware align with bwa mem2, masks adapters, coordinate sorts, removes duplicates. 
+# Removes unaligned and secondary alignments (fixmate -r)
+# Removes those with a MQ < minimum (view -q). 
+# Delete -r from the fixmate line and the entire "samtools view" line if calling structural variants. 
+rule Align:
+    output:
+        a = "Alignment/"+ nameBuild+ ".cram",
+        i = "Alignment/"+ nameBuild+ ".cram.crai"
+    log:
+        ca = "Logs/"+ nameBuild+ "_CutAdapt.log",
+        bw = "Logs/"+ nameBuild+ "_Bwa.log",
+        st = "Logs/"+ nameBuild+ "_Samtools.log"
+    params:
+        rg ="\"@RG\\tID:"+nameBuild+"\\tPL:ILLUMINA\\tLB:"+nameBuild+"\\tSM:"+nameBuild+ "\\tCN:HCI\\tPU:"+nameBuild+"\""
+    threads:
+        allThreads
+    shell:
+        "set -o pipefail && mkdir -p Tmp && "
+        "cutadapt -a {adapterR1} -A {adapterR2} --interleaved --action mask --cores={tenPerThreads} {fastqRead1} {fastqRead2} 2>> {log.ca} | " 
+        "{bwa} mem -t {twoThirdThreads} -R {params} -p {fastaIndex} /dev/stdin 2>> {log.bw} | "
+        "{samtools} fixmate -r -u -m - - 2>> {log.st} | "
+        "{samtools} view --with-header -u -q {mappingQuality} - 2>> {log.st} | "
+        "{samtools} sort -u -@ {thirdThreads} -T Tmp/sort - 2>> {log.st} | "
+        "{samtools} markdup -@ {tenPerThreads} -T Tmp/dup --no-multi-dup -r -f Logs/{nameBuild}_Markdup.log "
+        "  --write-index -d {opticalDistance} --reference {fastaIndex} - {output.a} 2>> {log.st} && "
+        "  rm -rf Tmp "
+
+############################# QC ###############################
+
+# BamPileup file for Read Coverage
+rule BamPileup:
+    input:
+        "Alignment/"+ nameBuild+ ".cram"
+    output:
+        bp = temp ("Alignment/"+ nameBuild+ ".bp.txt.gz"),
+        index = temp ("Alignment/"+ nameBuild+ ".bp.txt.gz.tbi")
+    log:
+        "Logs/"+ nameBuild+ "_BamPileup.log"
+    threads:
+        halfThreads
+    shell:
+        "{java} {useq}/BamPileup -b {input} -r {uniObRCRegions} -f {fastaIndex} "
+        "-s {output.bp} -p {threads} -t {htslib} -q {baseQuality} -m {mappingQuality} &> {log} "
+        
+# Calculate unique observation read coverage stats
+rule UniObRC:
+    input:
+        gz = "Alignment/"+ nameBuild+ ".bp.txt.gz",
+        ix = "Alignment/"+ nameBuild+ ".bp.txt.gz.tbi"
+    output:
+        "QC/ReadCoverage/"+ nameBuild+ "_UniObRC.json.gz"
+    log:
+        "Logs/"+ nameBuild+ "_UniObRC.log"
+    threads:
+        quarterThreads
+    shell:
+        "{java} {useq}/UniObRC -u {input.gz} -r {uniObRCRegions} -s QC/ReadCoverage/{nameBuild}_UniObRC.bed.gz "
+        "-d {passingReadDepth} -p {threads}  &> {log}; "
+        "rm -rf QC/ReadCoverage/{nameBuild}_UniObRC.bed &>> {log}; "
+
+# Look for contaminants
+rule FastqScreen:
+    input:
+        "Alignment/"+ nameBuild+ ".cram.crai"
+    output:
+        h = "QC/FastqScreen/"+ nameBuild+ "_1_screen.html",
+        t = "QC/FastqScreen/"+ nameBuild+ "_1_screen.txt"
+    threads:
+        quarterThreads
+    log:
+        "Logs/"+ nameBuild+ "_FastqScreen.log"
+    shell:
+        "{fastq_screen} --threads {threads} --subset 1000000 --outdir QC/FastqScreen "
+        "--conf {fqsConfig} --aligner bowtie2 {fastqRead1} &> {log}; "
+        "mv QC/FastqScreen/*html {output.h} &>> {log}; "
+        "mv QC/FastqScreen/*txt {output.t} &>> {log} "
+
+# Check fastq data quality, not sure this is actually helpful
+rule FastQC1:
+    input:
+        "Alignment/"+ nameBuild+ ".cram.crai"
+    output:
+        h = "QC/FastQC/"+ nameBuild+ "_1_fastqc.html",
+        z = "QC/FastQC/"+ nameBuild+ "_1_fastqc.zip"
+    threads:
+        quarterThreads
+    log:
+        "Logs/"+ nameBuild+ "_FastQC1.log"
+    shell:
+        "mkdir -p Temp1 ; "
+        "{fastqc} -T {threads} -f fastq {fastqRead1} -o Temp1 &> {log}; "
+        "mv Temp1/*fastqc.zip {output.z} &>> {log}; "
+        "mv Temp1/*fastqc.html {output.h} &>> {log}; "
+        "rm -rf Temp1 "
+
+# Check fastq data quality, not sure this is actually helpful
+rule FastQC2:
+    input:
+        "Alignment/"+ nameBuild+ ".cram.crai"
+    output:
+        h = "QC/FastQC/"+ nameBuild+ "_2_fastqc.html",
+        z = "QC/FastQC/"+ nameBuild+ "_2_fastqc.zip"
+    threads:
+        quarterThreads
+    log:
+        "Logs/"+ nameBuild+ "_FastQC2.log"
+    shell:
+        "mkdir -p Temp2 ; "
+        "{fastqc} -T {threads} -f fastq {fastqRead2} -o Temp2 &>> {log}; "
+       	"mv Temp2/*fastqc.zip {output.z} &>> {log}; "
+       	"mv Temp2/*fastqc.html {output.h} &>> {log}; "
+        "rm -rf Temp2 "
+
+onerror:
+    shell( "rm -f STARTED COMPLETE; touch FAILED")
+

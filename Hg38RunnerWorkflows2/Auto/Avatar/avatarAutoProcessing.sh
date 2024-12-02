@@ -10,8 +10,9 @@
 set -e; start=$(date +'%s')
 echo -e "\n---------- Starting -------- $((($(date +'%s') - $start)/60)) min"
 
-# load snakemake
+# load snakemake and a current version of java
 module load snakemake
+module load openjdk/17.0.1
 
 # make a work dir and change into it
 snakemake -p --cores all --snakefile avatarAutoProcessing.sm 
