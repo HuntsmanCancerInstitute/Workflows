@@ -1,5 +1,5 @@
 # GATK Copy Ratio Calling with USeq filtering
-# 5 April 2023
+# 19 Dec 2024
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -189,12 +189,14 @@ rule HeterozygousAllelicFrequency2Bw:
     log:
         "Logs/"+ nameBuild+ "_HeterozygousAllelicFrequency2Bw.log"
     shell:
-        "rm -rf HetTemp && mkdir HetTemp && "
-        "grep -v ^@ {input.t} | grep -v ^CONTIG > HetTemp/{nameBuild}.tumor.af.txt  2> {log} && "
-        "{java} {useq}/Text2USeq -o  -f HetTemp -c 0 -b 1 -v 3,2 -g H_sapiens_Dec_2013 &>> {log} && "
-        "{java} {useq}/USeq2UCSCBig -u HetTemp -d {ucsc} &>> {log} && "
-        "mv -f HetTemp/*.af.bw Results/ &>> {log} && "
-        "rm -rf HetTemp "
+       "rm -rf HetTemp && mkdir HetTemp; "
+       "grep -vE '(^@|^CONTIG)' {input.t} > HetTemp/{nameBuild}.tumor.af.txt  2> {log} || true; "
+       "numLines=$(cat HetTemp/{nameBuild}.tumor.af.txt | wc -l); "
+       "if [ $numLines -eq 0 ]; then touch {output}; echo 'No heterozygous AFs! Making mock tumor.af.bw, it is empty!' &>> {log}; "
+       "else {java} {useq}/Text2USeq -o  -f HetTemp -c 0 -b 1 -v 3,2 -g H_sapiens_Dec_2013 &>> {log}; "
+       "{java} {useq}/USeq2UCSCBig -u HetTemp -d {ucsc} &>> {log}; "
+       "mv -f HetTemp/*.af.bw Results/ &>> {log}; "
+       "fi; rm -rf HetTemp "
 
 # Filter and tabix the het and copy ratios
 rule IndexHetAndCopyRatios:
@@ -210,7 +212,7 @@ rule IndexHetAndCopyRatios:
         "grep -vE '(@|CONTIG)' {input.tCr} > {nameBuild}.tumor.cr.txt 2> {log} && "
         "{htslib}/bgzip {nameBuild}.tumor.cr.txt &>> {log} && "
         "{htslib}/tabix -s 1 -b 2 -e 3 {output.tCr} &>> {log} && "
-        "grep -vE '(@|CONTIG)' {input.tAf} > {nameBuild}.hets.txt 2>> {log} && "
+        "grep -vE '(@|CONTIG)' {input.tAf} > {nameBuild}.hets.txt 2>> {log} || true; "
         "{htslib}/bgzip {nameBuild}.hets.txt &>> {log} && "
         "{htslib}/tabix -s 1 -b 2 -e 2 {output.tAf} &>> {log}"
 

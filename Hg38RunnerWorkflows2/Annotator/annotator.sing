@@ -1,5 +1,5 @@
 # Bash script to run inside the container
-# 7 March 2022
+# 6 Jan 2025
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -22,6 +22,10 @@ echo -n threads"    : "; echo $allThreads
 echo -n ram"        : "; echo $allRam
 echo -n host"       : "; echo $(hostname); echo
 
+# Look for required config files, will throw error if missing
+ls annotatedVcfParser.config.txt vcfCallFrequency.config.txt oncoKB.config.txt annotator.yaml > /dev/null
+
+# Launch snakemake
 snakemake -p --cores $allThreads \
 --stats $name"_Hg38.snakemake.stats.json" \
 --snakefile *.sm \

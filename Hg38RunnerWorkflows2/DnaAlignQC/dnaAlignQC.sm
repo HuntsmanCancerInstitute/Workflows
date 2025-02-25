@@ -1,5 +1,5 @@
 # Dna Alignment and QC Workflow 
-# 24 Jan 2024
+# 17 Dec 2024
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -38,6 +38,8 @@ samtools = "/BioApps/Samtools/1.19/bin/samtools"
 htslib = "/BioApps/Htslib/1.13/bin"
 useq = "/BioApps/USeq/Apps"
 java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
+trimmomatic = "/BioApps/Trimmomatic/0.39/trimmomatic-0.39.jar"
+adapters = "/BioApps/Trimmomatic/0.39/adapters/TruSeq3-PE.fa"
 
 ############# Rules ##############
 
@@ -46,16 +48,15 @@ java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
 rule CleanupDirs:
     input:
         "QC/"+ nameBuild+ ".UniObRC.json.gz",
-        "QC/"+ nameBuild+ ".PassRC.bed.gz"    
+        "QC/"+ nameBuild+ ".PassRC.bed.gz"
     output:
         "COMPLETE"
     shell:
-        "rm -rf rawSeq.cram TempFastq/; touch {output}"
+        "rm -rf TempFastq/; touch {output}"
         
 ############# Alignment and Pileup ###############
 
 # If fastq aren't present look for a cram and convert it to fastq otherwise link the paired fastq into the TempFastq dir. 
-# Sometimes cutadapt often throws gzip errors yet gunzip -t shows no issues, so gunzip then gzip the files. Ugg!!
 rule Fastq:
     output:
         fq1 = temp ("TempFastq/"+ nameBuild+ ".1.fq.gz"),
@@ -81,14 +82,36 @@ rule Fastq:
         "echo -n 'fastqReadOne : ' &>> {log} && realpath {output.fq1} &>> {log} && "
         "echo -n 'fastqReadTwo : ' &>> {log} && realpath {output.fq2} &>> {log} "
 
-# Alt aware align with bwa mem2, masks adapters, coordinate sorts, removes duplicates. 
-# Removes unaligned and secondary alignments (fixmate -r)
-# Removes those with a MQ < minimum (view -q). 
-# Delete -r from the fixmate line and the entire "samtools view" line if calling structural variants. 
-rule Align:
+# Trim adapters, not using cutadapt since it often fails due to gzip decompression issues that aren't an issue.
+# NexteraPE-PE.fa and SE versions available in the adpaters folder
+# Cuts overall run time in 1/2 compared to cutadapt
+rule Trimmomatic:
     input:
         fq1 = "TempFastq/"+ nameBuild+ ".1.fq.gz",
         fq2 = "TempFastq/"+ nameBuild+ ".2.fq.gz"
+    output:
+        fq1 = temp ("TempFastq/"+ nameBuild+ ".trimmed.1.fq.gz"),
+        fq2 = temp ("TempFastq/"+ nameBuild+ ".trimmed.2.fq.gz"),        
+        lg = "Logs/"+ nameBuild+ "_Trimmomatic.summary.log"
+    log:
+        "Logs/"+ nameBuild+ "_Trimmomatic.cmdLn.log"
+    threads:
+        4
+    shell:
+        "{java} {trimmomatic} PE -threads {threads} -summary {output.lg} {input.fq1} {input.fq2} {output.fq1} TempFastq/output_forward_unpaired.fq.gz "
+        "{output.fq2} TempFastq/output_reverse_unpaired.fq.gz "
+        "ILLUMINACLIP:{adapters}:2:30:10:2:True LEADING:3 TRAILING:3 MINLEN:36 &> {log}; "
+        "rm -f TempFastq/*unpaired.fq.gz "
+
+# Alt aware align with bwa mem2, coordinate sorts, removes duplicates.
+# Stops when more then 10 quality alignments are found (-c 10) 
+# Removes unaligned and secondary alignments (fixmate -r)
+# Removes those with a MQ < minimum (view -q). 
+# Delete -c 10, -r from the fixmate line, and the entire "samtools view" line if calling structural variants. 
+rule Align:
+    input:
+        fq1 = "TempFastq/"+ nameBuild+ ".trimmed.1.fq.gz",
+        fq2 = "TempFastq/"+ nameBuild+ ".trimmed.2.fq.gz"
     output:
         a = "Alignment/"+ nameBuild+ ".cram",
         i = "Alignment/"+ nameBuild+ ".cram.crai"
@@ -100,8 +123,7 @@ rule Align:
         allThreads
     shell:
         "set -o pipefail && mkdir -p Tmp && "
-        "cutadapt -a {adapterR1} -A {adapterR2} --interleaved --action mask --cores={tenPerThreads} {input.fq1} {input.fq2} 2>> {log} | " 
-        "{bwa} mem -t {twoThirdThreads} -R {params} -p {indexFasta} /dev/stdin 2>> {log} | "
+        "{bwa} mem -t {twoThirdThreads} -R {params} {indexFasta} {input.fq1} {input.fq2} 2>> {log} | "
         "{samtools} fixmate -r -u -m - - 2>> {log} | "
         "{samtools} view --with-header -u -q {mappingQuality} - 2>> {log} | "
         "{samtools} sort -u -@ {thirdThreads} -T Tmp/sort - 2>> {log} | "

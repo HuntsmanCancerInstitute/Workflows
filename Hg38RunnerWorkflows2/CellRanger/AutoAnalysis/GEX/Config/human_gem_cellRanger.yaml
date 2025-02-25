@@ -1,0 +1,17 @@
+---
+# Last edit 24 Feb 2025 - david.nix@hci.utah.edu
+# Configuration for the 10X GEM CellRanger workflow on redwood
+
+genomeBuild: GRCh38
+
+# root must end in /
+root: /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/atlatl/
+indexDir: data/Human/GRCh38/10x_star/refdata-gex-GRCh38-2020-A
+fqsConfig: data/FastQ_Screen_Genomes/redwood_fastq_screen.conf
+fqsApp: app/fastq_screen/v0.14.0/fastq_screen
+cellRangerApp: app/10X/cellranger-9.0.0/cellranger
+
+# sampleNames for each run, e.g. 'sampleNames: 22677X1_20240105_LH00227_009_A22H2G7LT3,22677X1_20240105_LH00227_009_A22H2G7LT3'
+
+
+

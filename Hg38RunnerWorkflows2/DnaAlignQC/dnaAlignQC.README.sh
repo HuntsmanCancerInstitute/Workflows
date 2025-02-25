@@ -4,11 +4,11 @@
 #SBATCH -N 1
 #SBATCH -t 96:00:00
 
-# 10 Jan 2024
+# 17 Dec 2024
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
-# This is a standard BWA mem alt aware alignment followed by quality filtering, deduplication, and read depth QC.
+# This is a standard BWA mem2 alt aware alignment followed by quality filtering, deduplication, and read depth QC.
 # The output alignment cram file has been filtered and only contains uniquely aligned primary alignments.
 # Follow the instructions in the dnaAlign.sm file to modify this for structural variant and repeat/ segment duplication analysis.
 

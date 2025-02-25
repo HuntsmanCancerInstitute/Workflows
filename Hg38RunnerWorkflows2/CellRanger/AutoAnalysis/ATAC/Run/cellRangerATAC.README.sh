@@ -4,12 +4,11 @@
 #SBATCH -N 1
 #SBATCH -t 96:00:00
 
-# 29 Dec 2024
+# 14 May 2024
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
-# This fires a standard RNASeq analysis (CutAdapt, STAR, RSEM, fetureCounts, QC, etc.) on paired end datasets.
-# Takes ~132min when disabling RSEM and BamPileup for Avatar datasets on Redwood
+# This runs a primary CellRanger analysis
 
 #### Do just once ####
 
@@ -17,27 +16,26 @@
 module load singularity
 
 # 2) Define file paths to "mount" in the container. The first is to the data bundle mirrored on BSR servers. The second is needed for cram conversion and sample concordance.
-dataBundle=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/atlatl/data
-tnRunnerDir=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner
+dataBundle=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/atlatl
 
-# 3) Modify the workflow xxx.sing file setting the paths to the required resources. These must be within the mounts.
-
-# 4) Build the singularity container, and define the path to the xxx.sif file, do just once after each update.
-#singularity pull docker://hcibioinformatics/public:STAR_SM_1
-container=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Containers/public_STAR_SM_1.sif
+# 3) Build the singularity container, and define the path to the xxx.sif file, do just once after each update.
+#singularity pull docker://hcibioinformatics/public:CellRanger_1
+container=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Containers/public_CellRanger_1.sif
 
 
 #### Do for every run ####
 
-# 1) Create a folder named as you would like the analysis name to appear, this along with the genome build will be prepended onto all files, no spaces, change into it. This must reside somewhere in the myData mount path.
+# 1) Create a folder for each sample named as you would like the analysis name to appear, this along with the genome build will be prepended onto all files, no spaces, change into it. This must reside somewhere in the myData mount path.
 
-# 2) SOFT LINK your paired end, gzipped fastq files or a raw cram file and index into the job directory. These WILL BE DELETED upon completion.
+# 2) SOFT LINK your gzipped fastq files for a particular sample into the job directory. These WILL BE DELETED upon completion.
 
-# 3) Copy over the workflow docs: xxx.sing, xxx.README.sh, and xxx.sm into the job directory.
+# 3) Copy over the workflow docs: xxx.sing, xxx.README.sh, xxx.sm, and species_libraryPrep matched xxx.cellRanger.yaml into the job directory.
 
-# 4) Launch the xxx.README.sh via slurm's sbatch or run it on your local server.  
+# 4) Add a 'sampleNames: xxx,yyy,zzz' entry in the yaml with one or more parsed sample names for CellRanger to merge, e.g. 'sampleNames: 20758X2_230503_A00421_0548_AH7M32DRX3,20758X2_230731_A00421_0576_BHGMFWDRX3' .  Alternatively, add this to a RUNME txt file and it will be parsed and added to the yaml.
 
-# 5) If the run fails, fix the issue and restart.  Snakemake should pick up where it left off.
+# 5) Launch the xxx.README.sh via slurm's sbatch or run it on your local server.  
+
+# 6) If the run fails, fix the issue and restart.  Snakemake should pick up where it left off.
 
 
 #### No need to modify anything below ####
@@ -58,8 +56,8 @@ rsync -rtL --exclude 'slurm-*' $jobDir/ $tempDir/$name/ && echo CopyOverOK || ec
 echo -e "\n---------- Launching container -------- $((($(date +'%s') - $start)/60)) min"
 cd $tempDir/$name
 set +e
-SINGULARITYENV_jobDir=$tempDir/$name SINGULARITYENV_dataBundle=$dataBundle SINGULARITYENV_tnRunnerDir=$tnRunnerDir \
-  singularity exec --containall --bind $dataBundle,$tempDir/$name,$tnRunnerDir $container \
+SINGULARITYENV_jobDir=$tempDir/$name SINGULARITYENV_dataBundle=$dataBundle \
+  singularity exec --bind $dataBundle,$tempDir/$name $container \
   bash $tempDir/$name/*.sing
 
 echo -e "\n---------- Files In Temp -------- $((($(date +'%s') - $start)/60)) min"
@@ -69,11 +67,7 @@ ls -1 $tempDir/$name
 echo -e "\n---------- Copying back results -------- $((($(date +'%s') - $start)/60)) min"
 sleep 2s
 rm -rf $tempDir/$name/*.cram $tempDir/$name/*.crai &> /dev/null || true
-rsync -rtL --exclude '*q.gz' $tempDir/$name/ $jobDir/ && echo CopyBackOK || echo CopyBackFAILED
-## 1:100 fail to copy over all of the files so just waiting then do again
-sleep 10s
-rsync -rtL --exclude '*q.gz' $tempDir/$name/ $jobDir/
-
+rsync -rtL --exclude '*q.gz' $tempDir/$name/ $jobDir/ && echo CopyBackOK || { echo CopyBackFAILED; rm -f COMPLETE; }
 
 echo -e "\n---------- Files In JobDir -------- $((($(date +'%s') - $start)/60)) min"
 ls -1 $jobDir; cd $jobDir; rm -rf $tempDir &> /dev/null || true
@@ -84,8 +78,10 @@ then
   echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min total"
   mkdir -p RunScripts
   mv -f slurm* *stats.json Logs/ 
-  mv -f rnaAlignQC* RUNME  RunScripts/ 
-  rm -rf .snakemake STARTED RESTARTED QUEUED FAILED *cram* *q.gz
+  mv -f *Ranger* RUNME RunScripts/ 
+  rm -rf .snakemake STARTED RESTARTED QUEUED FAILED 
+  # Delete the fastqs?
+  rm -f *q.gz
 else
   echo -e "\n---------- FAILED! -------- $((($(date +'%s') - $start)/60)) min total"
   rm -rf STARTED RESTARTED QUEUED

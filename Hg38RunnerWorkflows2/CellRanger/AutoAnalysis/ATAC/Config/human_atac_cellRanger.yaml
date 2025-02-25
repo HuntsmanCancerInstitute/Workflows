@@ -1,0 +1,16 @@
+---
+# Last edit 5 Dec 2024 - david.nix@hci.utah.edu
+# Configuration for the 10X ATAC CellRanger workflow, keeping it simple, just hardcoding for redwood
+
+genomeBuild: GRCh38
+
+# root must end in /
+root: /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/atlatl/
+indexDir: data/Human/GRCh38/10x_atac/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/
+fqsConfig: data/FastQ_Screen_Genomes/redwood_fastq_screen.conf
+fqsApp: app/fastq_screen/v0.14.0/fastq_screen
+cellRangerApp: app/10X/cellranger-atac-2.1.0/cellranger-atac
+
+# Provide a 'sampleNames: 24421X1_20240822_LH00227_0101_A22T27JLT3' entry
+
+

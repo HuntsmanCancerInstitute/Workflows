@@ -1,0 +1,118 @@
+# Primary analysis of CellRanger fastq
+# 4 Dec 2024
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+# Threads and memory
+allThreads = int(config["allThreads"])
+halfThreads = int(round(allThreads/2,0)) - 1
+allRam = int(round(float(config["allRam"])))
+
+# Params
+sampleNames = config["sampleNames"]
+nameBuild = str(config["name"])+ "_"+ config["genomeBuild"]
+indexDir = config["root"] + config["indexDir"]
+cellranger = config["root"] + config["cellRangerApp"]
+samtools = "/BioApps/Samtools/1.19.2/bin/samtools"
+fastaIndex = indexDir + "/fasta/genome.fa"
+fqsConfig = config["root"] + config["fqsConfig"]
+fqsApp = config["root"] + config["fqsApp"]
+
+rule Cleanup:
+    input:
+        nameBuild+ "/outs/possorted_bam.cram",
+        "QC/FastqScreen/"+ nameBuild+ "_screen.txt",
+        "QC/CellRanger/"+ nameBuild+ "_web_summary.html"
+    output:
+        "COMPLETE"
+    log:
+        "Logs/"+ nameBuild+ "_Cleanup.log"
+    shell:
+        "zip -r "+nameBuild+"/Misc.zip "+nameBuild+"/_* &> {log}; "
+        "rm -rf "+nameBuild+"/SC_ATAC_COUNTER_CS "+nameBuild+"/_* &>> {log};"
+        "touch {output}; "
+
+# Look for the required resources
+rule CheckFilesParams:
+    output:
+        temp ("FileCheckOK")
+    log:
+        "Logs/"+ nameBuild+ "_CheckFilesParams.log"
+    shell:
+        "echo -ne nameBuild:'\t' &> {log} && echo {nameBuild} &>> {log} && "
+        "echo -ne sampleNames:'\t' &>> {log} && echo {sampleNames} &>> {log} && "
+        "echo -ne indexDir:'\t' &>> {log} && echo {indexDir} &>> {log} && "
+        "echo -ne fastq:'\t' &>> {log} && ls *q.gz {indexDir} &>> {log} && "
+        "numFastq=$(ls *q.gz | wc -l) && "
+        "if [ $numFastq -lt 3 ]; then "
+        "  echo 'FAILED to find at least 3 fastq.gz files, aborting.' &>> {log}; " 
+        "  exit 1; "
+        "else "
+        "  echo 'Correct number fastq files found' &>> {log}; "
+        "fi; "
+        "touch {output}"
+
+# Run CellRanger 
+rule CellRangerCount:
+    input:
+        "FileCheckOK"
+    output:
+        bam = temp (nameBuild+ "/outs/possorted_bam.bam"),
+        bai = temp (nameBuild+ "/outs/possorted_bam.bam.bai"),
+        qc = nameBuild+ "/outs/web_summary.html"
+    threads:
+        allThreads
+    log:
+        "Logs/"+ nameBuild+ "_CellRangerCount.log",
+    shell:
+        "rm -rf *{nameBuild}* &> {log}; "
+        "{cellranger} count --localcores {threads} --localmem {allRam} "
+        "--id={nameBuild} --fastqs=. --sample={sampleNames} " 
+        "--reference {indexDir} &>> {log}; " 
+
+# Copy web summary to QC folder, MultiQC cellranger module doesn't support ATAC
+rule CellRangerQC:
+    input:
+        nameBuild+ "/outs/web_summary.html"
+    output:
+        "QC/CellRanger/"+ nameBuild+ "_web_summary.html"
+    log:
+        "Logs/"+ nameBuild+ "_CellRangerQC.log"
+    shell:
+        "mkdir -p QC/CellRanger &> {log}; "
+        "cp {input} {output} &>> {log}; "
+
+# Convert bam to cram
+rule SamtoolsCram:
+    input:
+        bam = temp (nameBuild+ "/outs/possorted_bam.bam"),
+        bai = temp (nameBuild+ "/outs/possorted_bam.bam.bai")
+    output:
+        cram = nameBuild+ "/outs/possorted_bam.cram",
+        crai = nameBuild+ "/outs/possorted_bam.cram.crai"
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_SamtoolsCram.log"
+    shell:
+        "{samtools} view -C -T {fastaIndex} --write-index -o {output.cram} -@ {threads} {input.bam} &> {log}; "
+
+# Look for contaminants and species swaps
+rule FastqScreen:
+    input:
+        "FileCheckOK"
+    output:
+        "QC/FastqScreen/"+ nameBuild+ "_screen.txt"
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_FastqScreen.log"
+    shell:
+        "shopt -s nullglob; fq=(*_R1_*.gz); "
+        "{fqsApp} --threads {threads} --subset 1000000 --outdir QC/FastqScreen "
+        " --force --conf {fqsConfig} --aligner bowtie2 ${{fq[0]}} &> {log} && "
+        "mv -f QC/FastqScreen/*screen.txt {output} &>> {log} && "
+        "rm -f QC/FastqScreen/*screen.html"
+
+onerror:
+    shell( "rm -f STARTED COMPLETE DONE; touch FAILED")

@@ -2,7 +2,7 @@
 #SBATCH --account=hci-rw
 #SBATCH --partition=hci-rw
 #SBATCH -N 1
-#SBATCH -t 48:00:00
+#SBATCH -t 96:00:00
 
 # 5 Dec 2022
 # David.Nix@Hci.Utah.Edu

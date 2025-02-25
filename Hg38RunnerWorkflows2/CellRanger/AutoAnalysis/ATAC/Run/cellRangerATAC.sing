@@ -1,30 +1,30 @@
-# Bash script to run inside the container, no need to modify anything in this file
-
-# 17 Dec 2024
+# Bash script to run inside the container
+# 27 Nov 2024
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
 set -e
 cd $jobDir
-rm -f FAILED COMPLETE QUEUED; touch STARTED
 
-# Node resources
-name=${PWD##*/}
+# Read info
 allThreads=$(nproc)
 allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+name=${PWD##*/}
 
 # Print params
 echo -n jobDir"       : "; echo $jobDir
 echo -n name"         : "; echo $name
-echo -n dataBundle"   : "; echo $dataBundle
 echo -n threads"      : "; echo $allThreads
 echo -n ram"          : "; echo $allRam
-echo -n host"         : "; echo $(hostname)
+echo -n host"         : "; echo $(hostname); echo
 
-# Look for required files
-ls $dataBundle  *.sm *.yaml  > /dev/null
+# If a RUNME is present append the sampleNames onto the yaml, its OK if this is repeated
+if test -f RUNME; then
+  sns='sampleNames: '$(grep sampleNames RUNME | cut -f2)
+  echo $sns >> *.yaml
+fi
 
-# Launch snakemake with these settings
+# Launch snakemake
 snakemake -p --cores $allThreads \
 --stats $name"_snakemake.stats.json" \
 --snakefile *.sm \
@@ -34,6 +34,10 @@ name=$name \
 allThreads=$allThreads \
 allRam=$allRam
 
+# Clean up prior to rsync back 
+rm -rf .snakemake STARTED RESTARTED QUEUED FAILED
+
 ## Svg DAG generation
 # Replace the top snakemake line with 'snakemake --dag'
 # Add onto the end '| dot -Tsvg > workflow.svg'
+

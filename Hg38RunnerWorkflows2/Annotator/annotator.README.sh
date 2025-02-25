@@ -6,7 +6,7 @@
 
 set -e
 
-# 4 Jan 2022
+# 6 Jan 2025
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -23,8 +23,8 @@ dataBundle=$(grep dataBundle *.yaml | grep -v ^# | cut -d ' ' -f2)
 
 # 3) Check and if needed, modify the parameters specific to this workflow in the snakemake config yaml file.
 
-# 4) If needed build the singularity container, and define the path to the xxx.sif file, do after each update, e.g. singularity pull docker://hcibioinformatics/public:SnpEff_SM_1
-container=$dataBundle/Containers/public_SnpEff_SM_1.sif
+# 4) If needed build the singularity container, and define the path to the xxx.sif file, do after each update, e.g. singularity pull docker://hcibioinformatics/public:SnpEff_SM_2
+container=$dataBundle/Containers/public_SnpEff_SM_2.sif
 
 # 5) If running this on AWS EC2 via the JobRunner, build the resource archive, and upload it to S3
 # cd /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/
@@ -42,6 +42,10 @@ container=$dataBundle/Containers/public_SnpEff_SM_1.sif
 
 # 7) Create a file called vcfCallFrequency.config.txt and provide params for the USeq VCFCallFrequency application, e.g. '-v Hg38/Somatic/Avatar/Vcf -b Hg38/Somatic/Avatar/Bed -m 0.1'
 
+# 8) Create a file called oncoKB.config.txt containing two lines. The first is the OncoKB licensing key, see https://www.oncokb.org.  The second is the OncoTree tumor type abbreviation 'CODE', see https://oncotree.mskcc.org/?version=oncotree_latest_stable&field=NAME, use 'OTHER' if not known or a normal germline sample.
+#    E.g. 
+#    97c69z57-1674-467a-9150-v09d3a21655d
+#    PRAD
 
 #### Do for every run ####
 
@@ -49,11 +53,11 @@ container=$dataBundle/Containers/public_SnpEff_SM_1.sif
 
 # 2) Copy or soft link your gzipped vcf file to annotate into the job directory naming it anything ending in .vcf.gz
 
-# 3) Copy over the workflow docs: xxx.sing, xxx.README.sh, xxx.sm, and the xxx.yaml snakemake config file into the job directory.
+# 3) Copy over the docs: xxx.sing, xxx.README.sh, xxx.sm, xxx.yaml, and three xxx.config.txt files into the job directory.
 
 # 4) Launch the xxx.README.sh via sbatch or run it on the local server, e.g. bash ./*README.sh  
 
-# 5) If the run fails, fix the issue and restart.  Snakemake should pick up where it left off.
+# 5) If the run fails, fix the issue and restart.  Snakemake should pick up where it left off. If needed, try deleting the .snakemake dir first to clear any locked files.
 
 
 
@@ -66,6 +70,7 @@ bash $jobDir/*.sing
 
 # Final cleanup
 mkdir -p RunScripts
+rm -f oncoKB.config.txt 
 mv -f annotator*  *config.txt RunScripts/ &> /dev/null || true
 mv -f *.yaml RunScripts/ &> /dev/null || true
 cp slurm* Logs/ &> /dev/null || true
