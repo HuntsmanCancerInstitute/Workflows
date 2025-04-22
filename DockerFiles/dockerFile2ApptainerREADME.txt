@@ -17,7 +17,8 @@ docker commit d636ab674755 hcibioinformatics/public:fipsSnakemake_10
 # push it to the repo 
 docker push hcibioinformatics/public:fipsSnakemake_10
 
-# login to redwood, pull. and run it as an apptainer
+# login to redwood, pull, and run it as an apptainer
+module load apptainer
 apptainer pull docker://hcibioinformatics/public:fipsSnakemake_10
 apptainer run public_fipsSnakemake_10.sif
 
