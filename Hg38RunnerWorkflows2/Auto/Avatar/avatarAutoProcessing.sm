@@ -1,4 +1,4 @@
-# 26 Sept 2024 
+# 18 April 2024 
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -294,7 +294,7 @@ rule GeneticCounselors:
         "   java -jar -Xmx10G ~/USeqApps/VCFConsensus -p $x -s ForGeneticCounselors/GermlineROI/IlluminaVcf/$name'_Illumina_Anno_Hg38.anno.filt.roi.vcf.gz' -o ForGeneticCounselors/GermlineROI/CoCalled/Vcfs/$name'_GatkIllum.roi.vcf.gz' -c -u &>> {log} &>> {log}; "
         "done; "
         "echo AnnotatedVcfParser &>> {log}; "
-        "java -jar -Xmx10G ~/USeqApps/AnnotatedVcfParser -v ForGeneticCounselors/GermlineROI/CoCalled/Vcfs -s ForGeneticCounselors/GermlineROI/CoCalled/AVP/Vcfs -y ~/TNRunner/GermlineFilteringConfigs/strictGermline_AnnotatedVcfParser.config.txt -C 12Sept2023 -T ~/TNRunner/GermlineFilteringConfigs/bestRefSeqForACMGPlus.txt &>> {log}; "
+        "java -jar -Xmx10G ~/USeqApps/AnnotatedVcfParser -v ForGeneticCounselors/GermlineROI/CoCalled/Vcfs -s ForGeneticCounselors/GermlineROI/CoCalled/AVP/Vcfs -y ~/TNRunner/GermlineFilteringConfigs/strictGermline_AnnotatedVcfParser.config.txt -C 31Dec2024 -T ~/TNRunner/GermlineFilteringConfigs/bestRefSeqForACMGPlus.txt -U {subjectRegistry}currentRegistry_* &>> {log}; "
         "rm ForGeneticCounselors/GermlineROI/CoCalled/AVP/Vcfs/*_Fail.vcf.gz &>> {log}; "
         "mv ForGeneticCounselors/GermlineROI/CoCalled/AVP/Vcfs/*.xls.gz  ForGeneticCounselors/GermlineROI/CoCalled/AVP/ &>> {log}; "
         "mv ForGeneticCounselors/GermlineROI/CoCalled/AVP/Vcfs/impactedGenes.txt.gz  ForGeneticCounselors/GermlineROI/CoCalled/AVP/ &>> {log}; "

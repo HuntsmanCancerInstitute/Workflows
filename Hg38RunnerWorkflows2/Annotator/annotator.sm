@@ -1,5 +1,5 @@
 # Annotation of a vcf file with snpEff, splice, and prior call freq, followed by region and quality filtering
-# 6 Jan 2025
+# 4 April 2025
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -19,7 +19,7 @@ vcfCallFreq = config["vcfCallFreq"]
 regionsOfInterest = config["dataBundle"] +"/"+ config["regionsOfInterest"]
 indexFasta = config["dataBundle"] +"/"+ config["indexFasta"]
 dataDir = config["dataBundle"] + "/AnnotatorData"
-gQueryData = config["dataBundle"] + "/GQuery/Data"
+gQueryData = config["dataBundle"] + "/GQuery/GQuery/Data"
 
 # Apps in the docker container
 java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
@@ -59,7 +59,7 @@ rule SnpEff:
         "Logs/"+ nameBuild+ "_SnpEff.log"
     shell:
         "{java} {snpEff}/snpEff.jar -dataDir {dataDir} -v -strict GRCh38.mane.1.2.refseq *vcf.gz "
-        "> {output} 2> {log} && mv -f snpEff_* Logs/ "
+        "> {output} 2> {log} || true ; mv -f snpEff_* Logs/ || true "
    		   
 # Clinvar
 rule Clinvar:

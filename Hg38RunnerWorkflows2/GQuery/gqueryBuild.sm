@@ -1,0 +1,265 @@
+# 26 Feb 2025 
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+# General Resources
+maxThreads = 40
+halfThreads = 20
+quarterThreads = 10
+email = "david.nix@hci.utah.edu"
+
+# S3 Resources
+patientMolRepo = "hcibioinfo-patient-molecular-repo"
+
+# Apps
+jj = "java -jar -Djava.io.tmpdir=. -Xmx100G"
+useq = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps"
+htslib = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/HtsLib/1.15/bin"
+indexer = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/GQuery/GQueryIndexer.jar"
+
+############# Rules ##############
+
+# Workflow trigger, final rule 
+rule Finalize:
+    input:
+        "Status/GQueryIndexer_COMPLETE"
+    output:
+        "Status/All_COMPLETE"
+    log:
+        "Logs/Finalize.log"
+    shell:
+        "mv GQuery Old_GQuery &> {log}; "
+        "mv NewGQuery GQuery &>> {log}; "
+        "touch {output} &>> {log}"
+
+rule AWSRepoIndex:
+    output:
+        "pmr.paths.txt"
+    log:
+        "Logs/AWSRepoIndex.log"
+    threads:
+        halfThreads
+    shell:
+        "aws s3 ls s3://{patientMolRepo} --recursive > {patientMolRepo}.index.txt 2> {log}; "
+        "cat {patientMolRepo}.index.txt | sed 's/ \{{1,\}}/\t/g' | cut -f 4 > {output} 2>> {log}; "
+
+rule AWSRepoDownload:
+    input:
+        "pmr.paths.txt"
+    output:
+        "Status/AWSRepoDownload_COMPLETE"
+    log:
+        "Logs/AWSRepoDownload.log"
+    threads:
+        maxThreads
+    shell:
+        "rm -f pmr.download.txt 2> {log};"
+        ""
+        "grep '/Avatar/.*/SomaticVariantCalls/.*_Anno/Vcfs/.*anno.vcf.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Avatar/.*/SomaticVariantCalls/.*_Illumina/Bed/.*CoveredRegion.bed.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Avatar/.*/GermlineVariantCalling/.*_GATK_Anno/Vcfs/.*anno.vcf.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Avatar/.*/Alignment/.*_NormalDNA/QC/.*bed.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Avatar/.*/CopyAnalysis/.*_GATKCopyRatio/Results/.*seg.pass.bed.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Avatar/.*/RNAAnalysis/.*_STARFusion/.*sf.bed.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        ""
+        "grep '/Tempus/.*/SomaticVariantCalls/.*_Anno/Vcfs/.*anno.vcf.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Tempus/.*/SomaticVariantCalls/.*_Illumina/Bed/.*CoveredRegion.bed.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Tempus/.*/RNAAnalysis/.*_STARFusion/.*sf.bed.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Tempus/.*/CopyAnalysis/.*CopyRatio/Results/.*seg.pass.bed.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Tempus/.*/GermlineVariantCalling/.*_GATK_Anno/Vcfs/.*_Anno_Hg38.anno.vcf.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Tempus/.*/Alignment/.*NormalDNA/QC/.*bed.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        ""
+        "grep '/Caris/.*/SomaticVariantCalls/.*_Anno/Vcfs/.*anno.vcf.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Caris/.*/SomaticVariantCalls/.*_Illumina/Bed/.*CoveredRegion.bed.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Caris/.*/SomaticVariantCalls/.*_ClinicalVars/ParsedCarisResults/.*fusions.bed.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Caris/.*/RNAAnalysis/.*_STARFusion/.*sf.bed.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Caris/.*/SomaticVariantCalls/.*_ClinicalVars/ParsedCarisResults/.*cnv.bed.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        ""
+        "grep '/Invitae/.*/GermlineVariantCalling/.*_Hg38_Anno/Vcfs/.*vcf.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Invitae/.*/GermlineVariantCalling/.*_Hg38/.*bed.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        ""
+        "paste -d '>' pmr.download.txt pmr.download.txt > pmr.2xdownload.txt 2>> {log}; "
+        "sed -e 's/^/s3:\/\/{patientMolRepo}\//' pmr.2xdownload.txt > pmr.s3copy.txt 2>> {log}; "
+        "module load openjdk/11.0.17_8 &>> {log}; "
+        "{jj} ~/BioApps/AwsApps/S3Copy_0.6.jar -u -l -e {email} -j pmr.s3copy.txt &>> {log}; "
+        "rm -f pmr.download.txt pmr.2xdownload.txt pmr.s3copy.txt &>> {log}; "
+        ""
+        "touch {output} &>> {log}; "
+
+rule VCFTabix:
+    input:
+        "Status/AWSRepoDownload_COMPLETE"
+    output:
+        "Status/VCFTabix_COMPLETE"
+    log:
+        "Logs/VCFTabix.log"
+    threads:
+        halfThreads
+    shell:
+        "{jj} {useq}/VCFTabix -t {htslib} -e -v Patients &> {log}; "
+        "touch {output}"
+
+rule BedTabix:
+    input:
+        "Status/AWSRepoDownload_COMPLETE"
+    output:
+        "Status/BedTabix_COMPLETE"
+    log:
+        "Logs/BedTabix.log"
+    threads:
+        halfThreads
+    shell:
+        "{jj} {useq}/BedTabix -t {htslib} -e -v Patients &> {log}; "
+        "touch {output}"
+
+rule PrepNewGQueryIndex:
+    output:
+        "Status/PrepNewGQueryIndex_COMPLETE"
+    log:
+        "Logs/PrepNewGQueryIndex.log"
+    shell:
+        "ls {indexer} &> {log}; "
+        "mkdir -p NewGQuery/Data/Hg38/Germline/ &>> {log}; "
+        "cp -r GQuery/Data/Hg38/Germline/RSR NewGQuery/Data/Hg38/Germline/ &>> {log}; "
+        "cp -r GQuery/Data/Hg38/Germline/WDot NewGQuery/Data/Hg38/Germline/ &>> {log}; "
+        "cp -f GQuery/b37Hg19GRCh38Mm10ChrLen.bed NewGQuery/ &>> {log}; "
+        "touch {output} "
+
+rule Avatar:
+    input:
+        "Status/BedTabix_COMPLETE",
+        "Status/VCFTabix_COMPLETE"
+    output:
+        "Status/Avatar_COMPLETE"
+    log:
+        "Logs/Avatar.log"
+    threads:
+        quarterThreads
+    shell:
+        "mkdir -p NewGQuery/Data/Hg38/Germline/Avatar/Vcf NewGQuery/Data/Hg38/Germline/Avatar/Bed NewGQuery/Data/Hg38/Somatic/Avatar/Vcf NewGQuery/Data/Hg38/Somatic/Avatar/Bed NewGQuery/Data/Hg38/Somatic/Avatar/Fusion NewGQuery/Data/Hg38/Somatic/Avatar/Cnv/ &> {log}; "
+        "for x in $(ls Patients/*/Avatar/*/SomaticVariantCalls/*_Anno/Vcfs/*.anno.vcf.gz*); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); rp=$(realpath $x); ln -s -f $rp NewGQuery/Data/Hg38/Somatic/Avatar/Vcf/$coreId'_'$fileName &>> {log}; done; "
+        "for x in $(ls Patients/*/Avatar/*/SomaticVariantCalls/*_Illumina/Bed/*CoveredRegion.bed.gz*); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); rp=$(realpath $x); ln -s -f $rp NewGQuery/Data/Hg38/Somatic/Avatar/Bed/$coreId'_'$fileName &>> {log}; done; "
+        "for x in $(ls Patients/*/Avatar/*/GermlineVariantCalling/*_GATK_Anno/Vcfs/*.anno.vcf.gz*); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); rp=$(realpath $x); ln -s -f $rp NewGQuery/Data/Hg38/Germline/Avatar/Vcf/$coreId'_'$fileName &>> {log}; done; "
+        "for x in $(ls Patients/*/Avatar/*/Alignment/*_NormalDNA/QC/*Pass*.bed.gz*); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); rp=$(realpath $x); ln -s -f $rp NewGQuery/Data/Hg38/Germline/Avatar/Bed/$coreId'_'$fileName &>> {log}; done; "
+        "for x in $(ls Patients/*/Avatar/*/CopyAnalysis/*_GATKCopyRatio/Results/*seg.pass.bed.gz*); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); rp=$(realpath $x); ln -s -f $rp NewGQuery/Data/Hg38/Somatic/Avatar/Cnv/$coreId'_'$fileName &>> {log}; done; "
+        "for x in $(ls Patients/*/Avatar/*/RNAAnalysis/*_STARFusion/*.sf.bed.gz*); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); rp=$(realpath $x); ln -s -f $rp NewGQuery/Data/Hg38/Somatic/Avatar/Fusion/$coreId'_'$fileName &>> {log}; done; "
+        "touch {output} "
+
+rule Tempus:
+    input:
+        "Status/BedTabix_COMPLETE",
+        "Status/VCFTabix_COMPLETE"
+    output:
+        "Status/Tempus_COMPLETE"
+    log:
+        "Logs/Tempus.log"
+    threads:
+        quarterThreads
+    shell:
+        "mkdir -p "
+        "NewGQuery/Data/Hg38/Somatic/Tempus/Vcf "
+        "NewGQuery/Data/Hg38/Somatic/Tempus/Bed "
+        "NewGQuery/Data/Hg38/Somatic/Tempus/Cnv "
+        "NewGQuery/Data/Hg38/Somatic/Tempus/Fusion "
+        "NewGQuery/Data/Hg38/Germline/Tempus/Vcf "
+        "NewGQuery/Data/Hg38/Germline/Tempus/Bed "
+        "&> {log}; "
+        ""
+        "for x in $(ls Patients/*/Tempus/*/SomaticVariantCalls/*_Anno/Vcfs/*.anno.vcf.gz*); "
+        "do fileName=$(basename $x); "
+        "coreId=$(echo $x | cut -d'/' -f2); "
+        "rp=$(realpath $x); ln -s -f $rp NewGQuery/Data/Hg38/Somatic/Tempus/Vcf/$coreId'_'$fileName &>> {log}; "
+        "done; "
+        ""
+        "for x in $(ls Patients/*/Tempus/*/SomaticVariantCalls/*_Illumina/Bed/*CoveredRegion.bed.gz*); "
+        "do fileName=$(basename $x); "
+        "coreId=$(echo $x | cut -d'/' -f2); "
+        "rp=$(realpath $x); ln -s -f $rp NewGQuery/Data/Hg38/Somatic/Tempus/Bed/$coreId'_'$fileName &>> {log}; "
+        "done; "
+        ""
+        "for x in $(ls Patients/*/Tempus/*/RNAAnalysis/*_STARFusion/*sf.bed.gz*); "
+        "do fileName=$(basename $x); "
+        "coreId=$(echo $x | cut -d'/' -f2); "
+        "rp=$(realpath $x); ln -s -f $rp NewGQuery/Data/Hg38/Somatic/Tempus/Fusion/$coreId'_'$fileName &>> {log}; "
+        "done; "
+        ""
+        "for x in $(ls  Patients/*/Tempus/*/CopyAnalysis/*CopyRatio/Results/*seg.pass.bed.gz*); "
+        "do fileName=$(basename $x); "
+        "coreId=$(echo $x | cut -d'/' -f2); "
+        "rp=$(realpath $x); ln -s -f $rp NewGQuery/Data/Hg38/Somatic/Tempus/Cnv/$coreId'_'$fileName &>> {log}; "
+        "done; "
+        ""
+        "for x in $(ls  Patients/*/Tempus/*/GermlineVariantCalling/*_GATK_Anno/Vcfs/*_Anno_Hg38.anno.vcf.gz*); "
+        "do fileName=$(basename $x); "
+        "coreId=$(echo $x | cut -d'/' -f2); "
+        "rp=$(realpath $x); ln -s -f $rp NewGQuery/Data/Hg38/Germline/Tempus/Vcf/$coreId'_'$fileName &>> {log}; "
+        "done; "
+        ""
+        "for x in $(ls  Patients/*/Tempus/*/Alignment/*NormalDNA/QC/*Pass*bed.gz*); "
+        "do fileName=$(basename $x); "
+        "coreId=$(echo $x | cut -d'/' -f2); "
+        "rp=$(realpath $x); ln -s -f $rp NewGQuery/Data/Hg38/Germline/Tempus/Bed/$coreId'_'$fileName &>> {log}; "
+        "done; "
+        ""
+        "touch {output} "
+
+# Copy files needed for GQuery
+rule Caris:
+    input:
+        "Status/BedTabix_COMPLETE",
+        "Status/VCFTabix_COMPLETE"
+    output:
+        "Status/Caris_COMPLETE"
+    log:
+        "Logs/Caris.log"
+    threads:
+        quarterThreads
+    shell:
+        "mkdir -p NewGQuery/Data/Hg38/Somatic/Caris/Vcf NewGQuery/Data/Hg38/Somatic/Caris/Bed NewGQuery/Data/Hg38/Somatic/Caris/Fusion NewGQuery/Data/Hg38/Somatic/Caris/Cnv/ &> {log}; "
+        "for x in $(ls Patients/*/Caris/*/SomaticVariantCalls/*_Anno/Vcfs/*.anno.vcf.gz*); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); rp=$(realpath $x); ln -s -f $rp NewGQuery/Data/Hg38/Somatic/Caris/Vcf/$coreId'_'$fileName &>> {log}; done; "
+        "for x in $(ls Patients/*/Caris/*/SomaticVariantCalls/*_Illumina/Bed/*CoveredRegion.bed.gz*); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); rp=$(realpath $x); ln -s -f $rp NewGQuery/Data/Hg38/Somatic/Caris/Bed/$coreId'_'$fileName &>> {log}; done; "
+        "for x in $(ls Patients/*/Caris/*/SomaticVariantCalls/*_ClinicalVars/ParsedCarisResults/*fusions.bed.gz*); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); rp=$(realpath $x); ln -s -f $rp NewGQuery/Data/Hg38/Somatic/Caris/Fusion/$coreId'_'$fileName &>> {log}; done; "
+        "for x in $(ls Patients/*/Caris/*/RNAAnalysis/*_STARFusion/*sf.bed.gz*); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); rp=$(realpath $x); ln -s -f $rp NewGQuery/Data/Hg38/Somatic/Caris/Fusion/$coreId'_'$fileName &>> {log}; done; "
+        "for x in $(ls Patients/*/Caris/*/SomaticVariantCalls/*_ClinicalVars/ParsedCarisResults/*cnv.bed.gz*); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); rp=$(realpath $x); ln -s -f $rp NewGQuery/Data/Hg38/Somatic/Caris/Cnv/$coreId'_'$fileName &>> {log} ; done; "
+        "touch {output}"
+
+rule Invitae:
+    input:
+        "Status/BedTabix_COMPLETE",
+        "Status/VCFTabix_COMPLETE"
+    output:
+        "Status/Invitae_COMPLETE"
+    log:
+        "Logs/Invitae.log"
+    threads:
+        quarterThreads
+    shell:
+        "mkdir -p NewGQuery/Data/Hg38/Germline/Invitae/ToMergeVcf NewGQuery/Data/Hg38/Germline/Invitae/ToMergeBed &> {log}; "
+        "rm -rf NewGQuery/Data/Hg38/Germline/Invitae/Bed/* NewGQuery/Data/Hg38/Germline/Invitae/Vcf/* &>> {log}; "
+        "for x in $(ls Patients/*/Invitae/*/GermlineVariantCalling/*_Hg38_Anno/Vcfs/*.vcf.gz*); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); rp=$(realpath $x); ln -s -f $rp NewGQuery/Data/Hg38/Germline/Invitae/ToMergeVcf/$coreId'_'$fileName &>> {log}; done; "
+        "for x in $(ls Patients/*/Invitae/*/GermlineVariantCalling/*_Hg38/*.bed.gz*); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); rp=$(realpath $x); ln -s -f $rp NewGQuery/Data/Hg38/Germline/Invitae/ToMergeBed/$coreId'_'$fileName &>> {log}; done; "
+        "{jj} {useq}/PmrVcfBedMerger -v NewGQuery/Data/Hg38/Germline/Invitae/ToMergeVcf/ "
+        "   -b NewGQuery/Data/Hg38/Germline/Invitae/ToMergeBed/ -e NewGQuery/Data/Hg38/Germline/Invitae/Bed/ "
+        "   -c NewGQuery/Data/Hg38/Germline/Invitae/Vcf/ &>> {log} ; "
+        "rm -rf NewGQuery/Data/Hg38/Germline/Invitae/ToMerge* &>> {log} ; "
+        "{jj} {useq}/VCFTabix -v NewGQuery/Data/Hg38/Germline/Invitae/Vcf -t {htslib} &>> {log}; "
+        "{jj} {useq}/BedTabix -v NewGQuery/Data/Hg38/Germline/Invitae/Bed -t {htslib} &>> {log}; "
+        "touch {output}"
+
+rule GQueryIndexer:
+    input:
+        "Status/PrepNewGQueryIndex_COMPLETE",
+        "Status/Invitae_COMPLETE",
+        "Status/Caris_COMPLETE",
+        "Status/Tempus_COMPLETE",
+        "Status/Avatar_COMPLETE"
+    output:
+        "Status/GQueryIndexer_COMPLETE"
+    log:
+        "Logs/GQueryIndexer.log"
+    threads:
+        maxThreads
+    shell:
+        "{jj} {indexer} -c NewGQuery/b37Hg19GRCh38Mm10ChrLen.bed -d NewGQuery/Data/ -t {htslib} -n 50 &> {log}; "
+        "touch {output}"
+

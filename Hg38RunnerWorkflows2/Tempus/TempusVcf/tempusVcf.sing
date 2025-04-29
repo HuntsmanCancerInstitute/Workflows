@@ -1,0 +1,53 @@
+# Bash script to run inside the container
+# 28 April 2025
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+set -e
+cd $jobDir
+
+# Read info
+allThreads=$(nproc)
+allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+vcf=`readlink -f *.vcf.gz`
+
+# Print params
+echo -n jobDir"       : "; echo $jobDir
+echo -n name"         : "; echo $name
+echo -n dataBundle"   : "; echo $dataBundle
+echo -n threads"      : "; echo $allThreads
+echo -n ram"          : "; echo $allRam
+echo -n host"         : "; echo $(hostname)
+echo -n vcf"          : "; echo $vcf; echo
+
+# Launch snakemake using a venv
+source /BioApps/venv/Snakemake/bin/activate
+snakemake -p \
+--cores $allThreads \
+--snakefile *.sm \
+--config \
+hg38Index=$dataBundle/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
+b37Index=$dataBundle/Indexes/B37/human_g1k_v37_decoy_phiXAdaptr.fasta \
+chain=$dataBundle/Indexes/GRCh37_to_GRCh38.chain.gz \
+geneRegionBed=$dataBundle/Bed/Tempus/gencode.v19.annotation.genes.bed.gz \
+geneAliasFile=$dataBundle/AnnotatorData/Hgnc/hgncGeneSymbolsAliases27March2025.txt.gz \
+vcf=$vcf \
+name=$name \
+allThreads=$allThreads \
+allRam=$allRam
+
+# Deactivate the venv
+deactivate
+
+# Notes
+## indexFastas - the b37 and hg38 fasta files with all their associated xxx.fa.fai indexs 
+## chain - CrossMap chain file for converting coordinates
+## geneRegionBed - bed file containing coordinates for the start and stop of each panel target gene
+## json - json formatted Tempus report
+## vcf - recalled variants from the 
+
+# Replace first and last lines above with the following to get dag svg graph
+	# /BioApps/Miniconda3/bin/snakemake --dag \
+	# allRam=$allRam | dot -Tsvg > $name"_dag.svg"
+
+

@@ -1,0 +1,69 @@
+# Bash script to run inside the container
+# 19 Feb 2020
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+set -e
+cd $jobDir
+
+# Read params and files
+tumorBam=`readlink -f tumor.bam`
+normalBam=`readlink -f normal.bam`
+tumorBed=`readlink -f tumor.bed.gz`
+normalBed=`readlink -f normal.bed.gz`
+allThreads=$(nproc)
+allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+
+# Print params
+echo -n jobDir"     : "; echo $jobDir
+echo -n name"       : "; echo $name
+echo -n dataBundle" : "; echo $dataBundle
+echo -n threads"    : "; echo $allThreads
+echo -n ram"        : "; echo $allRam
+echo -n host"       : "; echo $(hostname)
+echo -n tumorBam"   : "; echo $tumorBam
+echo -n normalBam"  : "; echo $normalBam
+echo -n tumorBed"   : "; echo $tumorBed
+echo -n normalBed"  : "; echo $normalBed; echo
+
+/BioApps/Miniconda3/bin/snakemake -p -T \
+--cores $allThreads \
+--snakefile *.sm \
+--config \
+allThreads=$allThreads \
+allRam=$allRam \
+regionsForAnalysis=$dataBundle/Bed/AvatarMergedNimIdtBeds/hg38NimIdtMergedPad150bp.bed.gz \
+indexFasta=$dataBundle/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa \
+bpileup=$dataBundle/MpileupBkg/Hg38TempusBkgnd/ExomePoN/tempusPoNxE.bp.txt.gz \
+queryDataDir=$dataBundle/GQuery/Data \
+queryIndexDir=$dataBundle/GQuery/Index \
+queryVcfFileFilter=Hg38/Somatic/Avatar/Vcf \
+queryBedFileFilter=Hg38/Somatic/Avatar/Bed \
+tumorBam=$tumorBam \
+normalBam=$normalBam \
+tumorBed=$tumorBed \
+normalBed=$normalBed \
+genomeBuild=Hg38 \
+name=$name \
+minTumorAlignmentDepth=20 \
+minNormalAlignmentDepth=15 \
+minTumorAltCount=3 \
+minTumorAF=0.01 \
+maxNormalAF=0.05 \
+minTNRatio=4 \
+minTNDiff=0.05 \
+fdrTier=1 \
+minBKZ=3 
+
+# Notes
+## regionsForAnalysis - a sorted, bgzipped, and tabix indexed bed file of regions to report variants. See https://github.com/samtools/htslib
+## indexFasta - the same fasta file used in sample alignment. Also needed are the index xxx.fa.fai and xxx.dict files.
+## mpileup - a multi sample background mpileup file of 10-25 normal bam files. See http://bioserver.hci.utah.edu/USeq/Documentation/cmdLnMenus.html#VCFBackgroundChecker
+## query Data and Index dirs - are those created by the GQueryIndexer App for use by the VCFCallFrequency USeq tool.
+## queryFileFilters - relative file path in the GQueryData dirs that determines what vcf and bed files to use in calculating each VcfCallFrequency.
+## useq - launch each app to see cmd line options
+
+# Replace first and last lines above with the following to get dag svg graph
+	# /BioApps/Miniconda3/bin/snakemake --dag \
+	# allRam=$allRam | dot -Tsvg > $name"_dag.svg"
+

@@ -1,0 +1,39 @@
+---
+# Last edit 2 Apr 2025 - qing.li@hci.utah.edu
+# Configuration for the bulk RnaAlignQC workflow, keeping it simple, just hardcoding for redwood
+# Zebrafish latest
+
+genomeBuild: GRCz11
+
+# Illumina TruSeq universal
+adapterR1: AGATCGGAAGAGCACACGTCTGAACTCCAGTCA
+adapterR2: AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT
+
+# OD for removing duplicates with clumpify: 50 to 100 for NovaSeqX, 12000 for NovaSeq6000, 40 for HiSeq 2500
+opticalDistance: 100
+mappingQuality: 13
+baseQuality: 13
+
+# root must end in /
+root: /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/atlatl/data/
+chrom: Zebrafish/GRCz11/chrom.sizes
+fqsConfig: FastQ_Screen_Genomes/redwood_fastq_screen.conf
+multiQCConfig: MultiQC/bulkRnaSeq_multiqc_config.yaml
+analysisRegions: Zebrafish/GRCz11/GRCz11RefSeqCurated3Apr2025_MergedExonsStdChrNoUtrs.bed.gz
+
+# use 100bp for reads at and over 100bp, use the star50 for short reads
+starIndex: Zebrafish/GRCz11/release112/star100/
+gtf: Zebrafish/GRCz11/release112/Danio_rerio.GRCz11.112.gtf
+refFlat: Zebrafish/GRCz11/release112/Danio_rerio.GRCz11.112.refflat
+riboIntervals: Zebrafish/GRCz11/release112/Danio_rerio.GRCz11.112.rRNA.interval
+rsemIndex: Zebrafish/GRCz11/release112/rsem/RSEM
+fastaIndex: Zebrafish/GRCz11/Danio_rerio.GRCz11.dna.primary_assembly.fa
+
+# Must match chr usage (chr1 or just 1) of the input cram for fastq conversion
+cramIndex: Zebrafish/GRCz11/Danio_rerio.GRCz11.dna.primary_assembly.fa
+
+# Strandedness, set all to the same
+rsemStrand: reverse # 'none', 'forward', and 'reverse' (default)
+fcStrand: 2 # 0 (unstranded), 1 (stranded, Tempus) and 2 (reversely stranded, default)
+crsStrand: SECOND_READ_TRANSCRIPTION_STRAND # NONE, FIRST_READ_TRANSCRIPTION_STRAND, SECOND_READ_TRANSCRIPTION_STRAND (default)
+

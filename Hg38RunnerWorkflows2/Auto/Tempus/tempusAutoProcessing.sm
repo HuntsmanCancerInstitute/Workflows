@@ -1,4 +1,4 @@
-# 25 Nov 2024 
+# 24 March 2025 
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -19,8 +19,6 @@ guGroup="GU"
 guOp="Neeraj_Agarwal Benjamin_Maughan Manish_Kohli Umang_Swami Sumati_Gupta Jennifer_Lloyd Julia_Batten Tenzin_Phunrab Lindsay_Maxwell Jared_Thorley Vinay_Mathew_Thomas Joshua_Quertinmont Hana_Ford"
 guEmail="david.nix@hci.utah.edu,JongTaek.Kim@aruplab.com,Roberto.Nussenzveig@hci.utah.edu"
 guBucket="s3://hcibioinfo-gu-patient-molecular-repo/Patients/"
-
-
 
 # Melanoma Group
 melGroup="MEL"
@@ -75,6 +73,7 @@ rule TempusDataWrangler:
         "-r {tempusPHIRepo} -p tempus -i tempusTestIds2Skip.txt "
         "-s Tmp -t 48 "
         "-c {subjectRegistry} &> {log};"
+        "gzip TJobs/*/Tempus/*/ClinicalReport/*vcf &>> {log}; "
         "touch {output}"
 
 # Run TNRunner2, a tool for coordinating the execution of many containerized snakemake workflows to process the data
@@ -95,13 +94,15 @@ rule TNRunner2:
         "-f {tnRunnerWorkflows}/StarFusion "
         "-m {tnRunnerWorkflows}/Msi "
         "-a {tnRunnerWorkflows}/Annotator "
+        "-S '-d {tnRunner}/GQuery/GQuery/Data -b Hg38/Somatic/Tempus/Bed -v Hg38/Somatic/Tempus/Vcf -m 0.1 ' "
+        "-o oncoKB.config.txt "
         "-q {tnRunnerWorkflows}/IlluminaGermline "
         "-h {tnRunnerWorkflows}/GATKGermline/HaplotypeCalling "
         "-j {tnRunnerWorkflows}/GATKGermline/JointGenotyping "
         "-w {tnRunner}/Bam/Hg38Exome/NA12878 "
         "-y {tnRunnerWorkflows}/CopyAnalysis "
         "-k {tnRunner}/CopyRatioBkgs/Tempus "
-        "-P XO.V1 "
+        "-P XO.V1,XT-ONCO.V1 "
         "-B {tnRunner}/BamPileups/Tempus "
         "-c {tnRunnerWorkflows}/SomaticCaller "
         "-v {tnRunnerWorkflows}/Tempus/TempusVcf "
@@ -214,13 +215,16 @@ rule cBioPortal:
         "[ -f $x ] && cp $x ForCBioPortal/Data/Hg38/Germline/Tempus/Vcf/$coreId'_'$fileName &>> {log}; "
         "done; "
         ""
-        "for x in $(ls TJobs/*/Tempus/*/ClinicalReport/*json 2> /dev/null || true); "
+        "for x in $(ls TJobs/*/Tempus/*/ClinicalReport/* 2> /dev/null || true); "
         "do fileName=$(basename $x); "
         "coreId=$(echo $x | cut -d'/' -f2); "
         "[ -f $x ] && cp $x ForCBioPortal/ClinicalReports/$coreId'_'$fileName &>> {log}; "
         "done; "
         ""
-        "{java} {useq}/TempusJson2Vcf -j ForCBioPortal/ClinicalReports -s ForCBioPortal/ClinicalReports/ParsedReports/ "
+
+        "{java} {useq}/TempusJson2Vcf -j ForCBioPortal/ClinicalReports -v ForCBioPortal/ClinicalReports "
+        "-s ForCBioPortal/ClinicalReports/ParsedReports/ "
+        "-g {tnRunner}/AnnotatorData/Hgnc/hgncGeneSymbolsAliases27March2025.txt.gz "
         "-f {tnRunner}/Indexes/B37/human_g1k_v37_decoy_phiXAdaptr.fasta "
         "-b {tnRunner}/Bed/Tempus/gencode.v19.annotation.genes.bed.gz &>> {log}; "
         "mv ForCBioPortal/ClinicalReports/ParsedReports/aggregatePatientInfo.xls ForCBioPortal/ &>> {log}; "
