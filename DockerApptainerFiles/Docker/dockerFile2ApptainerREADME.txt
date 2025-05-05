@@ -1,3 +1,11 @@
+# Major issues with this approach for Redwood
+# Some python apps must be recompiled on a FIPS 140 enabled machine, e.g. CrossMap, but not Snakemake
+# Thus build this directly on Redwood using an Apptainer def File like https://gist.github.com/robbenmigacz/d6b95d867c02a4629f144f3324105e97
+
+
+
+
+
 # david.nix@hci.utah.edu 22 April 2025
 
 ########## Creating a Apptainer from a Dockerfile ###########
