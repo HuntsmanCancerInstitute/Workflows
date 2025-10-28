@@ -1,5 +1,5 @@
 # Dna Alignment and QC Workflow 
-# 17 Dec 2024
+# 7 May 2025
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -72,6 +72,11 @@ rule Fastq:
         "echo 'Two fastq.gz files found, linking into TempFastq/' &>> {log}; "
         "ln -s $(realpath ${{fq[0]}}) {output.fq1} 2>> {log}; "
         "ln -s $(realpath ${{fq[1]}}) {output.fq2} 2>> {log}; "
+        "elif [ $len -gt 2 ]; then "
+        "echo 'More than 2 fastq files found, merging the R1s and R2s:' &>> {log}; "
+        "realpath *q.gz &>> {log}; "
+        "cat *1.fastq.gz > {output.fq1} 2>> {log}; "
+        "cat *2.fastq.gz > {output.fq2} 2>> {log}; "
         "else "
         "echo 'Fastq files not found, attempting to find cram file for conversion...' &>> {log}; "
         "echo -n 'Cram: ' &>> {log}; realpath *cram &>> {log} && "        

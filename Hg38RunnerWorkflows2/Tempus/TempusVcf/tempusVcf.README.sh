@@ -6,7 +6,7 @@
 
 set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 
-# 28 April 2025
+# 5 June 2025
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -16,18 +16,16 @@ set -e; start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
 #### Do just once ####
 
 # 1) Install Apptainer (https://apptainer.org/) or load via a module, place in your path
-# module load apptainer
+module load apptainer
 
 # 2) Define file path to the data bundle to "mount" in the container.
-# dataBundle=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner
-dataBundle=/scratch/u0028003/Tempus/TNRunner
+dataBundle=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner
 
 # 3) Modify the workflow xxx.sing file setting the paths to the required resources. These must be within the mounts.
 
 # 4) Build the apptainer container, and define the path to the xxx.sif file, do just once after each update.
-#singularity pull docker://hcibioinformatics/public:fibsSmCmUsTxVt_1
-#container=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Containers/public_Tempus_3.3.sif
-container=/scratch/u0028003/Tempus/public_fibsSmCmUsTxVt_1.sif
+# See: /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Containers/ApptainerDef/tempusVcf3.3.def
+container=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Containers/tempusVcf3.3.sif
 
 # 5) For running on AWS, create the dataBundle on redwood
 # cd /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1

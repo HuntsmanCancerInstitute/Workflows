@@ -4,7 +4,7 @@
 #SBATCH -N 1
 #SBATCH -t 96:00:00
 
-# 17 July 2024
+# 2 May 2025
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -15,7 +15,7 @@
 # 1) Install Singularity (https://www.sylabs.io) or load via a module, place in your path
 module load singularity
 
-# 2) Define file paths to "mount" in the container. The first is to the data bundle mirrored on BSR servers. The second is needed for cram conversion and sample concordance.
+# 2) Define file paths to "mount" in the container. The first is to the data bundle mirrored on CBI servers. 
 dataBundle=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/atlatl
 
 # 3) Modify the workflow xxx.sing file setting the paths to the required resources. These must be within the mounts.
@@ -25,11 +25,11 @@ dataBundle=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/atlatl
 container=/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/Containers/public_STAR_SM_1.sif
 
 
-#### Do for every run ####
+#### Do for every sample ####
 
-# 1) Create a folder named as you would like the analysis name to appear, this along with the genome build will be prepended onto all files, no spaces, change into it. This must reside somewhere in the myData mount path.
+# 1) Create a sample run folder named as you would like the analysis name to appear, this along with the genome build will be prepended onto all files, no spaces, change into it. This must reside somewhere in the myData mount path.
 
-# 2) SOFT LINK your paired end, gzipped fastq files, these should contain _R1_ and _R2_. Multiple pairs will be merged. These WILL BE DELETED upon completion.
+# 2) SOFT LINK your paired end, gzipped or ora compressed fastq files representing a SINGLE sample, these should contain _R1_ and _R2_. Multiple pairs will be merged. These WILL BE DELETED upon completion.
 
 # 3) Copy over the workflow docs: xxx.sing, xxx.README.sh, xxx.sm, and species_strand_adapter matched xxx.RnaAlignQC.yaml into the job directory.
 
@@ -63,11 +63,10 @@ SINGULARITYENV_jobDir=$tempDir/$name SINGULARITYENV_dataBundle=$dataBundle \
 echo -e "\n---------- Files In Temp -------- $((($(date +'%s') - $start)/60)) min"
 ls -1 $tempDir/$name
 
-# Copy back job files regardless of success or failure, disable exit on error, exclude the fastqs, and crams
+# Copy back job files regardless of success or failure, disable exit on error, exclude the slurm log
 echo -e "\n---------- Copying back results -------- $((($(date +'%s') - $start)/60)) min"
 sleep 2s
-rm -rf $tempDir/$name/*.cram $tempDir/$name/*.crai &> /dev/null || true
-rsync -rtL --exclude '*q.gz' $tempDir/$name/ $jobDir/ && echo CopyBackOK || { echo CopyBackFAILED; rm -f COMPLETE; }
+rsync -rtL --exclude 'slurm-*' $tempDir/$name/ $jobDir/ && echo CopyBackOK || { echo CopyBackFAILED; rm -f COMPLETE; }
 
 echo -e "\n---------- Files In JobDir -------- $((($(date +'%s') - $start)/60)) min"
 ls -1 $jobDir; cd $jobDir; rm -rf $tempDir &> /dev/null || true
@@ -80,10 +79,10 @@ then
   mv -f slurm* *stats.json Logs/ 
   mv -f rnaAlignQC* RUNME *yaml RunScripts/ 
   rm -rf .snakemake STARTED RESTARTED QUEUED FAILED 
-  rm -f *cram* *q.gz
+  rm -f *cram* *q.gz *.ora
 else
   echo -e "\n---------- FAILED! -------- $((($(date +'%s') - $start)/60)) min total"
-  rm -rf STARTED RESTARTED QUEUED
+  rm -rf STARTED QUEUED
   touch FAILED
 fi
 

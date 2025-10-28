@@ -1,0 +1,46 @@
+# Bash script to run inside the container
+# 6 Jan 2025
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+set -e
+cd $jobDir
+start=$(date +'%s'); rm -f FAILED COMPLETE QUEUED; touch STARTED
+
+echo -e "\n---------- Starting -------- $((($(date +'%s') - $start)/60)) min"
+
+# Read resources
+allThreads=$(nproc)
+allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+name=${PWD##*/}
+
+# Print params
+echo -n jobDir"     : "; echo $jobDir
+echo -n name"       : "; echo $name
+echo -n dataBundle" : "; echo $dataBundle
+echo -n threads"    : "; echo $allThreads
+echo -n ram"        : "; echo $allRam
+echo -n host"       : "; echo $(hostname); echo
+
+# Look for required config files, will throw error if missing
+ls annotatedVcfParser.config.txt vcfCallFrequency.config.txt oncoKB.config.txt annotator.yaml > /dev/null
+
+# Launch snakemake
+snakemake -p --cores $allThreads \
+--stats $name"_Hg38.snakemake.stats.json" \
+--snakefile *.sm \
+--configfile *.yaml \
+--config \
+name=$name \
+allThreads=$allThreads \
+allRam=$allRam
+
+echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min total"
+
+## Params
+# See the USeq app menus for information related to AnnotatedVcfParser and VCFCallFrequence as well as the readme for this workflow
+
+
+## Svg DAG generation
+# Replace the top snakemake line with 'snakemake --dag'
+# Add onto the end '| dot -Tsvg > workflow.svg'

@@ -1,4 +1,4 @@
-# 18 April 2024 
+# 15 Aug 2025 
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -16,19 +16,16 @@ patientMolRepo = "s3://hcibioinfo-patient-molecular-repo/Patients/"
 molRepoIndex = "s3://hcibioinfo-patient-lists/MolecularRepo/"
 
 # GU Group
-guEmail = "david.nix@hci.utah.edu,beverly.chigarira@hci.utah.edu,JongTaek.Kim@aruplab.com"
+guEmail = "david.nix@hci.utah.edu,JongTaek.Kim@aruplab.com,Roberto.Nussenzveig@hci.utah.edu"
 guBucket = "s3://hcibioinfo-gu-patient-molecular-repo/Patients/"
 
 # HEM Group
 hemEmail = "david.nix@hci.utah.edu,Nicola.Camp@hci.utah.edu,Myke.Madsen@hci.utah.edu,Brian.Avery@hci.utah.edu"
 hemPath = "/uufs/chpc.utah.edu/common/HIPAA/IRB_00088405-2/AVATAR/SourceData/"
 
-# PHI Resources
-# subjectRegistry = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/PHI/Registry/"
-#subjectRegistry = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/Scratch/Avatar/Auto/Registry/"
-#bkupSubjectRegistry = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/PHI/RegistryBackupDontUse/"
-subjectRegistry = "/scratch/general/pe-nfs1/u0028003/Avatar/Auto/RegistryCopy/Registry/"
-bkupSubjectRegistry = "/scratch/general/pe-nfs1/u0028003/Avatar/Auto/RegistryCopy/Backup/"
+# PHI Resources, must end in /
+bkupSubjectRegistry = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/PHI/RegistryBackupDontUse/"
+subjectRegistry = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/PHI/Registry/"
 
 # Apps, aws cli installed and in the path
 java = "java -jar -Djava.io.tmpdir=. -Xmx5G"
@@ -41,6 +38,7 @@ aster = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/Aster"
 # Workflow trigger, final Rule, cleanup 
 rule FinalCleanup:
     input:
+        "Status/SyncMainRepo_COMPLETE",
         "Status/UploadGUDatasets_COMPLETE",
         "Status/BackupSubjectRegistry_COMPLETE",
         "Status/CopyHemDatasets_COMPLETE"
@@ -51,13 +49,8 @@ rule FinalCleanup:
     shell:
         "touch {output} &> {log}"
 
-# "Status/LinkAsterFilesIntoJobsDirs_COMPLETE"
-        # "rm -rf AJobs/ &> {log}; touch {output}"
-	# "Status/DownloadFastqFiles_COMPLETE",
-        # "Status/SyncMainRepo_COMPLETE",
-        # "Status/UploadGUDatasets_COMPLETE",
-        # "Status/BackupSubjectRegistry_COMPLETE",
-        # "Status/CopyHemDatasets_COMPLETE"
+# Login to Azure repo: https://orienavatar.com/account/login -> Avatar_MolecularData_hg38
+# Not needed, they are putting this in the azure,  linkage file with ftp: https://ri-confluence.hci.utah.edu/display/BIOIN/SOP-+Avatar+Data+retrieval and put them in the ResourceFiles/ directory
 
 # This downloads a variety of Resource files for processing
 # Assumes a recent login session key is available, run 
@@ -104,12 +97,14 @@ rule FetchResourceFiles:
         "touch {output}"
 
 # Look for new Avatar datasets to process, uses the PHI to identify the patient in the registry
-rule avatarDataWrangler:
+rule AvatarDataWrangler:
     input:
         "Status/FetchResourceFiles_COMPLETE"
     output:
         d = "ResourceFiles/downloadAsterFiles.sh",
-        c = "Status/AvatarDataWrangler_COMPLETE"
+        c = "Status/AvatarDataWrangler_COMPLETE",
+        m = "ResourceFiles/moveAsterFiles.sh",
+        f = "ResourceFiles/makeSoftLinks.sh"
     log:
         "Logs/avatarDataWrangler.log"
     threads:
@@ -124,9 +119,7 @@ rule DownloadAsterSequenceFiles:
     input:
         "ResourceFiles/downloadAsterFiles.sh"
     output:
-        c = "Status/DownloadAsterSequenceFiles_COMPLETE",
-        m = "ResourceFiles/moveAsterFiles.sh",
-        f = "ResourceFiles/makeSoftLinks.sh"
+        c = "Status/DownloadAsterSequenceFiles_COMPLETE"
     log:
         "Logs/downloadAsterSequenceFiles.log"
     threads:
@@ -134,8 +127,8 @@ rule DownloadAsterSequenceFiles:
     shell:
         "mkdir -p FastqCramDownloads; "
         "cat {input} | parallel --will-cite --jobs 20 --halt soon,fail=1 &> {log}; "
-        "numFail=$(grep FAIL {log} | wc -l); "
-        "if (( $numFail > 0 )); then echo 'ERROR: Azure download failures found. Check Log!' &>> {log}; ls DownloadFailure; fi; "
+        "numFail=$(grep -v echo {log} | grep FAIL | wc -l); "
+        "if (( $numFail > 0 )); then echo 'ERROR: Azure download failures found. Check Log!' &>> {log}; fi; "
         "touch {output.c}"
 
 # Download files from the AWS Patient Molecular Repository
@@ -161,7 +154,7 @@ rule DownloadAwsSequenceFiles:
 rule LinkAsterFilesIntoJobsDirs:
     input:
         c = "Status/DownloadAwsSequenceFiles_COMPLETE",
-        m = "ResourceFiles/moveAsterFiles",
+        m = "ResourceFiles/moveAsterFiles.sh",
         f = "ResourceFiles/makeSoftLinks.sh"
     output:
         "Status/LinkAsterFilesIntoJobsDirs_COMPLETE"
@@ -188,6 +181,7 @@ rule TNRunner2:
         "-t {tnRunnerWorkflows}/RnaAlignQC "
         "-m {tnRunnerWorkflows}/Msi "
         "-a {tnRunnerWorkflows}/Annotator "
+        "-o oncoKB.config.txt "
         "-q {tnRunnerWorkflows}/IlluminaGermline "
         "-h {tnRunnerWorkflows}/GATKGermline/HaplotypeCalling "
         "-j {tnRunnerWorkflows}/GATKGermline/JointGenotyping "
@@ -201,28 +195,6 @@ rule TNRunner2:
         "-x 250 -l -P Mixed,IDTv2 &> {log}; "
         "rm -rf AJobs/IlluminaJointGenotyping_* AJobs/GATKJointGenotyping &>> {log}; "
         "touch {output}" 
-
-# "-f {tnRunnerWorkflows}/StarFusion ", some samples taking > 2 days, dropping
-
-# Copy files needed for GQuery
-rule GQuery:
-    input:
-        "Status/TNRunner2_COMPLETE"
-    output:
-        "Status/GQuery_COMPLETE"
-    log:
-        "Logs/gquery.log"
-    threads:
-        thirdThreads
-    shell:
-        "rm -rf ForGQuery/; mkdir -p ForGQuery/Data/Hg38/Germline/Avatar/Vcf ForGQuery/Data/Hg38/Germline/Avatar/Bed ForGQuery/Data/Hg38/Somatic/Avatar/Vcf ForGQuery/Data/Hg38/Somatic/Avatar/Bed ForGQuery/Data/Hg38/Somatic/Avatar/Fusion ForGQuery/Data/Hg38/Somatic/Avatar/Cnv/ &> {log}; "
-        "for x in $(ls AJobs/*/Avatar/*/SomaticVariantCalls/*_Anno/Vcfs/*.anno.vcf.gz* 2> /dev/null || true); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); [ -f $x ] && cp $x ForGQuery/Data/Hg38/Somatic/Avatar/Vcf/$coreId'_'$fileName &>> {log}; done; "
-        "for x in $(ls AJobs/*/Avatar/*/SomaticVariantCalls/*_Illumina/Bed/*CoveredRegion.bed.gz* 2> /dev/null || true); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); [ -f $x ] && cp $x ForGQuery/Data/Hg38/Somatic/Avatar/Bed/$coreId'_'$fileName &>> {log}; done;  "
-        "for x in $(ls AJobs/*/Avatar/*/GermlineVariantCalling/*_GATK_Anno/Vcfs/*.anno.vcf.gz* 2> /dev/null || true); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); [ -f $x ] && cp $x ForGQuery/Data/Hg38/Germline/Avatar/Vcf/$coreId'_'$fileName &>> {log}; done; "
-        "for x in $(ls AJobs/*/Avatar/*/Alignment/*_NormalDNA/QC/*.PassRC.bed.gz* 2> /dev/null || true); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); [ -f $x ] && cp $x ForGQuery/Data/Hg38/Germline/Avatar/Bed/$coreId'_'$fileName &>> {log}; done; "
-        "for x in $(ls AJobs/*/Avatar/*/CopyAnalysis/*_GATKCopyRatio/Results/*seg.pass.bed.gz* 2> /dev/null || true); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); [ -f $x ] && cp $x ForGQuery/Data/Hg38/Somatic/Avatar/Cnv/$coreId'_'$fileName &>> {log}; done;  "
-        "for x in $(ls AJobs/*/Avatar/*/RNAAnalysis/*_STARFusion/*.sf.bed.gz* 2> /dev/null || true); do fileName=$(basename $x); coreId=$(echo $x | cut -d'/' -f2); [ -f $x ] && cp $x ForGQuery/Data/Hg38/Somatic/Avatar/Fusion/$coreId'_'$fileName &>> {log}; done;  "
-        "touch {output} "
 
 # Copy files needed for cBioPortal
 rule cBioPortal:
@@ -337,7 +309,6 @@ rule AggregateQC:
 rule JobCleaner:
     input:
         "Status/CBioPortal_COMPLETE",
-        "Status/GQuery_COMPLETE",
         "Status/GeneticCounselors_COMPLETE",
         "Status/AggregateQC_COMPLETE",
         "ForCBioPortal/aggregateTPM_ForCBio.txt.gz"

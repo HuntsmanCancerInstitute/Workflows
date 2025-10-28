@@ -1,4 +1,4 @@
-# 28 April 2025
+# 10 June 2025
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -23,10 +23,10 @@ geneRegionBed = config["geneRegionBed"]
 geneAliasFile = config["geneAliasFile"]
 
 # Apps in the docker container, CrossMap is in /BioApps/venv
-htsLib = "/BioApps/HtsLib1.21/bin/"
+htsLib = "/BioApps/Htslib/1.22/bin/"
 java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
 useq = "/BioApps/USeq/Apps"
-vt = "/BioApps/vt/vt"
+vt = "/BioApps/Vt/vt/vt"
 
 ############# Rules ##############
 
@@ -47,17 +47,19 @@ rule VcfTabix:
 # Convert the Tempus json report to vcf, v3.3+ is very different than earlier json versions, thus new app
 rule TempusJson2Vcf:
     output:
-        temp (name +"_NoNormTempus.vcf")
+        v = temp (name +"_NoNormTempus.vcf"),
+        h = temp (name +"_TempHeader.txt")
     log:
         "Logs/"+ name + "_TempusJson2Vcf.log"
     threads:
         allThreads
     shell:
-        "grep 'v3.3' ClinicalReport/*json &> /dev/null && app=TempusV3Json2Vcf || app=TempusJson2Vcf ;"
-        "{java} {useq}/$app -j ClinicalReport/ -v ClinicalReport/ "
+        "grep 'v3.3' ClinicalReport/*json &> /dev/null && app='TempusV3Json2Vcf' || app='TempusJson2Vcf -v ClinicalReport' ;"
+        "{java} {useq}/$app -j ClinicalReport/ "
         "-s {name}_Tempus -f {b37Index} -b {geneRegionBed} -g {geneAliasFile} &> {log} && "
         "mv -f {name}_Tempus/aggregatePatientInfo.xls {name}_AggregatePatientInfo.xls &>> {log} && "
-        "gunzip -c {name}_Tempus/*vcf.gz > {output} 2>> {log} &&"
+        "gunzip -c {name}_Tempus/*vcf.gz > {output.v} 2>> {log} &&"
+        "grep tempus {output.v} > {output.h} 2>> {log} && "
         "rm -rf {name}_Tempus"
 
 # Normalize the Tempus vcf with Vt
@@ -71,12 +73,12 @@ rule NormalizeVcf:
     threads:
         allThreads
     shell:
-        "{vt} normalize -r {b37Index} {input} -o tempTempus.vcf &> {log} && "
-        "{vt} decompose_blocksub tempTempus.vcf -o tempTempus.decomp.vcf &>> {log} && "
+        "{vt} normalize -r {b37Index} {input} -o tempTempus.vcf &> {log}; "
+        "{vt} decompose_blocksub tempTempus.vcf -o tempTempus.decomp.vcf &>> {log}; "
         "grep '^#' tempTempus.decomp.vcf > tempTempus.vcf; "
         "grep -v '^#' tempTempus.decomp.vcf > tempTempus.toSort.vcf || true; "
         "sort -k1,1V -k2,2g tempTempus.toSort.vcf >> tempTempus.vcf; "
-        "mv -f tempTempus.vcf {output} && "
+        "mv -f tempTempus.vcf {output}; "
         "rm -f tempTempus* "
         
 # Convert the b37 coordinates to GRCh38
@@ -124,10 +126,11 @@ rule ConvertVcfEnds:
         rm -rf VCF2BedTemp
         """
 
-# Sort the Tempus vcf, sometimes this is empty causing grep to throw errors
+# Sort the Tempus vcf, sometimes this is empty causing grep to throw errors, add in tempus annotation lines
 rule SortVcf:
     input:
-        "Vcfs/"+ nameBuild+ "_Unsorted_Tempus.vcf.gz"
+        v = "Vcfs/"+ nameBuild+ "_Unsorted_Tempus.vcf.gz",
+        h = name +"_TempHeader.txt"
     output:
         "Vcfs/"+ nameBuild+ "_Tempus.vcf.gz"
     log:
@@ -135,8 +138,10 @@ rule SortVcf:
     threads:
         allThreads
     shell:
-        "gunzip -c {input} | grep '^#' > temp.vcf; "
-        "gunzip -c {input} | grep -v '^#' > temp.toSort.vcf || true; " 
+        "gunzip -c {input.v} | grep '^#' | grep -v '#CHROM' > temp.vcf; "
+        "cat {input.h} >> temp.vcf; "
+        "gunzip -c {input.v} | grep '#CHROM' >> temp.vcf; "
+        "gunzip -c {input.v} | grep -v '^#' > temp.toSort.vcf || true; " 
         "sort -k1,1V -k2,2g temp.toSort.vcf >> temp.vcf; "
         "rm -f temp.toSort.vcf; "
         "gzip -f temp.vcf; "

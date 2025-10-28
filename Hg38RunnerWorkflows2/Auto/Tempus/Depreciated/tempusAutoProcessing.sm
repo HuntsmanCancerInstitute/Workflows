@@ -1,4 +1,4 @@
-# 24 Sept 2025 
+# 29 April 2025 
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -11,7 +11,8 @@ tnRunnerWorkflows = tnRunner + "/Workflows"
 
 # S3 Resources
 tempusBucket = "s3://tm-huntsman"
-patientMolRepo = "s3://hcibioinfo-patient-molecular-repo"
+patientMolRepo = "s3://hcibioinfo-patient-molecular-repo/Patients/"
+molRepoIndex = "s3://hcibioinfo-patient-lists/MolecularRepo/"
 
 # GU Group
 guGroup="GU"
@@ -33,8 +34,8 @@ bkupSubjectRegistry = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/Nix/PHI
 tempusPHIRepo = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/PHI/Tempus/TempusJsonReports_PHI"
 
 # Apps, aws cli installed and in the path
-java = "java -jar -Djava.io.tmpdir=. -Xmx100G"
-useq = "/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/BioApps/USeq/Apps"
+java = "java -jar -Djava.io.tmpdir=. -Xmx5G"
+useq = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps"
 htslib = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/HtsLib/1.15/bin"
 
 
@@ -43,7 +44,6 @@ htslib = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/HtsLib/1.15/bin"
 # Workflow trigger, final Rule, cleanup 
 rule FinalCleanup:
     input:
-        "Status/TNRunner2_COMPLETE",
         "Status/UploadMelDatasets_COMPLETE",
         "Status/UploadGUDatasets_COMPLETE",
         "Status/BackupSubjectRegistry_COMPLETE",
@@ -55,44 +55,28 @@ rule FinalCleanup:
     shell:
         "touch {output} &> {log}"
 
-rule ListTempusBucketAndManifests:
-    output:
-        m = "BucketLists/pmrManifests.txt",
-        t = "BucketLists/tm-huntsman.txt"
-    log:
-        "Logs/listTempusBucketAndManifests.log"
-    threads:
-        halfThreads
-    shell:
-        "set +e &> {log}; "
-        "aws s3 ls --recursive {patientMolRepo} | grep Tempus | grep manifest.txt | grep ClinicalReport > {output.m} 2>> {log}; "
-        "aws --profile tempus s3 ls --recursive {tempusBucket} > {output.t} 2>> {log} "
-
 # Look for new Tempus datasets to process, downloades them, uses the PHI to identify the patient in the registry
 # Setting the time delay to 5 days since the RNASeq data posts a day or two after the DNA data
 # Can't modify all of the files in the bucket so no deletion or mv possible thus using a file to store processed test IDs to skip
-# Only works with json v3+, so from 2025
-rule TempusDataWranglerV3:
-    input:
-        m = "BucketLists/pmrManifests.txt",
-        t = "BucketLists/tm-huntsman.txt"
+rule TempusDataWrangler:
     output:
-        "Status/TempusDataWranglerV3_COMPLETE"
+        "Status/TempusDataWrangler_COMPLETE"
     log:
-        "Logs/tempusDataWranglerV3.log"
+        "Logs/tempusDataWrangler.log"
     threads:
         maxThreads
     shell:
-        "{java} {useq}/TempusDataWranglerV3 -j TJobs -r {tempusPHIRepo} -c {subjectRegistry} -v "
-        "-t PHI_tmp_delme -d {input.t} -m {input.m} &> {log}; "
+        "{java} {useq}/TempusDataWrangler -b {tempusBucket} -j TJobs "
+        "-r {tempusPHIRepo} -p tempus -i tempusTestIds2Skip.txt "
+        "-s Tmp -t 48 "
+        "-c {subjectRegistry} &> {log};"
         "gzip TJobs/*/Tempus/*/ClinicalReport/*vcf &>> {log}; "
-        "rm -rf PHI_tmp_delme &>> {log}; "
         "touch {output}"
 
 # Run TNRunner2, a tool for coordinating the execution of many containerized snakemake workflows to process the data
 rule TNRunner2:
     input:
-       "Status/TempusDataWranglerV3_COMPLETE"
+       "Status/TempusDataWrangler_COMPLETE"
     output:
         "Status/TNRunner2_COMPLETE"
     log:
@@ -149,16 +133,32 @@ rule SyncMainRepo:
     threads:
         halfThreads
     shell:
-        "aws s3 sync TJobs/ {patientMolRepo}/Patients/ --no-progress --quiet &> {log}; "
+        "aws s3 sync TJobs/ {patientMolRepo} --no-progress --quiet &> {log}; "
         "touch {output}"
 
+# Sync xml reports with PHI
+# Hold off on syncing PHI until we have the approved AWS PHI policies in place
+# aws s3 sync tempusDataWrangler/tempusXmlReports_PHI/ s3://hcibioinfo-patient-molecular-repo/PHI/Reports/tempus/ --quiet
+#rule SyncPHIReports:
+#    input:
+#         "Status/SyncMainRepo_COMPLETE"
+#    output:
+#        "Status/SyncPHIReports_COMPLETE"
+#    log:
+#        "Logs/syncPHIReports.log"
+#    threads:
+#        halfThreads
+#    shell:
+#        "rsync -rtq tempusDataWrangler/tempusXmlReports_PHI/ {tempusPHIRepo}/ &> {log}; "
+#        "touch {output}"
+        
 # Backup subject registry with PHI
 # Hold off on syncing PHI until we have the approved AWS PHI policies in place
 # aws s3 sync /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/PHI/Registry/ \
 #     s3://hcibioinfo-patient-molecular-repo/PHI/Registry/ --quiet
 rule BackupSubjectRegistry:
     input:
-         "Status/TempusDataWranglerV3_COMPLETE"
+         "Status/TempusDataWrangler_COMPLETE"
     output:
         "Status/BackupSubjectRegistry_COMPLETE"
     log:
@@ -213,9 +213,18 @@ rule UploadMelDatasets:
         "do ln -s $x .; "
         "done; "
         "done; "
+        "echo RemovingNonMelanomaDatasets... >> ../{log}; "
+        "for x in *json; "
+        "do grep '\"diagnosis\":' $x | grep -i Melanoma > delmeDiagnosis.txt || true; "
+        "count=$(cat delmeDiagnosis.txt | wc -l); "
+        "if [[ $count -eq 0 ]]; "
+        "then rm $x; "
+        "fi; "
+        "done; "
+        "rm -f delmeDiagnosis.txt; "
         "echo LinkingInJobDirs... >> ../{log}; "
         "for x in *json; "
-        "do coreId=$(realpath $x | cut -d'/' -f9); "
+        "do coreId=$(realpath $x | cut -d'/' -f8); "
         "[ ! -L $coreId ] && ln -s ../TJobs/$coreId .; "
         "rm $x; "
         "done; "

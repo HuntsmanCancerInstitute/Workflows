@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# 3 June 2025
+# 11 April 2023
 # David.Nix@hci.utah.edu
 # Huntsman Cancer Institute
 
@@ -14,8 +14,8 @@ echo -e "\n---------- Starting -------- $((($(date +'%s') - $start)/60)) min"
 module load snakemake
 
 # make a work dir and change into it
-# wd="TempusRun_"$(date +'%m_%d_%Y'); mkdir $wd; cd $wd
-
+#wd="TempusRun_"$(date +'%m_%d_%Y'); mkdir $wd; cd $wd
+#--dry-run
 snakemake -p --cores all --snakefile tempusAutoProcessing.sm 
 
 echo -e "\n---------- Complete! -------- $((($(date +'%s') - $start)/60)) min total"

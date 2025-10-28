@@ -1,5 +1,5 @@
 # Basic Dna Alignment and QC Workflow geared to processing WGS, WES, and chIPSeq datasets
-# 17 July 2024
+# 9 June 2025
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -7,8 +7,7 @@
 
 # Params from config, see xxx.sing and xxx.yaml for details
 nameBuild = str(config["name"]) + "_" + str(config["genomeBuild"])
-adapterR1=config["adapterR1"]
-adapterR2=config["adapterR2"]
+adapters=config["adapters"]
 opticalDistance=config["opticalDistance"]
 mappingQuality=config["mappingQuality"]
 baseQuality=config["baseQuality"]
@@ -41,6 +40,7 @@ useq = "/BioApps/USeq/Apps"
 java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
 fastq_screen = "/BioApps/FastQ-Screen-0.15.3/fastq_screen"
 fastqc = "/BioApps/FastQC/fastqc"
+trimmomatic = "/BioApps/Trimmomatic/0.39/trimmomatic-0.39.jar"
 
 ############# Rules ##############
 
@@ -58,16 +58,36 @@ rule Launcher:
         
 ############# Alignment ###############
 
+# Trim adapters, not using cutadapt since it often fails due to gzip decompression issues that aren't an issue.
+# NexteraPE-PE.fa and SE versions available in the adpaters folder
+# Cuts overall run time in 1/2 compared to cutadapt
+rule Trimmomatic:
+    output:
+        fq1 = temp ("TempFastq/"+ nameBuild+ ".trimmed.1.fq.gz"),
+        fq2 = temp ("TempFastq/"+ nameBuild+ ".trimmed.2.fq.gz"),        
+        lg = "Logs/"+ nameBuild+ "_Trimmomatic.summary.log"
+    log:
+        "Logs/"+ nameBuild+ "_Trimmomatic.cmdLn.log"
+    threads:
+        allThreads
+    shell:
+        "{java} {trimmomatic} PE -threads {threads} -summary {output.lg} {fastqRead1} {fastqRead2} {output.fq1} "
+        "TempFastq/output_forward_unpaired.fq.gz {output.fq2} TempFastq/output_reverse_unpaired.fq.gz "
+        "ILLUMINACLIP:{adapters}:2:30:10:2:True LEADING:3 TRAILING:3 MINLEN:36 &> {log}; "
+        "rm -f TempFastq/*unpaired.fq.gz "
+
 # Alt aware align with bwa mem2, masks adapters, coordinate sorts, removes duplicates. 
 # Removes unaligned and secondary alignments (fixmate -r)
 # Removes those with a MQ < minimum (view -q). 
 # Delete -r from the fixmate line and the entire "samtools view" line if calling structural variants. 
 rule Align:
+    input:
+        fq1 = "TempFastq/"+ nameBuild+ ".trimmed.1.fq.gz",
+        fq2 = "TempFastq/"+ nameBuild+ ".trimmed.2.fq.gz"
     output:
         a = "Alignment/"+ nameBuild+ ".cram",
         i = "Alignment/"+ nameBuild+ ".cram.crai"
     log:
-        ca = "Logs/"+ nameBuild+ "_CutAdapt.log",
         bw = "Logs/"+ nameBuild+ "_Bwa.log",
         st = "Logs/"+ nameBuild+ "_Samtools.log"
     params:
@@ -76,8 +96,7 @@ rule Align:
         allThreads
     shell:
         "set -o pipefail && mkdir -p Tmp && "
-        "cutadapt -a {adapterR1} -A {adapterR2} --interleaved --action mask --cores={tenPerThreads} {fastqRead1} {fastqRead2} 2>> {log.ca} | " 
-        "{bwa} mem -t {twoThirdThreads} -R {params} -p {fastaIndex} /dev/stdin 2>> {log.bw} | "
+        "{bwa} mem -t {twoThirdThreads} -R {params} {fastaIndex} {input.fq1} {input.fq2} 2>> {log.bw} | "
         "{samtools} fixmate -r -u -m - - 2>> {log.st} | "
         "{samtools} view --with-header -u -q {mappingQuality} - 2>> {log.st} | "
         "{samtools} sort -u -@ {thirdThreads} -T Tmp/sort - 2>> {log.st} | "
@@ -121,7 +140,8 @@ rule UniObRC:
 # Look for contaminants
 rule FastqScreen:
     input:
-        "Alignment/"+ nameBuild+ ".cram.crai"
+        cr = "Alignment/"+ nameBuild+ ".cram.crai",
+        fq = "TempFastq/"+ nameBuild+ ".trimmed.1.fq.gz"
     output:
         h = "QC/FastqScreen/"+ nameBuild+ "_1_screen.html",
         t = "QC/FastqScreen/"+ nameBuild+ "_1_screen.txt"
@@ -131,7 +151,7 @@ rule FastqScreen:
         "Logs/"+ nameBuild+ "_FastqScreen.log"
     shell:
         "{fastq_screen} --threads {threads} --subset 1000000 --outdir QC/FastqScreen "
-        "--conf {fqsConfig} --aligner bowtie2 {fastqRead1} &> {log}; "
+        "--conf {fqsConfig} --aligner bowtie2 {input.fq} &> {log}; "
         "mv QC/FastqScreen/*html {output.h} &>> {log}; "
         "mv QC/FastqScreen/*txt {output.t} &>> {log} "
 

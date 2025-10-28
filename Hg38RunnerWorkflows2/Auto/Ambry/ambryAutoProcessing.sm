@@ -1,0 +1,254 @@
+# 6 Oct 2025
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+############ No need to modify anything in this document #############
+
+# Threads and memory
+allThreads = 40
+halfThreads = 20
+allRam = 60
+
+# AWS info
+patientMolRepo = "hcibioinfo-patient-molecular-repo"
+
+# Resources
+db="/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner"
+hg38IndexFile= db + "/Indexes/B38IndexForBwa-0.7.17/hs38DH.fa"
+chainFile= db + "/RefFilesForAmbryProcessing/hg19ToHg38.over.chain.gz"
+ambryGeneCoorBedFile= db + "/RefFilesForAmbryProcessing/hg38AmbryGeneRegionsAug2025.bed"
+jannovarRefFile= db + "/RefFilesForAmbryProcessing/refseq_curated_109_hg38.ser"
+tnRunnerWorkflows= db + "/Workflows"
+
+# PHI Resources
+subjectRegistry="PMRRegistry"
+bkupSubjectRegistry="PMRRegistryBackup"
+
+# Apps in the docker container, CrossMap is in /BioApps/venv
+java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
+jannovar= db + "/RefFilesForAmbryProcessing/jannovar-cli-0.36.jar"
+picard= db + "/RefFilesForAmbryProcessing/picard.jar"
+useq= db + "/BioApps/USeq/Apps"
+
+############# Rules ##############
+
+# Sync cleaned analysis with main mol bio repo
+rule SyncMainRepo:
+    input:
+         "Status/JobCleaner_COMPLETE"
+    output:
+        "Status/SyncMainRepo_COMPLETE"
+    log:
+        "Logs/syncMainRepo.log"
+    threads:
+        allThreads
+    shell:
+        r"""
+        {{
+        aws s3 sync BulkParsedResults/YJobs/ s3://{patientMolRepo}/Patients/ --no-progress --quiet
+        touch {output}        
+        }} &> {log}
+        """
+
+# Pull and parse PMR for latest Ambry data files
+rule AWSRepoIndex:
+    output:
+        "ambry.pmr.txt"
+    log:
+        "Logs/awsRepoIndex.log"
+    threads:
+        allThreads
+    shell:
+        r"""
+        {{
+        aws s3 ls s3://{patientMolRepo} --recursive | grep ClinicalReport | grep json | grep Ambry > {output} || true
+        touch {output}
+        }} &> {log}
+        """
+
+# Run AmbryBulkProcessor
+rule AmbryDataWrangler:
+    input:
+        "ambry.pmr.txt"
+    output:
+        "Status/AmbryDataWrangler_COMPLETE"
+    log:
+        "Logs/ambryDataWrangler.log"
+    threads:
+        allThreads
+    shell:
+        r"""
+        {{
+        {java} {useq}/AmbryDataWrangler \
+        -x ToParse \
+        -r BulkParsedResults \
+        -j {jannovar} \
+        -f {hg38IndexFile} \
+        -t {jannovarRefFile} \
+        -p {picard} \
+        -c {chainFile} \
+        -g {ambryGeneCoorBedFile} \
+        -a {input} \
+        -s {subjectRegistry}
+        touch {output} 
+        }} &> {log}
+        """
+
+# Backup subject registry with PHI
+# Hold off on syncing PHI until we have the approved AWS PHI policies in place
+# aws s3 sync /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/PHI/Registry/ \
+#     s3://hcibioinfo-patient-molecular-repo/PHI/Registry/ --quiet
+rule BackupSubjectRegistry:
+    input:
+         "Status/AmbryDataWrangler_COMPLETE"
+    output:
+        "Status/BackupSubjectRegistry_COMPLETE"
+    log:
+        "Logs/backupSubjectRegistry.log"
+    shell:
+        r"""
+        {{
+        rsync -rtq {subjectRegistry} {bkupSubjectRegistry}
+        touch {output}
+        }} &> {log}
+        """
+
+# Any new datasets to process? Make dirs and files for TNRunner annotation
+rule MakeDirsForTNRunner:
+    input:
+        "Status/AmbryDataWrangler_COMPLETE"
+    output:
+        "Status/MakeDirsForTNRunner_COMPLETE"
+    log:
+        "Logs/makeDirsForTNRunner.log"
+    shell:
+        r"""
+        {{
+        if [ -d BulkParsedResults/YJobs ]; then
+           echo Cleaning up BulkParsedResults...
+           rm -rf BulkParsedResults/IndividualPatientResults BulkParsedResults/*_TmpDelme.vcf.idx
+           cd BulkParsedResults
+           wd=$(pwd)
+           echo Making YJobs...
+           for x in YJobs/*/Ambry/*/ClinicalReport/*vcf.gz
+           do
+              # echo $x
+              p="$(echo $x | awk -F'/ClinicalReport/' '{{print $1}}')"
+              # echo $p
+              cd $p
+              name=${{PWD##*/}}
+
+              mkdir -p Fastq/NormalDNA
+              touch Fastq/NormalDNA/mock_1.fastq.gz Fastq/NormalDNA/mock_2.fastq.gz
+
+              mkdir -p Alignment/$name"_NormalDNA/Alignment/"
+              touch Alignment/$name"_NormalDNA/COMPLETE"
+              touch Alignment/$name"_NormalDNA/Alignment/mock_NormalDNA_Hg38.cram"
+              touch Alignment/$name"_NormalDNA/Alignment/mock_NormalDNA_Hg38.cram.crai"
+              touch Alignment/$name"_NormalDNA/Alignment/mock_NormalDNA_Hg38.bp.txt.gz"
+              touch Alignment/$name"_NormalDNA/Alignment/mock_NormalDNA_Hg38.bp.txt.gz.tbi"
+
+              mkdir -p Alignment/$name"_NormalDNA/QC/"
+              touch Alignment/$name"_NormalDNA/QC/mock_PassRC.bed.gz"
+
+              mkdir -p GermlineVariantCalling/$name"_Illumina/"
+              cp ClinicalReport/*vcf.gz GermlineVariantCalling/$name"_Illumina/"$name"_Hg38.vcf.gz"
+              touch GermlineVariantCalling/$name"_Illumina/COMPLETE"
+
+              cd $wd
+           done
+        else
+           echo "BulkParsedResults/YJobs does not exist. Thus no jobs to process. Nothing to do. Exiting."
+           ls ALL_DONE &> /dev/null
+        fi
+        cd ../
+        touch {output}
+        }} &> {log}
+        """
+
+# TNRunner
+rule TNRunner:
+    input:
+        "Status/MakeDirsForTNRunner_COMPLETE"
+    output:
+        "Status/TNRunner_COMPLETE"
+    log:
+        "Logs/tnRunner.log"
+    threads:
+        allThreads
+    shell:
+        r"""
+        {{
+        {java} {useq}/TNRunner2 \
+          -p BulkParsedResults/YJobs \
+          -o oncoKB.config.txt \
+          -a {tnRunnerWorkflows}/Annotator/SortThenAnnotate \
+          -i 0 -l -x 300 \
+          -g '-d 0 -m 0 -q 0.1 -p 0.01 -g D5S,D3S -n 4.4 -a HIGH \
+              -c Pathogenic,Likely_pathogenic,Conflicting_interpretations_of_pathogenicity,Drug_response \
+              -t 0.51 -e Benign,Likely_benign -o -u RYR1'
+        touch {output}
+        }} &> {log}
+        """
+
+
+
+# Cleanup dirs and files from TNRunner annotation
+rule RemoveMockTNRunnerDirs:
+    input:
+        "Status/TNRunner_COMPLETE"
+    output:
+        "Status/RemoveMockTNRunnerDirs_COMPLETE"
+    log:
+        "Logs/removeMockTNRunnerDirs.log"
+    shell:
+        r"""
+        {{
+        cd BulkParsedResults
+        wd=$(pwd)
+        for x in YJobs/*/Ambry/*/ClinicalReport/*vcf.gz
+        do
+          echo $x
+          p="$(echo $x | awk -F'/ClinicalReport/' '{{print $1}}')"
+          echo $p
+          cd $p 
+          name=${{PWD##*/}} 
+
+          rm -rf Fastq/
+          rm -rf Alignment/
+          rm -rf GermlineVariantCalling/$name"_Illumina/"
+          mv -f GermlineVariantCalling/$name"_Illumina_Anno/" GermlineVariantCalling/$name"_Anno" || true
+          rm -rf GermlineVariantCalling/$name"_Anno/Vcfs/ROI"
+          rm -rf GermlineVariantCalling/$name"_Anno/Vcfs/"*anno.filt*
+          rm -rf GermlineVariantCalling/$name"_Anno/Vcfs/"*anno.maf*
+
+          cd $wd
+        done
+        cd ../
+        touch {output}
+        }} &> {log}
+        """
+
+# Clean up the job directories
+rule JobCleaner:
+    input:
+        "Status/RemoveMockTNRunnerDirs_COMPLETE",
+        "Status/BackupSubjectRegistry_COMPLETE"
+    output:
+        "Status/JobCleaner_COMPLETE"
+    log:
+        "Logs/jobCleaner.log"
+    threads:
+        halfThreads
+    shell:
+        r"""
+        {{
+        {java} {useq}/JobCleaner -m -r BulkParsedResults/YJobs \
+          -e '.tbi,.crai,COMPLETE' \
+          -n 'Logs,RunScripts'
+        touch {output}
+        }} &> {log}
+        """
+
+onerror:
+    shell( "rm -f STARTED COMPLETE; touch FAILED")

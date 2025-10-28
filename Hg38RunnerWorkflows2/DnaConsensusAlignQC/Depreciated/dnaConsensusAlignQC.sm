@@ -1,0 +1,309 @@
+# Hg38 Exome Alignment and QC Workflow 
+# 10 June 2024
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+############ No need to modify anything in this document #############
+
+# Base name to prepend on all files
+nameBuild = str(config["name"]) + "_Hg38" 
+
+# Threads and memory
+allThreads = int(config["allThreads"])
+halfThreads = int(round(allThreads/2,0))
+allRam = int(round(float(config["allRam"])))
+partRam = int(round(float(config["allRam"])*0.75))
+
+# Gzipped Fastq files
+fastqReadOne = config["fastqReadOne"]
+fastqReadTwo = config["fastqReadTwo"]
+
+# Resources
+regionsForReadCoverage = config["regionsForReadCoverage"]
+regionsForOnTarget = config["regionsForOnTarget"]
+indexFasta = config["indexFasta"]
+
+# Filtering params
+useqConsensus = config["useqConsensus"]
+useqSamAlignmentExtractor = config["useqSamAlignmentExtractor"]
+useqSam2USeq = config["useqSam2USeq"]
+useqFastqBarcodeTagger = config["useqFastqBarcodeTagger"]
+
+# Apps in the docker container
+bwa = "/BioApps/bwakit-0.7.15/run-bwamem"
+samtools = "/BioApps/bwakit-0.7.15/samtools"
+gatk = "/BioApps/GATK_3.8/GenomeAnalysisTK.jar"
+htslib = "/BioApps/HTSlib_1.3"
+java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
+javaPart = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(partRam) + "G"
+picard = "/BioApps/Picard_2.17.2/picard.jar"
+useq = "/BioApps/USeq/Apps"
+ucsc = "/BioApps/UCSC_6Aug2018"
+
+
+############# Rules ##############
+
+# Workflow trigger, pulls info from the json files into xls and html reports
+rule AggregateQCStats:
+    input:
+        f= "Json/"+nameBuild+ "_FastqCount.json.gz",
+        s= "Json/"+nameBuild+ "_SamAlignmentExtractor.json.gz",
+        m= "Json/"+nameBuild+ "_MergePairedAlignments.json.gz",
+        u= "Json/"+nameBuild+ "_Sam2USeq.json.gz",
+        w= "QC/"+ nameBuild+ "_uniObReadCov.bw"
+    output:
+        "QC/"+ nameBuild+ "_AggQC"
+    log:
+        "Logs/"+ nameBuild+ "_AggregateQCStats.log",
+    shell:
+        "{java} {useq}/AggregateQCStats -j Json -r {output} -p {nameBuild}_ &> {log} && "
+        "rm -rf *_sae.ba* *_unfiltered.ba* *_raw.bam *_MPA *_uniObReadCov.useq "
+        "*_FastqBarcodeTagger *_MatchMates *_Consensus *Hg38.aln.bam "    	 
+        
+############# Fastq and resources check ##############
+
+# Uses gunzip -t to check the integrity of the xxx.gz files in the working directory
+rule CheckGzipFiles:
+    output:
+        temp( nameBuild+ "_checkGzipFiles.complete")
+    log:
+        "Logs/"+ nameBuild+ "_CheckGzipFiles.log"
+    shell:
+        "gunzip -tv {fastqReadOne} {fastqReadTwo} &> {log} && touch {output}" 
+        
+# Count the number of fastq records
+rule CountFastq:
+    input:
+        fastqReadOne
+    output:
+        "Json/" + nameBuild + "_FastqCount.json.gz"
+    shell:
+        "x=$(gunzip -c {input} | wc -l | tr -d \" \") && "
+        "y=$(($x/2)) && "
+        "echo \{{ > Json/{nameBuild}_FastqCount.json && "
+        "echo \\\"numberFastqReads\\\": $y >> Json/{nameBuild}_FastqCount.json && "
+        "echo \}} >> Json/{nameBuild}_FastqCount.json && "
+        "gzip Json/{nameBuild}_FastqCount.json"
+        
+        
+############# Alignment B38 ###############
+# Append barcode read onto the two fastq file headers
+rule FastqBarcodeTagger:
+    output:
+        nameBuild+ "_FastqBarcodeTagger"
+    log:
+        "Logs/"+ nameBuild+ "_FastqBarcodeTagger.log",
+    shell:
+        "{java} {useq}/FastqBarcodeTagger -f {fastqReadOne} -s {fastqReadTwo} {useqFastqBarcodeTagger} "
+        "-r {nameBuild}_FastqBarcodeTagger &> {log}"
+
+
+# Align to Hg38 with bwa mem, trim adapters, mark dups, sort                                                                                                  
+rule AlignHg38:
+    input:
+        nameBuild+ "_FastqBarcodeTagger"
+    output:
+        nameBuild+ "_raw.bam"
+    log:
+        "Logs/"+ nameBuild+ "_AlignHg38.log"
+    params:
+        rg ="\"@RG\\tID:"+nameBuild+"\\tPL:ILLUMINA\\tLB:"+nameBuild+"\\tSM:"+nameBuild+ "\\tCN:HCI\\tPU:"+nameBuild+"\""
+    threads:
+        allThreads
+    shell:
+        # Align with run-bwamem this trims adapters, marks dups, and sorts
+        "mkdir -p Logs && "
+        "fq=$(ls {input}/*gz) && "
+        "{bwa} -o {nameBuild}_AlignHg38 -R {params.rg} -t {threads} -a -d "
+        "{indexFasta} $fq | grep -v samblaster > {nameBuild}_AlignHg38.sh 2> {log} && "
+        "chmod 750 {nameBuild}_AlignHg38.sh 2>> {log} && "
+        "cat {nameBuild}_AlignHg38.sh >> {log} && "
+        "./{nameBuild}_AlignHg38.sh && "
+        "cat {nameBuild}_AlignHg38.log.bwamem >> {log} && "
+        "cat {nameBuild}_AlignHg38.log.trim >> {log} && "
+        "rm -f {nameBuild}_AlignHg38.log.* {nameBuild}_AlignHg38.sh {nameBuild}_AlignHg38.hla.* && "
+        "mv {nameBuild}_AlignHg38.aln.bam {output}"
+
+# Attach mates to first in pair 
+rule MatchMates:
+    input:
+        nameBuild+ "_raw.bam"
+    output:
+        bam = nameBuild+ "_MatchMates/passingMM.sorted.bam"
+    threads:
+        allThreads 
+    log:
+        "Logs/"+ nameBuild+ "_MatchMates.log",
+    shell:
+        "{java} {useq}/MatchMates -b {input} -s {nameBuild}_MatchMates &> {log}"
+
+# Call Consensus on the barcoded bam, defaults are set for an 8mer barcode
+rule Consensus:
+    input:
+        nameBuild+ "_MatchMates/passingMM.sorted.bam"
+    output:
+        nameBuild+ "_Consensus",
+        nameBuild+ "_Consensus/paired_1.fastq.gz",
+        nameBuild+ "_Consensus/paired_2.fastq.gz",
+        nameBuild+ "_Consensus/unpaired.fastq.gz",
+        nameBuild+ "_Consensus/passing.sam.gz"
+    threads:
+        allThreads    
+    log:
+        "Logs/"+ nameBuild+ "_Consensus.log",
+    shell:
+        "{java} {useq}/Consensus {useqConsensus} -t {threads} -b {input} -s {output[0]} &> {log}"
+
+# Align unpaired consensus fastq, might be no alignments
+rule AlignUnpairedConsensusFastq:
+    input:
+        nameBuild+ "_Consensus/unpaired.fastq.gz"
+    output:
+        nameBuild+ "_Consensus/unpaired.sam.gz"
+    params:
+        rg ="\"@RG\\tID:"+nameBuild+"\\tPL:ILLUMINA\\tLB:"+nameBuild+"\\tSM:"+nameBuild+ "\\tCN:HCI\\tPU:"+nameBuild+"\""
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_AlignUnPairedConsensusFastq.log"
+    shell:
+        "{bwa} -o {nameBuild}_UnPairedAlignHg38 -R {params.rg} -t {threads} -a -d "
+        "{indexFasta} {input} | grep -v samblaster > {nameBuild}_UnPairedAlignHg38.sh 2> {log} && "
+        "chmod 750 {nameBuild}_UnPairedAlignHg38.sh 2>> {log} && "
+        "cat {nameBuild}_UnPairedAlignHg38.sh >> {log} && "
+        "./{nameBuild}_UnPairedAlignHg38.sh && "
+        "cat {nameBuild}_UnPairedAlignHg38.log.bwamem >> {log} && "
+        "cat {nameBuild}_UnPairedAlignHg38.log.trim >> {log} && "
+        "rm -f {nameBuild}_UnPairedAlignHg38.log.* {nameBuild}_UnPairedAlignHg38.sh {nameBuild}_UnPairedAlignHg38.hla.* && "
+        "{samtools} view {nameBuild}_UnPairedAlignHg38.aln.bam | gzip > {output} && "
+        "echo -n 'NumAlign: ' >> {log} && "
+        "{samtools} view {nameBuild}_UnPairedAlignHg38.aln.bam | wc -l >> {log} "
+
+# Align paired consensus fastq
+rule AlignPairedConsensusFastq:
+    input:
+        nameBuild+ "_Consensus/paired_1.fastq.gz",
+        nameBuild+ "_Consensus/paired_2.fastq.gz"
+    output:
+        nameBuild+ "_Consensus/paired.sam.gz"
+    params:
+        rg ="\"@RG\\tID:"+nameBuild+"\\tPL:ILLUMINA\\tLB:"+nameBuild+"\\tSM:"+nameBuild+ "\\tCN:HCI\\tPU:"+nameBuild+"\""
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_AlignPairedConsensusFastq.log"
+    shell:
+        "{bwa} -o {nameBuild}_PairedAlignHg38 -R {params.rg} -t {threads} -a -d "
+        "{indexFasta} {input} | grep -v samblaster > {nameBuild}_PairedAlignHg38.sh 2> {log} && "
+        "chmod 750 {nameBuild}_PairedAlignHg38.sh 2>> {log} && "
+        "cat {nameBuild}_PairedAlignHg38.sh >> {log} && "
+        "./{nameBuild}_PairedAlignHg38.sh && "
+        "cat {nameBuild}_PairedAlignHg38.log.bwamem >> {log} && "
+        "cat {nameBuild}_PairedAlignHg38.log.trim >> {log} && "
+        "rm -f {nameBuild}_PairedAlignHg38.log.* {nameBuild}_PairedAlignHg38.sh {nameBuild}_PairedAlignHg38.hla.* && "
+        "{samtools} view {nameBuild}_PairedAlignHg38.aln.bam | gzip > {output} && "
+       	"echo -n 'NumAlign: ' >> {log} && "
+        "{samtools} view {nameBuild}_PairedAlignHg38.aln.bam | wc -l >> {log} "
+
+# Concatinate alignments
+rule ConcatinateAlignments:
+    input:
+        nameBuild+ "_Consensus/passing.sam.gz",
+        nameBuild+ "_Consensus/unpaired.sam.gz",
+        nameBuild+ "_Consensus/paired.sam.gz"
+    output:
+        nameBuild+ "_Consensus/concatinated.sam.gz"
+    log:
+        "Logs/"+ nameBuild+ "_ConcatinateAlignments.log"
+    shell:
+        "cat {input} 2> {log} > {output}"
+
+# Fix mate info and sort, not always necessary but doesn't hurt
+rule FixMateInformation:
+    input:
+        nameBuild+ "_Consensus/concatinated.sam.gz"
+    output:
+        bam = temp (nameBuild+ "_unfiltered.bam"),
+        bai = temp (nameBuild+ "_unfiltered.bai")
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_FixMateInformation.log"
+    shell:
+        "{java} {picard}  FixMateInformation CREATE_INDEX=true SO=coordinate "
+        "MAX_RECORDS_IN_RAM=5000000 TMP_DIR=. VALIDATION_STRINGENCY=SILENT INPUT={input} "
+        "USE_JDK_DEFLATER=true USE_JDK_INFLATER=true OUTPUT={output.bam} &> {log}"
+
+# Use the SamAlignmentExtractor to remove poor quality alignments 
+rule SamAlignmentExtractor:
+    input:
+        bam = nameBuild+ "_unfiltered.bam",
+        bai = nameBuild+ "_unfiltered.bai"
+    output:
+        bam = "Bam/"+ nameBuild+ "_final.bam",
+        bai = "Bam/"+ nameBuild+ "_final.bai",
+        json = "Json/"+ nameBuild+ "_SamAlignmentExtractor.json.gz"
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_SamAlignmentExtractor.log",
+    shell:
+        "{java} {useq}/SamAlignmentExtractor {useqSamAlignmentExtractor} "
+        "-s {nameBuild}_SAE -b {input.bam} "
+        "-r {regionsForOnTarget} -j {output.json} &> {log} && "
+        "mv {nameBuild}_SAE/*_passSAE.bam {output.bam} &>> {log} && "
+        "mv {nameBuild}_SAE/*_passSAE.bai {output.bai} &>> {log} && "
+        "rm -rf {nameBuild}_SAE"
+        
+############################# QC ###############################
+
+# QC, Merge paired alignments for unique observation QC
+rule MergePairedAlignments:
+    input:
+        bam = "Bam/"+ nameBuild+ "_final.bam"
+    output:
+        dir = nameBuild+ "_MPA",
+        json = "Json/"+ nameBuild+ "_MergePairedAlignments.json.gz"   
+    threads: 
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_MergePairedAlignments.log"
+    shell:
+        "{java} {useq}/MergePairedAlignments -b {input.bam} -d {output.dir} "
+        "-j {output.json} -t {threads} &> {log}"
+
+# QC, Generate read coverage QC metrics and bed pass fail files with Sam2USeq
+rule Sam2USeq:
+    input:
+        mpa = nameBuild+ "_MPA"
+    output:
+        useq = nameBuild+ "_uniObReadCov.useq",
+        cs = "QC/"+ nameBuild+ "_PerRegionCoverageStats.txt.gz",
+        json = "Json/"+ nameBuild+ "_Sam2USeq.json.gz",
+        bed = "QC/"+nameBuild+ "_Pass.bed.gz"
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_Sam2USeq.log"
+    shell:
+        "{java} {useq}/Sam2USeq {useqSam2USeq} -f {input.mpa} "
+        "-b {regionsForReadCoverage} -p {output.cs} -j {output.json} -n {nameBuild} &> {log} && "
+        "cp {input.mpa}/*useq {output.useq} &>> {log} && "
+        "mv -f {nameBuild}_Pass.bed.gz QC/ && "
+        "mv -f {nameBuild}_Fail.bed.gz QC/"
+        
+# QC, Convert the uniOb read coverage track to something that will play nicely with IGV and the UCSC genome browsers
+rule USeq2UCSCBig:
+    input:
+        rc= nameBuild+ "_uniObReadCov.useq"
+    output:
+        "QC/"+ nameBuild+ "_uniObReadCov.bw"     
+    log:
+        "Logs/"+ nameBuild+ "_Useq2UCSCBig.log"
+    shell:
+        "{java} {useq}/USeq2UCSCBig -u {input.rc} -f "
+        "-d {ucsc} &> {log} && "
+        "mv -f {nameBuild}_uniObReadCov.bw {output} " 
+
+onerror:
+    shell( "rm -f STARTED COMPLETE; touch FAILED")

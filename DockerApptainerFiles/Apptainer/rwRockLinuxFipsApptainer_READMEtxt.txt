@@ -9,6 +9,8 @@ module load apptainer
 unset APPTAINER_BINDPATH SINGULARITY_BINDPATH
 apptainer build rocky_python_snakemake_crossmap.sif rocky_python_snakemake_crossmap.def
 
+# When needing to mount drives in the container to copy over say USeq 
+apptainer build --bind /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/ tempusVcf3.3.sing tempusVcf3.3.def
 
 ####### Robben's def file 5 May 2025 ###########
 

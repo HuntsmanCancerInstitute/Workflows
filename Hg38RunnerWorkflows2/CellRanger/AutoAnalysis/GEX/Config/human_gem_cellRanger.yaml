@@ -1,5 +1,5 @@
 ---
-# Last edit 24 Feb 2025 - david.nix@hci.utah.edu
+# Last edit 6 May 2025 - david.nix@hci.utah.edu
 # Configuration for the 10X GEM CellRanger workflow on redwood
 
 genomeBuild: GRCh38
@@ -12,6 +12,5 @@ fqsApp: app/fastq_screen/v0.14.0/fastq_screen
 cellRangerApp: app/10X/cellranger-9.0.0/cellranger
 
 # sampleNames for each run, e.g. 'sampleNames: 22677X1_20240105_LH00227_009_A22H2G7LT3,22677X1_20240105_LH00227_009_A22H2G7LT3'
-
 
 

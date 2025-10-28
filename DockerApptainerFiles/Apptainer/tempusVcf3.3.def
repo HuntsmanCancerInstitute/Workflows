@@ -1,0 +1,102 @@
+Bootstrap: docker
+From: rockylinux:9
+
+%labels
+    Author david.nix@hci.utah.edu
+    Version 0.1
+
+%help
+    To build on CHPC's Redwood with FIPS 140-3 enabled. Takes ~1-2hrs
+       module load apptainer
+       unset APPTAINER_BINDPATH SINGULARITY_BINDPATH
+       nohup apptainer build --bind \
+         /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/ \
+         tempusVcf3.3.sif tempusVcf3.3.def &> build.log &
+
+%setup
+    mkdir -p ${APPTAINER_ROOTFS}/uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/
+
+%environment
+    export PATH=/BioApps/venv/Snakemake/bin:$PATH
+    export PATH=/BioApps/venv/CrossMap/bin:$PATH
+    export PATH=/BioApps/Htslib/1.22/bin:$PATH
+    export PATH=/BioApps/Vt/vt:$PATH
+
+%post
+    dnf -y update
+
+    # Install development tools and Python dependencies
+    dnf -y groupinstall "Development Tools"
+    # Note that the default version of Python, 3.9, is incompatible with
+    # Snakemake because of a version conflict with a dependency; use 3.11
+    # Do NOT add anything to this list, do extra installs after CrossMap!!!    
+    dnf -y install \
+        python3.11 \
+        python3.11-pip \
+        python3.11-devel \
+        wget \
+        ca-certificates \
+        libffi-devel \
+        bzip2-devel \
+        xz-devel \
+        zlib-devel \
+        openssl-devel 
+
+    python3.11 -m venv /BioApps/venv/Snakemake
+    /BioApps/venv/Snakemake/bin/pip install --upgrade pip
+    /BioApps/venv/Snakemake/bin/pip install snakemake
+    /BioApps/venv/Snakemake/bin/snakemake --version
+
+    # It is still necessary to compile the dependencies of CrossMap from source
+    # because they were built with FIPS-incompatible OpenSSL
+    python3.11 -m venv /BioApps/venv/CrossMap
+    /BioApps/venv/CrossMap/bin/pip install --upgrade pip setuptools wheel
+    /BioApps/venv/CrossMap/bin/pip install --no-binary :all: CrossMap -vv
+    /BioApps/venv/CrossMap/bin/CrossMap --version
+
+    # Install extras here AFTER CrossMap
+    dnf -y install \
+       java-11-openjdk \
+       unzip \
+       git \
+       libcurl-devel
+
+    # Install USeq, pull the latest from TNRunner
+    echo INSTALLING USeq
+    mkdir -p /BioApps/USeq/
+    cd /BioApps/USeq/
+    cp /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/BioApps/USeq*zip .
+    unzip USeq*zip
+    rm *zip
+    mv USeq_*/* .
+    rm -rf USeq_* Documentation SourceCode.zip
+    java -jar /BioApps/USeq/Apps/AggregateQCStats2 > /dev/null
+
+    # Install HtsLib for tabix
+    echo INSTALLING HtsLib
+    mkdir -p /BioApps/Htslib/
+    cd /BioApps/Htslib/
+    wget https://github.com/samtools/htslib/releases/download/1.22/htslib-1.22.tar.bz2
+    tar -xf htslib-1.22.tar.bz2 
+    rm htslib-1.22.tar.bz2
+    mkdir 1.22
+    cd htslib-1.22
+    ./configure --disable-ref-cache --disable-libcurl --prefix=/BioApps/Htslib/1.22
+    make
+    make install
+    cd ../
+    rm -rf htslib-1.22
+
+    # Install Vt
+    echo INSTALLING Vt
+    mkdir -p /BioApps/Vt/
+    cd /BioApps/Vt/
+    git clone https://github.com/atks/vt.git
+    cd vt
+    git submodule update --init --recursive
+    make
+    /BioApps/Vt/vt/vt normalize -? > /dev/null
+
+    echo
+    echo COMPLETE
+

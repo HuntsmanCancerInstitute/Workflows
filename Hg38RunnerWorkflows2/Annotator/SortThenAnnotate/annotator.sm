@@ -1,0 +1,231 @@
+# Sorts and then annotated of a vcf file with snpEff, splice, and prior call freq, followed by region and quality filtering
+# 6 Oct 2025
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+############ No need to modify anything in this document #############
+
+# To prepend on all output
+nameBuild = str(config["name"])+"_Hg38"
+
+# Threads and memory
+allThreads = int(config["allThreads"])
+halfThreads = int(round(allThreads/2,0))
+allRam = int(round(float(config["allRam"]))) - 1
+annoVcfParser = config["annoVcfParser"]
+vcfCallFreq = config["vcfCallFreq"]
+
+# Resources
+regionsOfInterest = config["dataBundle"] +"/"+ config["regionsOfInterest"]
+indexFasta = config["dataBundle"] +"/"+ config["indexFasta"]
+dataDir = config["dataBundle"] + "/AnnotatorData"
+gQueryData = config["dataBundle"] + "/GQuery/GQuery/Data"
+
+# Apps in the docker container
+java = "java -jar -Djava.io.tmpdir=. " + "-Xmx" + str(allRam) + "G"
+## two installed defaults to 21: /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java and /usr/lib/jvm/java-21-openjdk-amd64/bin/java
+useq = "/BioApps/USeq/Apps"
+htslib = "/BioApps/Htslib/1.13/bin"
+snpEff = "/BioApps/SnpEff/5.2c"
+samtools = "/BioApps/Samtools/1.21/bin/samtools"
+vcf2maf = "/BioApps/Vcf2Maf/vcf2maf-1.6.22/vcf2maf.pl"
+oncoKB = "/BioApps/OncoKB/oncokb-annotator-3.4.1/"
+
+############# Rules ##############
+
+# Workflow trigger, writes human readable txt file from the INFO dense final vcf, useful for grepping.
+rule TxtOutput:
+    input:
+        vcf1 = "Vcfs/"+ nameBuild+ ".anno.filt.vcf.gz",
+        vcf2 = "Vcfs/ROI/" +nameBuild+ ".anno.filt.roi.vcf.gz",
+        index = "Vcfs/ROI/" +nameBuild+ ".anno.filt.roi.vcf.gz.tbi"
+    output:
+        txt1 = "Vcfs/"+ nameBuild+ ".anno.filt.txt.gz",
+        txt2 = "Vcfs/ROI/" +nameBuild+ ".anno.filt.roi.txt.gz"
+    shell:
+        "touch {output.txt1} {output.txt2}; "
+        "gunzip -c {input.vcf1} | {snpEff}/scripts/vcfInfoOnePerLine.pl | egrep "
+        "-v -e '.+dbNSFP.+\.$'  | gzip > {output.txt1} || true;  "
+        "gunzip -c {input.vcf2} | {snpEff}/scripts/vcfInfoOnePerLine.pl | egrep "
+        "-v -e '.+dbNSFP.+\.$'  | gzip > {output.txt2} || true"
+
+# Sort a vcf.gz in the current working dir
+rule SortVcf:
+    output:
+        temp (nameBuild+ ".sorted.vcf")
+    log:
+        "Logs/"+ nameBuild + "_SortVcf.log"
+    threads:
+        allThreads
+    shell:
+        r"""
+        {{
+        # Save header
+        gunzip -c *.vcf.gz | grep '^#' > {output}
+        # Output just record lines to a temp file
+        gunzip -c *.vcf.gz | grep -v '^#' > temp.toSort.vcf || true 
+        # Sort the record lines and write the output to the Sorted.vcf
+        sort -k1,1V -k2,2g temp.toSort.vcf >> {output}
+        rm -f temp.toSort.vcf
+        }} 2> {log}
+        """
+
+# Basic SnpEff Annotations
+rule SnpEff:
+    input:
+        nameBuild+ ".sorted.vcf"
+    output:
+        temp (nameBuild+ ".snpEff.vcf")
+    threads:
+        allThreads
+    log:
+        "Logs/"+ nameBuild+ "_SnpEff.log"
+    shell:
+        "{java} {snpEff}/snpEff.jar -dataDir {dataDir} -v -strict GRCh38.mane.1.2.refseq {input} "
+        "> {output} 2> {log} || true ; mv -f snpEff_* Logs/ || true "
+   		   
+# Clinvar
+rule Clinvar:
+    input:
+        nameBuild+ ".snpEff.vcf"
+    output:
+        temp (nameBuild+ ".snpEff.clinvar.vcf")
+    threads:
+        allThreads
+    log:
+        "Logs/"+ nameBuild+ "_Clinvar.log"
+    shell:
+        "{java} {snpEff}/SnpSift.jar annotate -v {dataDir}/Clinvar/clinvar.vcf.gz "
+        "{input} > {output} 2> {log} "
+
+# GnomAD population AFs
+rule GnomAD:
+    input:
+        nameBuild+ ".snpEff.clinvar.vcf"
+    output:
+        temp (nameBuild+ ".snpEff.clinvar.gnomad.vcf")
+    threads:
+        allThreads
+    log:
+        "Logs/"+ nameBuild+ "_Gnomad.log"
+    shell:
+        "{java} {snpEff}/SnpSift.jar annotate -name GnomAD_ -v {dataDir}/GnomAD/gnomADv2v3_maxAF.hg38.vcf.gz "
+        "{input} > {output} 2> {log} "
+
+# USeq Splice Scanner, to be replaced with spliceAI from Illumina
+rule VCFSpliceScanner:
+    input:
+        nameBuild+ ".snpEff.clinvar.gnomad.vcf"
+    output:
+        temp ("Vcfs/"+ nameBuild+ ".snpEff.clinvar.gnomad.splice.vcf.gz")
+    threads:
+        allThreads
+    log:
+        "Logs/"+ nameBuild+ "_VCFSpliceScanner.log"
+    shell:
+        "{java} {useq}/VCFSpliceScanner -u {dataDir}/UCSC/8Aug2018/hg38RefSeq8Aug2018.ucsc.zip "
+        "-m {dataDir}/SpliceModels -f {indexFasta} "
+        "-v {input} -r {output} &> {log}"
+
+# Convert Vcf to Maf, tool does not work with gzipped vcfs
+rule Vcf2Maf:
+    input:
+        "Vcfs/"+ nameBuild+ ".snpEff.clinvar.gnomad.splice.vcf.gz"
+    output:
+        temp ("Vcfs/"+ nameBuild+ ".snpEff.clinvar.gnomad.splice.maf")
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_Vcf2Maf.log"
+    shell:
+        "export PERL_BADLANG=0 &> {log};"
+        "gunzip -c {input} > Vcfs/tempDelme.vcf 2>> {log};"
+        "perl {vcf2maf}"
+        "  --input-vcf=Vcfs/tempDelme.vcf"
+        "  --output-maf={output}"
+        "  --ref-fasta={indexFasta}"
+        "  --inhibit-vep --ncbi-build=GRCh38"
+        "  --samtools-exec {samtools}"
+        "  --tabix-exec {htslib}/tabix &>> {log};"
+        "rm -rf Vcfs/tempDelme.vcf"
+
+# Annotate with OncoKB
+# Annotates the maf using OncoKB, adds the maf anno to the vcf
+rule OncoKB:
+    input:
+        maf = "Vcfs/"+ nameBuild+ ".snpEff.clinvar.gnomad.splice.maf",
+        vcf = "Vcfs/"+ nameBuild+ ".snpEff.clinvar.gnomad.splice.vcf.gz"
+    output:
+        maf = "Vcfs/"+ nameBuild+ ".anno.maf.gz",
+        vcf = "Vcfs/"+ nameBuild+ ".anno.vcf.gz"
+    threads:
+        allThreads
+    log:
+        "Logs/"+ nameBuild+ "_OncoKB.log"
+    shell:
+        "python {oncoKB}/MafAnnotator.py"
+        "  -i {input.maf}"
+        "  -o Vcfs/{nameBuild}.anno.maf"
+        "  -b $(cat oncoKB.config.txt | head -n 1)"
+        "  -q Genomic_Change -r GRCh38"
+        "  -t $(cat oncoKB.config.txt | head -n 2 | tail -n 1) &>> {log}; "
+        "gzip Vcfs/{nameBuild}.anno.maf &>> {log}; "
+        "{java} {useq}/OncoKB2VCF -v {input.vcf} -m {output.maf} -o {output.vcf} &>> {log};"
+
+# Filter the annotated vcf file 
+rule AnnotatedVcfParser:
+    input:
+        "Vcfs/"+ nameBuild+ ".anno.vcf.gz"
+    output:
+        temp ("Vcfs/"+ nameBuild+ ".annoNoCF.filt.vcf.gz")
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_AnnotatedVcfParser.log"
+    shell:
+        "{java} {useq}/AnnotatedVcfParser -v {input} -s AnnoVcfParser {annoVcfParser} "
+        "&> {log} && mv -f AnnoVcfParser/*_Pass.vcf.gz {output} &>> {log} && rm -f AnnoVcfParser/*_Fail.vcf.gz "
+
+# Adding in after anno filt to cut down on processing time
+rule VCFCallFrequency:
+    input:
+       "Vcfs/"+ nameBuild+ ".annoNoCF.filt.vcf.gz"
+    output:
+       "Vcfs/"+ nameBuild+ ".anno.filt.vcf.gz"
+    log:
+        "Logs/"+ nameBuild+ "_VCFCallFrequency.log"
+    threads:
+        allThreads
+    shell:
+        "{java} {useq}/VCFCallFrequency -f {input} -s TempVCFCallFreq {vcfCallFreq} -d {gQueryData}  &> {log} && "
+        "mv -f TempVCFCallFreq/*.callFreq.vcf.gz {output} && rm -rf TempVCFCallFreq"
+
+# Filter for select genomic regions, e.g. ACMG genes from the GC's
+rule VCFRegionFilter:
+    input:
+        "Vcfs/"+ nameBuild+ ".anno.filt.vcf.gz"
+    output:
+        "Vcfs/ROI/" +nameBuild+ ".anno.filt.roi.vcf.gz"
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_VCFRegionFilter.log"
+    shell:
+        "{java} {useq}/VCFRegionFilter -v {input} -b {regionsOfInterest} -s RegionParsedVcfs &> {log} && "
+        "mv -f RegionParsedVcfs/*_int.vcf.gz {output} &>> {log} && rm -rf RegionParsedVcfs "
+
+# Tabix index everything
+rule VcfTabix:
+    input:
+        "Vcfs/ROI/" +nameBuild+ ".anno.filt.roi.vcf.gz"
+    output:
+        "Vcfs/ROI/" +nameBuild+ ".anno.filt.roi.vcf.gz.tbi"
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_VcfTabix.log"
+    shell:
+        "{java} {useq}/VCFTabix -t {htslib} -v Vcfs/ &> {log}"
+
+onerror:
+    shell( "rm -f STARTED COMPLETE; touch FAILED")

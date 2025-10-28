@@ -1,0 +1,126 @@
+---
+# Last edit 24 July 2024
+# Look below for the workflows you are running and modify the params as needed
+
+############# For All #############
+# Path to the TNRunner data bundle with lots of reference files
+dataBundle: /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner # when running on redwood
+#dataBundle: /JRDir/TNRunner # when running on an EC2 instance
+
+# The BWA mem2 fasta file with all the associated index files including xxx.fa.fai and xxx.dict files, see https://github.com/bwa-mem2/bwa-mem2
+indexFasta: GATKResourceBundleAug2021/Homo_sapiens_assembly38.fasta
+# indexFasta: GIABResourceBundleFeb2024/GRCh38_GIABv3_no_alt_analysis_set_maskedGRC_decoys_MAP2K3_KMT2C_KCNJ18.fasta
+
+# Bgzippped and tabix indexed bed file of regions to use in the DnaAlignQC, SomaticCaller, HaplotypeCalling, JointGenotyping 
+#analysisRegions: Bed/AllExonHg38Bed8April2020/hg38AllGeneExonsPad175bp.bed.gz
+analysisRegions: Bed/AvatarNimIdtTwstBeds/mergedNimV1IdtV1-2TwistV2Pad175bp8March2023.bed.gz
+
+############# Annotator Workflow #############
+# See the USeq AnnotatedVcfParser app menu
+annoVcfParser: "-y annotatedVcfParser.config.txt"
+
+# See the USeq VcfCallFrequency app menu 
+vcfCallFreq: "-m 0.1 -x -c vcfCallFrequency.config.txt"
+
+# ROI filter
+regionsOfInterest: Bed/ACMG/hg38ACMGPlusPatho21Apr2021.bed.gz 
+
+
+############# DnaAlignQC Workflow ############# 
+# Bgzipped and tabix indexed bed file of regions to use in calculating unique observation read coverage uniformity metrics. Mappable exons.
+# uniObRCRegions: Bed/AvatarMergedNimIdtBeds/hg38NimIdtCCDSShared.bed.gz
+uniObRCRegions: Bed/AvatarNimIdtTwstBeds/sharedNimV1IdtV1-2TwistV2CCDS8March2023.bed.gz
+
+# Used by CutAdapt to mask adapter sequence in the fastq prior to alignment
+adapterR1: AGATCGGAAGAGCACACGTCTGAACTCCAGTCA
+adapterR2: AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT
+
+# Base and alignment quality score minimums
+baseQuality: 13
+mappingQuality: 13
+
+# Unique observation minimum for defining the interrogated regions bed file
+passingReadDepth: 12
+
+# The fasta index used to create the input cram file for conversion to fastq and subsequent realignment, not used if paired fastq files are present
+cramIndexFasta: GATKResourceBundleAug2021/Homo_sapiens_assembly38.fasta
+
+############# HaplotypeCalling #############
+# All covered by the For All params above
+
+
+############# JointGenotyping #############
+# Stringency for GATK tranching, 90 is very stringent with loss of 18% of Snvs in the truth NA12878 benchmarking dataset, 99.9 is good for snvs (99% TPR at FDR 1.3%) and indels (95% TPR at FDR 1.2%)
+truthSensitivityFilterLevel: 99.9
+
+# Number GB RAM per GATK thread, 10 is good for exomes, 20 for WG, adjust when out of memory errors are thrown
+numGbJob: 10
+
+# Launch the JointGenotypeVCFParser USeq app to see cmd line options, -q QUAL, -d DP, -a AF, -g GT, -c uniObAlts
+useqJointGenotypeVCFParser: "-q 20 -d 10 -a 0.05 -g 20 -c 3"
+
+
+############# SomaticCaller #############
+# Bam Pileup panel of normals, match to your platform, IDT vs NIM
+bpileup: MpileupBkg/Hg38AvatarBkgnd/Idt/avatarIdt.bp.txt.gz
+
+# Minimum read depths
+minTumorAlignmentDepth: 12
+minNormalAlignmentDepth: 12
+
+# Minimum alt observation count
+minTumorAltCount: 3
+
+# Minimum tumor allele fraction
+minTumorAF: 0.025
+
+# Maximum normal allele fraction
+maxNormalAF: 0.05 
+
+# Minimum T/N AF ratio
+minTNRatio: 3
+
+# Minimum T-N AF difference
+minTNDiff: 0.025
+
+# Calibrated FDR threshold, 1 targets 9-15%FDR
+fdrTier: 1
+
+# Minimum VCFBkz score
+minBKZ: 3 
+
+############# Somatic Copy Analysis #############
+
+# Matched to the gender specific PoN
+intervals: CNV/AVATAR/Somatic/NIM/mergedSeqCap_EZ_Exome_v3_hg38_capture_primary_targets_pad150bp.preprocessed.interval_list
+#intervals: CNV/AVATAR/Somatic/IDT/hg38IdtProbesPad150bp.processed.interval_list
+
+# Needed for the GATK plot segments app
+dictFasta: GATKResourceBundleAug2021/Homo_sapiens_assembly38.dict
+
+# See the menu options in the USeq GatkCalledSegmentAnnotator
+geneTable: AnnotatorData/UCSC/8Aug2018/hg38RefSeq8Aug2018_Merged.ucsc.gz
+minTumorCopyRatio: 0.15
+maxNormalCopyRatio: 0.5
+minTNCRRatio: 0.15
+
+
+############# LoH #############
+# To provide annotations to the bed file output
+geneTableLoH: AnnotatorData/UCSC/8Aug2018/hg38RefSeq8Aug2018_Merged.ucsc.gz
+
+
+############# MSI Analysis #############
+
+#Regions containing microsatellites
+msiRegions: Bed/Msi/MSI6.sorted.bed
+
+#Mantis recommended thresholds
+mrq: 20.0
+mlq: 25.0
+mlc: 20
+mrr: 1
+
+############# Caris Vcf Parsing and Merging #############
+
+carisCoordinateBed: AnnotatorData/UCSC/9Dec2020/hg38RefSeq9Dec2020_MergedStdChr.ucsc.gz

@@ -1,5 +1,5 @@
 # Bash script to run inside the container
-# 28 April 2025
+# 5 Jun 2025
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -8,7 +8,10 @@ cd $jobDir
 
 # Read info
 allThreads=$(nproc)
-allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
+gbFloat=$(grep MemTotal /proc/meminfo | awk '{print $2/1048576}')
+gbInt=$(printf %.0f $gbFloat)
+allRam=$(($gbInt - 2))
+
 vcf=`readlink -f *.vcf.gz`
 
 # Print params

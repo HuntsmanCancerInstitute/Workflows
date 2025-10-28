@@ -1,5 +1,5 @@
 # Bash script to run inside the container
-# 27 Nov 2024
+# 6 May 2025
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -24,6 +24,14 @@ if test -f RUNME; then
   echo $sns >> *.yaml
 fi
 
+# Convert any ORA to fastq.gz and delete the oras
+for x in *.ora
+do
+echo Converting $x to fastq.gz...
+$dataBundle/app/orad/2.7.0/orad --force -N -t 8 -q $x && rm -f $x || echo ERROR: Ora decompression Failed
+done
+echo
+
 # Launch snakemake
 snakemake -p --cores $allThreads \
 --stats $name"_snakemake.stats.json" \
@@ -35,7 +43,7 @@ allThreads=$allThreads \
 allRam=$allRam
 
 # Clean up prior to rsync back 
-rm -rf .snakemake STARTED RESTARTED QUEUED FAILED
+rm -rf .snakemake STARTED RESTARTED QUEUED FAILED *q.gz *.ora
 
 ## Svg DAG generation
 # Replace the top snakemake line with 'snakemake --dag'

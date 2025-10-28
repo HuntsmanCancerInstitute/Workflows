@@ -1,25 +1,15 @@
-# Bash script to run inside the container, no need to modify anything in this file
-
-# 2 May 2025
+# Bash script to run inside the container
+# 17 July 2024
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
 set -e
 cd $jobDir
-rm -f FAILED COMPLETE QUEUED; touch STARTED
 
-# Node resources
-name=${PWD##*/}
+# Read info
 allThreads=$(nproc)
 allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
-
-# Convert any ORA to fastq.gz and delete the oras
-for x in *.ora
-do
-echo Converting $x to fastq.gz...
-$atlatl/app/orad/2.7.0/orad --force -N -t 8 -q $x && rm -f $x || echo ERROR: Ora decompression Failed
-done
-echo
+name=${PWD##*/}
 
 # Merge the fastqs?
 shopt -s nullglob; fq=(*q.gz); len=${#fq[@]}
@@ -43,21 +33,17 @@ fi
 # Print params
 echo -n jobDir"       : "; echo $jobDir
 echo -n name"         : "; echo $name
-echo -n fastqRead1"   : "; echo $fastqRead1
-echo -n fastqRead2"   : "; echo $fastqRead2
+echo -n R1"           : "; echo $fastqRead1
+echo -n R2"           : "; echo $fastqRead2
 echo -n threads"      : "; echo $allThreads
 echo -n ram"          : "; echo $allRam
-echo -n host"         : "; echo $(hostname)
-echo
+echo -n host"         : "; echo $(hostname); echo
+ls $fastqRead1 $fastqRead2 *sm > /dev/null
 
-# Look for required files
-ls *.sm *.yaml *q.gz  > /dev/null
-
-# Launch snakemake with these settings
 snakemake -p --cores $allThreads \
 --stats $name"_snakemake.stats.json" \
 --snakefile *.sm \
---configfile *.yaml \
+--configfile *rnaAlignQC.yaml \
 --config \
 name=$name \
 fastqRead1=$fastqRead1 \
@@ -65,9 +51,10 @@ fastqRead2=$fastqRead2 \
 allThreads=$allThreads \
 allRam=$allRam
 
-# Clean up prior to rsync back, bit redundant, won't execute if snakemake fails
-rm -rf .snakemake STARTED RESTARTED QUEUED FAILED *cram* *q.gz *.ora
+# Clean up prior to rsync back 
+rm -rf .snakemake STARTED RESTARTED QUEUED FAILED *cram* *q.gz
 
 ## Svg DAG generation
 # Replace the top snakemake line with 'snakemake --dag'
 # Add onto the end '| dot -Tsvg > workflow.svg'
+

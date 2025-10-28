@@ -1,4 +1,4 @@
-# 26 Feb 2025 
+# 29 July 2025 
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -6,7 +6,6 @@
 maxThreads = 40
 halfThreads = 20
 quarterThreads = 10
-email = "david.nix@hci.utah.edu"
 
 # S3 Resources
 patientMolRepo = "hcibioinfo-patient-molecular-repo"
@@ -15,7 +14,7 @@ patientMolRepo = "hcibioinfo-patient-molecular-repo"
 jj = "java -jar -Djava.io.tmpdir=. -Xmx100G"
 useq = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/USeq/Apps"
 htslib = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/HtsLib/1.15/bin"
-indexer = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/GQuery/GQueryIndexer.jar"
+indexer = "/uufs/chpc.utah.edu/common/HIPAA/u0028003/BioApps/GQuery/GQueryIndexer-1.1.jar"
 
 ############# Rules ##############
 
@@ -55,33 +54,33 @@ rule AWSRepoDownload:
     shell:
         "rm -f pmr.download.txt 2> {log};"
         ""
-        "grep '/Avatar/.*/SomaticVariantCalls/.*_Anno/Vcfs/.*anno.vcf.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
-        "grep '/Avatar/.*/SomaticVariantCalls/.*_Illumina/Bed/.*CoveredRegion.bed.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
-        "grep '/Avatar/.*/GermlineVariantCalling/.*_GATK_Anno/Vcfs/.*anno.vcf.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
-        "grep '/Avatar/.*/Alignment/.*_NormalDNA/QC/.*bed.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
-        "grep '/Avatar/.*/CopyAnalysis/.*_GATKCopyRatio/Results/.*seg.pass.bed.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
-        "grep '/Avatar/.*/RNAAnalysis/.*_STARFusion/.*sf.bed.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Avatar/.*/SomaticVariantCalls/.*_Anno/Vcfs/.*anno.vcf.gz' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Avatar/.*/SomaticVariantCalls/.*_Illumina/Bed/.*CoveredRegion.bed.gz' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Avatar/.*/GermlineVariantCalling/.*_GATK_Anno/Vcfs/.*anno.vcf.gz' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Avatar/.*/Alignment/.*_NormalDNA/QC/.*bed.gz' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Avatar/.*/CopyAnalysis/.*_GATKCopyRatio/Results/.*seg.pass.bed.gz' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Avatar/.*/RNAAnalysis/.*_STARFusion/.*sf.bed.gz' pmr.paths.txt >> pmr.download.txt 2>> {log};"
         ""
-        "grep '/Tempus/.*/SomaticVariantCalls/.*_Anno/Vcfs/.*anno.vcf.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
-        "grep '/Tempus/.*/SomaticVariantCalls/.*_Illumina/Bed/.*CoveredRegion.bed.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
-        "grep '/Tempus/.*/RNAAnalysis/.*_STARFusion/.*sf.bed.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
-        "grep '/Tempus/.*/CopyAnalysis/.*CopyRatio/Results/.*seg.pass.bed.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
-        "grep '/Tempus/.*/GermlineVariantCalling/.*_GATK_Anno/Vcfs/.*_Anno_Hg38.anno.vcf.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
-        "grep '/Tempus/.*/Alignment/.*NormalDNA/QC/.*bed.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Tempus/.*/SomaticVariantCalls/.*_Anno/Vcfs/.*anno.vcf.gz' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Tempus/.*/SomaticVariantCalls/.*_Illumina/Bed/.*CoveredRegion.bed.gz' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Tempus/.*/RNAAnalysis/.*_STARFusion/.*sf.bed.gz' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Tempus/.*/CopyAnalysis/.*CopyRatio/Results/.*seg.pass.bed.gz' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Tempus/.*/GermlineVariantCalling/.*_GATK_Anno/Vcfs/.*_Anno_Hg38.anno.vcf.gz' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Tempus/.*/Alignment/.*NormalDNA/QC/.*bed.gz' pmr.paths.txt >> pmr.download.txt 2>> {log};"
         ""
-        "grep '/Caris/.*/SomaticVariantCalls/.*_Anno/Vcfs/.*anno.vcf.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
-        "grep '/Caris/.*/SomaticVariantCalls/.*_Illumina/Bed/.*CoveredRegion.bed.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
-        "grep '/Caris/.*/SomaticVariantCalls/.*_ClinicalVars/ParsedCarisResults/.*fusions.bed.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
-        "grep '/Caris/.*/RNAAnalysis/.*_STARFusion/.*sf.bed.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
-        "grep '/Caris/.*/SomaticVariantCalls/.*_ClinicalVars/ParsedCarisResults/.*cnv.bed.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Caris/.*/SomaticVariantCalls/.*_Anno/Vcfs/.*anno.vcf.gz' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Caris/.*/SomaticVariantCalls/.*_Illumina/Bed/.*CoveredRegion.bed.gz' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Caris/.*/SomaticVariantCalls/.*_ClinicalVars/ParsedCarisResults/.*fusions.bed.gz' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Caris/.*/RNAAnalysis/.*_STARFusion/.*sf.bed.gz' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Caris/.*/SomaticVariantCalls/.*_ClinicalVars/ParsedCarisResults/.*cnv.bed.gz' pmr.paths.txt >> pmr.download.txt 2>> {log};"
         ""
-        "grep '/Invitae/.*/GermlineVariantCalling/.*_Hg38_Anno/Vcfs/.*vcf.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
-        "grep '/Invitae/.*/GermlineVariantCalling/.*_Hg38/.*bed.gz$' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Invitae/.*/GermlineVariantCalling/.*_Hg38_Anno/Vcfs/.*vcf.gz' pmr.paths.txt >> pmr.download.txt 2>> {log};"
+        "grep '/Invitae/.*/GermlineVariantCalling/.*_Hg38/.*bed.gz' pmr.paths.txt >> pmr.download.txt 2>> {log};"
         ""
         "paste -d '>' pmr.download.txt pmr.download.txt > pmr.2xdownload.txt 2>> {log}; "
         "sed -e 's/^/s3:\/\/{patientMolRepo}\//' pmr.2xdownload.txt > pmr.s3copy.txt 2>> {log}; "
         "module load openjdk/11.0.17_8 &>> {log}; "
-        "{jj} ~/BioApps/AwsApps/S3Copy_0.6.jar -u -l -e {email} -j pmr.s3copy.txt &>> {log}; "
+        "{jj} ~/BioApps/AwsApps/S3Copy_0.7.jar -i -u -l -j pmr.s3copy.txt &>> {log}; "
         "rm -f pmr.download.txt pmr.2xdownload.txt pmr.s3copy.txt &>> {log}; "
         ""
         "touch {output} &>> {log}; "
@@ -118,17 +117,20 @@ rule PrepNewGQueryIndex:
     log:
         "Logs/PrepNewGQueryIndex.log"
     shell:
-        "ls {indexer} &> {log}; "
-        "mkdir -p NewGQuery/Data/Hg38/Germline/ &>> {log}; "
-        "cp -r GQuery/Data/Hg38/Germline/RSR NewGQuery/Data/Hg38/Germline/ &>> {log}; "
-        "cp -r GQuery/Data/Hg38/Germline/WDot NewGQuery/Data/Hg38/Germline/ &>> {log}; "
-        "cp -f GQuery/b37Hg19GRCh38Mm10ChrLen.bed NewGQuery/ &>> {log}; "
-        "touch {output} "
+        "rm -rf NewGQuery &> /dev/null; "
+        "cp -r GQuery NewGQuery &> {log}; "
+        "touch {output} &>> {log}; "
+        #"mkdir -p NewGQuery/Data/Hg38/Germline/ &>> {log}; "
+        #"cp -r GQuery/Data/Hg38/Germline/RSR NewGQuery/Data/Hg38/Germline/ &>> {log}; "
+        #"cp -r GQuery/Data/Hg38/Germline/WDot NewGQuery/Data/Hg38/Germline/ &>> {log}; "
+        #"cp -f GQuery/b37Hg19GRCh38Mm10ChrLen.bed NewGQuery/ &>> {log}; "
+        #"touch {output} "
 
 rule Avatar:
     input:
         "Status/BedTabix_COMPLETE",
-        "Status/VCFTabix_COMPLETE"
+        "Status/VCFTabix_COMPLETE",
+        "Status/PrepNewGQueryIndex_COMPLETE"
     output:
         "Status/Avatar_COMPLETE"
     log:
@@ -147,6 +149,7 @@ rule Avatar:
 
 rule Tempus:
     input:
+        "Status/PrepNewGQueryIndex_COMPLETE",
         "Status/BedTabix_COMPLETE",
         "Status/VCFTabix_COMPLETE"
     output:
@@ -206,6 +209,7 @@ rule Tempus:
 # Copy files needed for GQuery
 rule Caris:
     input:
+        "Status/PrepNewGQueryIndex_COMPLETE",
         "Status/BedTabix_COMPLETE",
         "Status/VCFTabix_COMPLETE"
     output:
@@ -225,6 +229,7 @@ rule Caris:
 
 rule Invitae:
     input:
+        "Status/PrepNewGQueryIndex_COMPLETE",
         "Status/BedTabix_COMPLETE",
         "Status/VCFTabix_COMPLETE"
     output:
@@ -248,7 +253,6 @@ rule Invitae:
 
 rule GQueryIndexer:
     input:
-        "Status/PrepNewGQueryIndex_COMPLETE",
         "Status/Invitae_COMPLETE",
         "Status/Caris_COMPLETE",
         "Status/Tempus_COMPLETE",

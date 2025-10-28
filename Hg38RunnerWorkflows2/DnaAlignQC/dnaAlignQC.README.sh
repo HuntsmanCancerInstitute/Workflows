@@ -4,7 +4,7 @@
 #SBATCH -N 1
 #SBATCH -t 96:00:00
 
-# 17 Dec 2024
+# 9 May 2025
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -33,11 +33,11 @@ container=$dataBundle/Containers/public_SM_BWA_2.sif
 #   TNRunner/Bed/AvatarMergedNimIdtBeds/hg38NimIdtMergedPad150bp.bed.gz* TNRunner/Bed/AvatarMergedNimIdtBeds/hg38NimIdtCCDSShared.bed.gz*
 
 
-#### Do for every run ####
+#### Do for every sample ####
 
-# 1) Create a folder named as you would like the analysis name to appear, this along with the genome build will be prepended onto all files, no spaces, change into it. 
+# 1) Create a single sample folder named as you would like the analysis name to appear, this along with the genome build will be prepended onto all files, no spaces, change into it. 
 
-# 2) Soft link or move your paired fastq.gz files into the job dir, their names should end in xxxq.gz . Alternatively provide a cram file and it will be converted to paired fastq.
+# 2) Soft link or move your paired fastq.gz files for each sample into each job dir, their names should end in xxxq.gz . Alternatively provide a cram file and it will be converted to paired fastq.
 
 # 3) Copy over the workflow docs: xxx.sing, xxx.README.sh, xxx.sm, and the tnRunner.yaml config file into the job directory.
 
@@ -72,9 +72,9 @@ ls -1 $tempDir/$name
 
 # Copy back job files regardless of success or failure, disable exit on error, exclude the cram and fastq files
 echo -e "\n---------- Copying back results -------- $((($(date +'%s') - $start)/60)) min"
-rm -f $tempDir/$name/*cram* &> /dev/null
+rm -f $tempDir/$name/*cram* $tempDir/$name/*q.gz &> /dev/null
 # Trying to use sleep to let the file system sync, rsyncs are sometimes failing to register all the files in time for the COMPLETE check
-rsync -rtL --exclude '*q.gz' $tempDir/$name/ $jobDir/ && echo CopyBackOK || { echo CopyBackFAILED; rm -f COMPLETE; }
+rsync -rtL $tempDir/$name/ $jobDir/ && echo CopyBackOK || { echo CopyBackFAILED; rm -f COMPLETE; }
 sleep 5s
 
 echo -e "\n---------- Files In JobDir -------- $((($(date +'%s') - $start)/60)) min"

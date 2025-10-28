@@ -1,0 +1,325 @@
+# Alignment and QC for RNASeq samples
+# 3 Sept 2024
+# 3 May 2025
+# David.Nix@Hci.Utah.Edu
+# Huntsman Cancer Institute
+
+# Threads and memory
+allThreads = int(config["allThreads"])
+halfThreads = int(round(allThreads/2,0))
+quarterThreads = int(round(halfThreads/4,0))
+allRam = int(round(float(config["allRam"])))
+
+# Params
+nameBuild = str(config["name"])+ "_"+ config["genomeBuild"]
+adapterR1 = config["adapterR1"]
+adapterR2 = config["adapterR2"]
+mappingQuality = config["mappingQuality"]
+baseQuality = config["baseQuality"]
+
+opticalDistance = config["opticalDistance"]
+fastqRead1 = config["fastqRead1"]
+fastqRead2 = config["fastqRead2"]
+
+r = config["root"]
+p = config["pdx"]
+
+chrom = p + config["chrom"]
+fqsConfig = r + config["fqsConfig"]
+starIndex = p + config["starIndex"]
+gtf = r + config["gtf"]
+refFlat = r + config["refFlat"]
+riboIntervals = p + config["riboIntervals"]
+fcStrand = str(config["fcStrand"])
+crsStrand = config["crsStrand"]
+fastaIndex = p + config["fastaIndex"]
+
+#######################################################
+pdxBed = p + config["pdxBed"]
+
+clumpify = "/BioApps/BBMap/bbmap/clumpify.sh" # optical dup removal, not species-specific
+
+####### !! Post de-mouse
+analysisRegions = r + config["analysisRegions"]
+#rsemIndex = r + config["rsemIndex"]
+#rsemStrand = config["rsemStrand"]
+multiQCConfig = r + config["multiQCConfig"]
+
+####### Not used
+#cramIndex = r + config["cramIndex"]
+#######################################################
+
+# Trigger rule to run particular analysis
+## If you're not going to run SampleConcordance, remove the '"Alignment/"+ nameBuild+ "_bp.txt.gz"' to skip bamPileup file generation. This is time consuming and only needed for T/N Exome+ RNASeq runs.
+## "Alignment/"+ nameBuild+ "_bp.txt.gz", removed
+rule MultiQC:
+    input:
+        "QC/FastqScreen/"+ nameBuild+ "_1_screen.txt",
+        "QC/FastQC/"+ nameBuild+ "_2_fastqc.zip",
+        #"Quantitation/RSEM/"+ nameBuild+ ".genes.results",
+        "Quantitation/FeatureCounts/"+ nameBuild+ ".biotypes",
+        "QC/Picard/"+ nameBuild+ ".rnaMetrics.txt",
+        "Quantitation/IGV/"+ nameBuild+ ".multiple.bw",
+        "Alignment/"+ nameBuild+ ".cram"
+    output:
+        c= "COMPLETE",
+        m= "QC/"+ nameBuild+ "_multiqc_report.html"
+    log:
+        "Logs/"+ nameBuild+ "_MultiQC.log"
+    shell:
+        "multiqc --config {multiQCConfig} --outdir QC/ --title {nameBuild} --force . && touch {output.c} &> {log}"
+
+# Look for the required resources
+rule CheckFilesParams:
+    output:
+        temp ("FileCheckOK")
+    log:
+        "Logs/"+ nameBuild+ "_CheckFilesParams.log"
+    shell:
+        "echo nameBuild: &>> {log} && echo {nameBuild} &>> {log} && "
+        "echo adapterR1: &>> {log} && echo {adapterR1} &>> {log} && "
+        "echo adapterR2: &>> {log} && echo {adapterR2} &>> {log} && "
+        "echo mappingQuality: &>> {log} && echo {mappingQuality} &>> {log} && "
+        "echo baseQuality: &>> {log} && echo {baseQuality} &>> {log} && "
+        "echo root: &> {log} && ls {r} &>> {log} && "
+        "echo pdx: &> {log} && ls {p} &>> {log} && "
+        "echo pdxBed: &> {log} && ls {pdxBed} &>> {log} && "
+        "echo chrom: &>> {log} && ls {chrom} &>> {log} && "
+        "echo starIndex: &>> {log} && ls {starIndex} &>> {log} && "
+        "echo fastaIndex: &>> {log} && ls {fastaIndex} &>> {log} && "
+        "echo analysisRegions: &>> {log} && ls {analysisRegions} &>> {log} && "
+        "echo gtf: &>> {log} && ls {gtf} &>> {log} && "
+        "echo refFlat: &>> {log} && ls {refFlat} &>> {log} && "
+        "echo riboIntervals: &>> {log} && ls {riboIntervals} &>> {log} && "
+        #"echo rsemIndex: &>> {log} && ls {rsemIndex}* &>> {log} && "
+        "echo fqsConfig: &>> {log} && ls {fqsConfig} &>> {log} && "
+        "echo multiQCConfig: &>> {log} && ls {multiQCConfig} &>> {log} && "
+        #"echo rsemStrand: &>> {log} && echo {rsemStrand} &>> {log} && "
+        "echo fcStrand: &>> {log} && echo {fcStrand} &>> {log} && "
+        "echo crsStrand: &>> {log} && echo {crsStrand} &>> {log} && "
+        "touch {output}"
+
+# Remove the optical duplicates
+rule Clumpify:
+    output:
+        fq1 = temp ( "TempFastq/"+ nameBuild+ ".dedup.1.fq"),
+        fq2 = temp ( "TempFastq/"+ nameBuild+ ".dedup.2.fq")
+    threads:
+        allThreads
+    log:
+        "Logs/"+ nameBuild+ "_Clumpify.log"
+    shell:
+        "{clumpify} ignorebadquality in1={fastqRead1} in2={fastqRead2} "
+        "out1={output.fq1}  out2={output.fq2} dupedist={opticalDistance} "
+        "dedupe=t optical=t &> {log}"
+
+# Cutadapt to trim fastq
+rule Cutadapt:
+    input:
+        fq1 = "TempFastq/"+ nameBuild+ ".dedup.1.fq",
+        fq2 = "TempFastq/"+ nameBuild+ ".dedup.2.fq"
+    output:
+        fq1 = temp ( nameBuild+ "_1.fq"),
+        fq2 = temp ( nameBuild+ "_2.fq")
+    threads:
+        allThreads
+    log:
+        "Logs/"+ nameBuild+ "_Cutadapt.log"
+    shell:
+        "cutadapt -j {threads} -O 6 -m 20 -o {output.fq1} -p {output.fq2} "
+        "-a {adapterR1} -A {adapterR2} "
+        "{input.fq1} {input.fq2} &> {log} && rm -rf TempFastq/ &>> {log}"
+
+# Look for contaminants
+rule FastqScreen:
+    input:
+        nameBuild+ "_1.fq"
+    output:
+        "QC/FastqScreen/"+ nameBuild+ "_1_screen.html",
+        "QC/FastqScreen/"+ nameBuild+ "_1_screen.txt"
+    threads:
+        quarterThreads
+    log:
+        "Logs/"+ nameBuild+ "_FastqScreen.log"
+    shell:
+        "fastq_screen --threads {threads} --subset 1000000 --outdir QC/FastqScreen "
+        "--conf {fqsConfig} --aligner bowtie2 {input} &> {log}"
+
+# Check fastq data quality
+rule FastQC:
+    input:
+        fq1 = nameBuild+ "_1.fq",
+        fq2 = nameBuild+ "_2.fq"
+    output:
+        "QC/FastQC/"+ nameBuild+ "_2_fastqc.html",
+        "QC/FastQC/"+ nameBuild+ "_2_fastqc.zip"
+    threads:
+        quarterThreads
+    log:
+        "Logs/"+ nameBuild+ "_FastQC.log"
+    shell:
+        "fastqc -T {threads} -f fastq {input.fq1} -o QC/FastQC &> {log} && "
+        "fastqc -T {threads} -f fastq {input.fq2} -o QC/FastQC &>> {log}"
+
+# Run star to generate alignments, emits a random multimapper, and generates relative read coverage tracks
+rule StarAlignment:
+    input:
+        fq1 = nameBuild+ "_1.fq",
+        fq2 = nameBuild+ "_2.fq"
+    output:
+        bam = temp ("Alignment/"+ nameBuild+ ".all.bam"),
+        stats = "QC/STAR/"+ nameBuild+ ".Log.final.out",
+        trans = temp ("Aligned.toTranscriptome.out.bam"),
+        bg1 = temp ("Signal.Unique.str1.out.bg"),
+        bg2 = temp ("Signal.UniqueMultiple.str1.out.bg")
+    threads:
+        15
+    log:
+        "Logs/"+ nameBuild+ "_StarAlignment.log",
+    shell:
+        "STAR --genomeDir {starIndex} --readFilesIn {input.fq1} {input.fq2} --runThreadN {threads} "
+        "--twopassMode Basic --outSAMtype BAM SortedByCoordinate --outBAMsortingBinsN 800 --limitBAMsortRAM {allRam}000000000 "
+        "--quantMode TranscriptomeSAM --outWigType bedGraph --outWigStrand Unstranded --seedPerWindowNmax 30 &> {log} && "
+        "mv -f Aligned.sortedByCoord.out.bam {output.bam} &>> {log} && "
+        "mv Log.final.out {output.stats} &>> {log} && "
+        "rm -rf _STAR* SJ.out.tab Log.out Log.progress.out "
+
+# Index the star bam
+rule SamtoolsIndex:
+    input:
+        "Alignment/"+ nameBuild+ ".all.bam"
+    output:
+        bai = temp("Alignment/"+ nameBuild+ ".all.bam.bai"),
+        stats = "QC/Samtools/"+ nameBuild+ ".idxstats"
+    threads:
+        quarterThreads
+    log:
+        "Logs/"+ nameBuild+ "_SamtoolsIndex.log"
+    shell:
+        "samtools index -@ {threads} {input} &> {log} && "
+        "samtools idxstats -@ {threads} {input} | sort -V > {output.stats} "
+
+#######################################################
+
+# Select alignments over standard human chromosomes and apply a map qual of 13 to remove non unique alignments
+rule DeMouseBam:
+    input:
+        bam = "Alignment/"+ nameBuild+ ".all.bam",
+        bai = "Alignment/"+ nameBuild+ ".all.bam.bai"
+    output:
+        bam = temp ("Alignment/"+ nameBuild+ ".bam"),
+        bai = temp ("Alignment/"+ nameBuild+ ".bam.bai")
+    threads:
+        halfThreads
+    log:
+        "Logs/"+ nameBuild+ "_DeMouseBam.log"
+    shell:
+        "samtools view --threads {threads} --write-index --min-MQ {mappingQuality} "
+        "-L {pdxBed} --use-index -o {output.bam}##idx##{output.bai} {input.bam} &> {log}"
+
+#######################################################
+## Mismatch between PDX and Human generates error: "The BAM file declares more ref sequences (394773) than RSEM knows (254129)"
+# Transcript level abundance estimation with RSEM
+#rule RSEM:
+#    input:
+#        "Aligned.toTranscriptome.out.bam"
+#    output:
+#        "Quantitation/RSEM/"+ nameBuild+ ".genes.results",
+#        "Quantitation/RSEM/"+ nameBuild+ ".isoforms.results",
+#        directory ("Quantitation/RSEM/"+ nameBuild+ ".stat")
+#    threads:
+#        allThreads
+#    log:
+#        "Logs/"+ nameBuild+ "_RSEM.log"
+#    shell:
+#        "rsem-calculate-expression --paired-end -p {threads} --alignments --strandedness {rsemStrand} "
+#        "--no-bam-output {input} {rsemIndex} Quantitation/RSEM/{nameBuild} &> {log}"
+
+# Summary transcript counts
+# If this fails, try writing out an uncompressed bam, and replace the Alignment/xxx.bam e.g. samtools sort -u -o sorted.bam Alignment/*bam; samtools index -b sorted.bam
+rule FeatureCounts:
+    input:
+        bam = "Alignment/"+ nameBuild+ ".bam",
+        bai = "Alignment/"+ nameBuild+ ".bam.bai"
+    output:
+        c = "Quantitation/FeatureCounts/"+ nameBuild+ ".counts",
+        b = "Quantitation/FeatureCounts/"+ nameBuild+ ".biotypes"
+    threads:
+        quarterThreads
+    log:
+        "Logs/"+ nameBuild+ "_FeatureCounts.log"
+    shell:
+        "featureCounts -T {threads} -p --countReadPairs -s {fcStrand} --largestOverlap -a {gtf} -o {output.c} {input.bam} &> {log} && "
+        "featureCounts -T {threads} -p --countReadPairs -s {fcStrand} --largestOverlap -a {gtf} -o {output.b} -g gene_biotype "
+        "{input.bam} &>> {log}"
+
+# QC metrics from Picard
+rule CollectRnaSeqMetrics:
+    input:
+        bam = "Alignment/"+ nameBuild+ ".bam",
+        bai = "Alignment/"+ nameBuild+ ".bam.bai"
+    output:
+        "QC/Picard/"+ nameBuild+ ".rnaMetrics.txt"
+    threads:
+        2
+    log:
+        "Logs/"+ nameBuild+ "_CollectRnaSeqMetrics.log"
+    shell:
+        "java -jar -Xmx20G /BioApps/Picard/2.26.2/picard.jar CollectRnaSeqMetrics  REF_FLAT={refFlat} "
+        "STRAND={crsStrand} RIBOSOMAL_INTERVALS={riboIntervals} I={input.bam} "
+        "O={output} &> {log} "
+
+# Convert bam to cram
+rule SamtoolsCram:
+    input:
+        "Alignment/"+ nameBuild+ ".bam"
+    output:
+        cram = "Alignment/"+ nameBuild+ ".cram",
+        crai = "Alignment/"+ nameBuild+ ".cram.crai"
+    threads:
+        quarterThreads
+    log:
+        "Logs/"+ nameBuild+ "_SamtoolsCram.log"
+    shell:
+        "samtools view -C -T {fastaIndex} -o {output.cram} -@ {threads} --write-index {input} &> {log}"
+
+# BamPileup file for Read Coverage, Sample Concordance, and ultra sensitive somatic variant calling
+# Not used unless added above
+rule BamPileup:
+    input:
+        bam = "Alignment/"+ nameBuild+ ".bam",
+        bai = "Alignment/"+ nameBuild+ ".bam.bai"
+    output:
+        bp = "Alignment/"+ nameBuild+ "_bp.txt.gz",
+        index = "Alignment/"+ nameBuild+ "_bp.txt.gz.tbi"
+    log:
+        "Logs/"+ nameBuild+ "_BamPileup.log"
+    threads:
+        halfThreads
+    shell:
+        "java -jar -Xmx{allRam}G /BioApps/USeq/Apps/BamPileup -b {input.bam} -r {analysisRegions} -f {fastaIndex} -a "
+        "-a -s {output.bp} -p {threads} -t /BioApps/Htslib/1.13/bin -q {baseQuality} -m {mappingQuality} &> {log} "
+
+# Convert graphs
+rule BedGraphToBigWig:
+    input:
+        bg1 = "Signal.Unique.str1.out.bg",
+        bg2 = "Signal.UniqueMultiple.str1.out.bg"
+    output:
+        bw1 = "Quantitation/IGV/"+ nameBuild+ ".unique.bw",
+        bw2 = "Quantitation/IGV/"+ nameBuild+ ".multiple.bw"
+    threads:
+        2
+    log:
+        "Logs/"+ nameBuild+ "_BedGraphToBigWig.log"
+    shell:
+        "sort -k1,1 -k2,2n {input.bg1} > sorted.bg 2> {log} && "
+        "bedGraphToBigWig sorted.bg  {chrom} {output.bw1} &>> {log} && "
+        "sort -k1,1 -k2,2n {input.bg2} > sorted.bg 2>> {log} && "
+        "bedGraphToBigWig sorted.bg {chrom} {output.bw2} &>> {log};"
+        "rm -f sorted.bg "
+
+
+onerror:
+    shell( "rm -f STARTED COMPLETE DONE; touch FAILED")
+

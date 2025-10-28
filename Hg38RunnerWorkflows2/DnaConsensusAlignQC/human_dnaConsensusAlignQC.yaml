@@ -1,0 +1,26 @@
+---
+# Last edit 27 Oct 2025 - david.nix@hci.utah.edu
+
+# Human latest
+genomeBuild: Hg38
+
+# USeq FastqBarcodeTagger and Consensus for UMI parsing settings
+useqFastqBarcodeTagger: "-i -l 8 -t 8"
+useqConsensus: "-n 12 -f 0.8125 -c 500000"
+
+# Minimum alignment mapping quality and minimum sequencing bp quality for bam pileup
+mappingQuality: 13
+baseQuality: 13
+
+# Used to create a bed file of regions that pass this minimum unique observations threshold
+passingReadDepth: 12
+
+# Atlatl data bundle for ora decompression, must end in /
+atlatl: /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/atlatl/data/
+
+# TNRunner data bundle, must end in /
+tnRunner: /uufs/chpc.utah.edu/common/PE/hci-bioinformatics1/TNRunner/
+fastaIndex: GIABResourceBundleFeb2024/GRCh38_GIABv3_no_alt_analysis_set_maskedGRC_decoys_MAP2K3_KMT2C_KCNJ18.fasta
+uniObRCRegions: Bed/Maughan/Maughan_SharedRegionsCcdsCoveredHg38.bed.gz
+
+

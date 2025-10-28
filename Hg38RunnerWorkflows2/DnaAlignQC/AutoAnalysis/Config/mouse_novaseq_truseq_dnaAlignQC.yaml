@@ -1,5 +1,5 @@
 ---
-# Last edit 26 March 2024 - david.nix@hci.utah.edu
+# Last edit 10 June 2025 - david.nix@hci.utah.edu
 # Configuration for the AutoAnalysis DnaAlignQC workflow, keeping it simple, just hardcoding for redwood
 # NOTE! The read coverage statistics are only valid for WGS (including chIPSeq like experiments) or exome capture.
 #    Small panel captures require reanalysis with a capture matched set of bed files.
@@ -9,8 +9,7 @@
 genomeBuild: GRCm39
 
 # Illumina TruSeq universal adapters
-adapterR1: AGATCGGAAGAGCACACGTCTGAACTCCAGTCA
-adapterR2: AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT
+adapters: /BioApps/Trimmomatic/0.39/adapters/TruSeq3-PE.fa
 
 # Set this to 2500 for NovaSeq/NextSeq datasets, set it to 100 for HiSeq/MiSeq datasets, set to 0 for fastq from SRA to disable
 opticalDistance: 2500

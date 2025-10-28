@@ -1,5 +1,5 @@
 # Primary analysis of CellRanger fastq
-# 13 Sept 2024
+# 6 May 2025
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -43,8 +43,8 @@ rule CheckFilesParams:
         "echo -ne indexDir:'\t' &>> {log} && echo {indexDir} &>> {log} && "
         "echo -ne fastq:'\t' &>> {log} && ls *q.gz &>> {log} && "
         "numFastq=$(ls *q.gz | wc -l) && "
-        "if [ $numFastq -lt 3 ]; then "
-        "  echo 'FAILED to find at least 3 fastq.gz files, aborting.' &>> {log}; " 
+        "if [ $numFastq -lt 2 ]; then "
+        "  echo 'FAILED to find at least 2 fastq.gz files, aborting.' &>> {log}; " 
         "  exit 1; "
         "else "
         "  echo 'Correct number fastq files found' &>> {log}; "

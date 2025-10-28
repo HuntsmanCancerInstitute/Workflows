@@ -1,5 +1,5 @@
 # Bash script to run inside the container
-# 17 July 2024
+# 2 May 2025
 # David.Nix@Hci.Utah.Edu
 # Huntsman Cancer Institute
 
@@ -10,6 +10,15 @@ cd $jobDir
 allThreads=$(nproc)
 allRam=$(expr `free -g | grep -oP '\d+' | head -n 1` - 2)
 name=${PWD##*/}
+
+# Convert any ORA to fastq.gz and delete the oras
+
+for x in *.ora
+do
+echo Converting $x to fastq.gz...
+$dataBundle/app/orad/2.7.0/orad --force -N -t 8 -q $x && rm -f $x || echo ERROR: Ora decompression Failed
+done
+echo
 
 # Merge the fastqs?
 shopt -s nullglob; fq=(*q.gz); len=${#fq[@]}
@@ -31,14 +40,15 @@ else
 fi
 
 # Print params
-echo -n jobDir"       : "; echo $jobDir
-echo -n name"         : "; echo $name
-echo -n R1"           : "; echo $fastqRead1
-echo -n R2"           : "; echo $fastqRead2
-echo -n threads"      : "; echo $allThreads
-echo -n ram"          : "; echo $allRam
-echo -n host"         : "; echo $(hostname); echo
-ls $fastqRead1 $fastqRead2 *sm > /dev/null
+echo -n dataBundle" : "; echo $dataBundle
+echo -n jobDir"     : "; echo $jobDir
+echo -n name"       : "; echo $name
+echo -n R1"         : "; echo $fastqRead1
+echo -n R2"         : "; echo $fastqRead2
+echo -n threads"    : "; echo $allThreads
+echo -n ram"        : "; echo $allRam
+echo -n host"       : "; echo $(hostname); echo
+ls $fastqRead1 $fastqRead2 *sm *yaml > /dev/null
 
 snakemake -p --cores $allThreads \
 --stats $name"_snakemake.stats.json" \
@@ -51,8 +61,8 @@ fastqRead2=$fastqRead2 \
 allThreads=$allThreads \
 allRam=$allRam
 
-# Clean up prior to rsync back 
-rm -rf .snakemake STARTED RESTARTED QUEUED FAILED *cram* *q.gz
+# Clean up prior to rsync back, bit redundant
+rm -rf .snakemake STARTED RESTARTED QUEUED FAILED *cram* *q.gz *.ora
 
 ## Svg DAG generation
 # Replace the top snakemake line with 'snakemake --dag'
